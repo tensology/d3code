@@ -7,13 +7,16 @@ const choices: Choice[] = [
   { id: "anthropic", label: "Anthropic" },
   { id: "openrouter", label: "OpenRouter" },
   { id: "ollama", label: "Ollama" },
+  { id: "kilocode", label: "Kilo Code Gateway" },
 ]
 
 test("setup choices accept numbers, ids, labels, and defaults", () => {
   assert.equal(resolveSetupChoice("", choices, "openai"), "openai")
   assert.equal(resolveSetupChoice("4", choices, "openai"), "ollama")
+  assert.equal(resolveSetupChoice("5", choices, "openai"), "kilocode")
   assert.equal(resolveSetupChoice("ollama", choices, "openai"), "ollama")
   assert.equal(resolveSetupChoice("Ollama", choices, "openai"), "ollama")
+  assert.equal(resolveSetupChoice("Kilo Code Gateway", choices, "openai"), "kilocode")
 })
 
 test("setup choices preserve unknown typed values for validation elsewhere", () => {

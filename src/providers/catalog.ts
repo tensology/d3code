@@ -5,6 +5,8 @@ export interface ProviderInfo {
   defaultModel: string
   models: string[]
   openAICompatible?: boolean
+  baseURL?: string
+  chatPath?: string
 }
 
 export const providers: ProviderInfo[] = [
@@ -29,6 +31,7 @@ export const providers: ProviderInfo[] = [
     defaultModel: "openai/gpt-5",
     models: ["openai/gpt-5", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro"],
     openAICompatible: true,
+    baseURL: "https://openrouter.ai/api",
   },
   {
     id: "ollama",
@@ -37,6 +40,16 @@ export const providers: ProviderInfo[] = [
     defaultModel: "llama3.1",
     models: ["llama3.1", "qwen2.5-coder:7b", "codellama"],
     openAICompatible: true,
+  },
+  {
+    id: "kilocode",
+    name: "Kilo Code Gateway",
+    env: ["KILO_API_KEY", "KILOCODE_API_KEY"],
+    defaultModel: "anthropic/claude-sonnet-4.5",
+    models: ["anthropic/claude-sonnet-4.5", "openai/gpt-5", "google/gemini-2.5-pro"],
+    openAICompatible: true,
+    baseURL: "https://api.kilo.ai/api/gateway",
+    chatPath: "/chat/completions",
   },
 ]
 

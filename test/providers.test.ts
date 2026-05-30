@@ -11,6 +11,14 @@ test("resolves provider/model refs", () => {
   assert.equal(resolved.model, "gpt-5")
 })
 
+test("resolves Kilo Code Gateway model refs", () => {
+  const resolved = resolveModel("kilocode/anthropic/claude-sonnet-4.5")
+  assert.equal(resolved.provider.id, "kilocode")
+  assert.equal(resolved.provider.baseURL, "https://api.kilo.ai/api/gateway")
+  assert.equal(resolved.provider.chatPath, "/chat/completions")
+  assert.equal(resolved.model, "anthropic/claude-sonnet-4.5")
+})
+
 test("creates D3 mode-aware model routing plans", () => {
   const plan = createModelRoutingPlan({
     version: 1,

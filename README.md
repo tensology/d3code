@@ -123,7 +123,7 @@ d3code
 
 That last command is the product. On first run, if `~/.d3code/config.json` does not exist, `d3code` opens the setup wizard and asks for:
 
-1. model provider, for example OpenAI, Anthropic, OpenRouter, or Ollama
+1. model provider, for example OpenAI, Anthropic, OpenRouter, Ollama, or Kilo Code Gateway
 2. model name
 3. API key, stored through the configured secret store when entered
 4. default safety mode

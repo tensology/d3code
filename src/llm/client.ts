@@ -45,17 +45,17 @@ async function providerKey(config: D3CodeConfig, secrets: SecretStore, provider:
 export async function chat(config: D3CodeConfig, secrets: SecretStore, request: ChatRequest): Promise<ChatResponse> {
   const { provider, model } = resolveModel(request.modelRef)
   if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages)
-  return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages)
+  return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages, provider.baseURL, provider.chatPath)
 }
 
-async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[]): Promise<ChatResponse> {
+async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[], configuredBaseURL?: string, configuredChatPath = "/v1/chat/completions"): Promise<ChatResponse> {
   const key = provider === "ollama" ? "" : await providerKey(config, secrets, provider, env)
   const baseURL = provider === "openrouter"
-    ? "https://openrouter.ai/api"
+    ? configuredBaseURL ?? "https://openrouter.ai/api"
     : provider === "ollama"
       ? process.env.D3CODE_OLLAMA_BASE_URL ?? process.env.D3CODE_LOCAL_BASE_URL ?? "http://localhost:11434"
-      : "https://api.openai.com"
-  const response = await fetch(`${baseURL}/v1/chat/completions`, {
+      : configuredBaseURL ?? "https://api.openai.com"
+  const response = await fetch(`${baseURL}${configuredChatPath}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",

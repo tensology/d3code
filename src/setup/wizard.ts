@@ -39,9 +39,13 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     console.log("")
     console.log("D3 Code setup")
     console.log("Choose the model D3 Code should use, then optionally add a Rocket D3 connection profile.")
-    const providerChoices = providers.map((provider) => ({ id: provider.id, label: provider.name, hint: provider.id === "ollama" ? "local Ollama on this machine" : provider.id }))
+    const providerChoices = providers.map((provider) => ({
+      id: provider.id,
+      label: provider.name,
+      hint: provider.id === "ollama" ? "local Ollama on this machine" : provider.id === "kilocode" ? "Kilo AI Gateway" : provider.id,
+    }))
     renderChoices("Model provider", providerChoices)
-    const providerID = normalizeProviderID(resolveSetupChoice(await rl.question("Provider 1-4 [1 OpenAI]: "), providerChoices, "openai"))
+    const providerID = normalizeProviderID(resolveSetupChoice(await rl.question(`Provider 1-${providerChoices.length} [1 OpenAI]: `), providerChoices, "openai"))
     const provider = providers.find((item) => item.id === providerID) ?? providers[0]
     if (provider.id === "ollama") {
       console.log("Ollama uses the local OpenAI-compatible endpoint at http://localhost:11434 by default.")
