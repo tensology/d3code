@@ -29,7 +29,7 @@ export function compactTranscriptContent(content: string, maxLines = 8): string[
 
 export function transcriptPrefix(role: string): string {
   if (role === "user") return "› "
-  if (role === "shell-input") return "! "
+  if (role === "shell-input") return "› ! "
   if (role === "assistant") return "d3code: "
   if (role === "assistant-stream") return "  ⎿ "
   if (role === "pending") return "  ⎿ "
@@ -46,7 +46,7 @@ export function transcriptColor(role: string): string {
   if (role === "error") return "red"
   if (role === "assistant" || role === "assistant-stream") return "green"
   if (role === "pending") return "yellow"
-  if (role === "shell-input") return "yellow"
+  if (role === "shell-input") return "white"
   if (role === "user") return "white"
   if (role === "tool-start" || role === "file-change" || role === "shell-output") return "cyan"
   return "gray"

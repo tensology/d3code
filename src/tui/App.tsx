@@ -388,6 +388,7 @@ export function App(props: AppProps) {
     try {
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
       if (line === "/d3" || line.startsWith("/d3 ")) {
+        setTranscript((current) => [...current, { role: "tool-start", content: `D3 terminal${line.split(/\s+/)[1] ? `: ${line.split(/\s+/)[1]}` : ""}` }])
         await enterD3Terminal(line.split(/\s+/)[1])
         return
       }
@@ -408,6 +409,7 @@ export function App(props: AppProps) {
       }
       if (line.startsWith("/")) {
         setActiveTask(`running ${line.split(/\s+/)[0]}`)
+        setTranscript((current) => [...current, { role: "tool-start", content: `Command: ${line.split(/\s+/)[0]}` }])
         const result = await handleSlashCommand(line, props.config, { model, safety, profile, mode })
         if (result.clear) setTranscript([])
         const nextModel = result.state?.model ?? model
@@ -546,6 +548,7 @@ export function App(props: AppProps) {
       return
     }
     setActiveTask(`running ! ${command.split(/\s+/)[0]}`)
+    setTranscript((current) => [...current, { role: "tool-start", content: `Bash: ${command}` }])
     const result = await runLocalShellCommand(command, {
       signal,
       onStdout: (chunk) => setStreamingShellOutput((current) => `${current}${chunk}`),
@@ -566,6 +569,7 @@ export function App(props: AppProps) {
     if (!d3Session.current) d3Session.current = createD3Session(selected)
     assertD3Allowed(safety, line, safety === "trust")
     setActiveTask(`running D3 ${line.split(/\s+/)[0] ?? "command"}`)
+    setTranscript((current) => [...current, { role: "tool-start", content: `D3 TCL: ${line}` }])
     const capture = await captureD3Terminal(d3Session.current, line, {
       width: 80,
       height: 18,
