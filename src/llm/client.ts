@@ -14,10 +14,19 @@ export interface ChatRequest {
   signal?: AbortSignal
 }
 
+export interface ChatUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+}
+
 export interface ChatResponse {
   content: string
   provider: string
   model: string
+  usage?: ChatUsage
   raw?: unknown
 }
 
@@ -46,7 +55,7 @@ async function providerKey(config: D3CodeConfig, secrets: SecretStore, provider:
 
 export async function chat(config: D3CodeConfig, secrets: SecretStore, request: ChatRequest): Promise<ChatResponse> {
   const { provider, model } = resolveModel(request.modelRef)
-  if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages)
+  if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages, request.signal)
   return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages, provider.baseURL, provider.chatPath, request.onToken, request.signal)
 }
 
@@ -60,12 +69,41 @@ async function readJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
-async function readOpenAIStream(response: Response, onToken: (token: string) => void): Promise<string> {
-  if (!response.body) return ""
+function numberField(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+export function openAIUsage(raw: unknown): ChatUsage | undefined {
+  const usage = raw && typeof raw === "object" && "usage" in raw ? (raw as { usage?: unknown }).usage : raw
+  if (!usage || typeof usage !== "object") return undefined
+  const record = usage as Record<string, unknown>
+  const inputTokens = numberField(record.prompt_tokens ?? record.input_tokens)
+  const outputTokens = numberField(record.completion_tokens ?? record.output_tokens)
+  const totalTokens = numberField(record.total_tokens) || inputTokens + outputTokens
+  if (!inputTokens && !outputTokens && !totalTokens) return undefined
+  return { inputTokens, outputTokens, totalTokens }
+}
+
+export function anthropicUsage(raw: unknown): ChatUsage | undefined {
+  const usage = raw && typeof raw === "object" && "usage" in raw ? (raw as { usage?: unknown }).usage : raw
+  if (!usage || typeof usage !== "object") return undefined
+  const record = usage as Record<string, unknown>
+  const inputTokens = numberField(record.input_tokens)
+  const outputTokens = numberField(record.output_tokens)
+  const cacheReadInputTokens = numberField(record.cache_read_input_tokens)
+  const cacheCreationInputTokens = numberField(record.cache_creation_input_tokens)
+  const totalTokens = inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens
+  if (!totalTokens) return undefined
+  return { inputTokens, outputTokens, totalTokens, cacheReadInputTokens, cacheCreationInputTokens }
+}
+
+async function readOpenAIStream(response: Response, onToken: (token: string) => void): Promise<{ content: string; usage?: ChatUsage }> {
+  if (!response.body) return { content: "" }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
   let content = ""
+  let usage: ChatUsage | undefined
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
@@ -77,14 +115,15 @@ async function readOpenAIStream(response: Response, onToken: (token: string) => 
       if (!trimmed.startsWith("data:")) continue
       const data = trimmed.slice(5).trim()
       if (!data || data === "[DONE]") continue
-      const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }> }
+      const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>; usage?: unknown }
+      usage = openAIUsage(parsed) ?? usage
       const token = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content ?? ""
       if (!token) continue
       content += token
       onToken(token)
     }
   }
-  return content
+  return { content, usage }
 }
 
 async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[], configuredBaseURL?: string, configuredChatPath = "/v1/chat/completions", onToken?: (token: string) => void, signal?: AbortSignal): Promise<ChatResponse> {
@@ -94,7 +133,13 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
     : provider === "ollama"
       ? process.env.D3CODE_OLLAMA_BASE_URL ?? process.env.D3CODE_LOCAL_BASE_URL ?? "http://localhost:11434"
       : configuredBaseURL ?? "https://api.openai.com"
-  const body = { model, stream: Boolean(onToken), messages: messages.map((message) => ({ role: message.role === "tool" ? "user" : message.role, content: message.content })) }
+  const stream = Boolean(onToken)
+  const body = {
+    model,
+    stream,
+    ...(stream ? { stream_options: { include_usage: true } } : {}),
+    messages: messages.map((message) => ({ role: message.role === "tool" ? "user" : message.role, content: message.content })),
+  }
   const response = await fetch(`${baseURL}${configuredChatPath}`, {
     method: "POST",
     headers: {
@@ -105,17 +150,17 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
     signal,
   })
   if (onToken && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
-    const content = await readOpenAIStream(response, onToken)
-    return { provider, model, content, raw: { streamed: true } }
+    const { content, usage } = await readOpenAIStream(response, onToken)
+    return { provider, model, content, usage, raw: { streamed: true, usage } }
   }
-  const raw = await readJsonResponse(response) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } }
+  const raw = await readJsonResponse(response) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string }; usage?: unknown }
   if (!response.ok) throw new Error(raw.error?.message ?? `Provider request failed with ${response.status}`)
   const content = raw.choices?.[0]?.message?.content ?? ""
   if (onToken && content) onToken(content)
-  return { provider, model, content, raw }
+  return { provider, model, content, usage: openAIUsage(raw), raw }
 }
 
-async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: string[], model: string, messages: ChatMessage[]): Promise<ChatResponse> {
+async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: string[], model: string, messages: ChatMessage[], signal?: AbortSignal): Promise<ChatResponse> {
   const key = await providerKey(config, secrets, "anthropic", env)
   const system = messages.find((message) => message.role === "system")?.content
   const bodyMessages = messages
@@ -129,8 +174,9 @@ async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: st
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({ model, max_tokens: 4096, system, messages: bodyMessages }),
+    signal,
   })
-  const raw = await readJsonResponse(response) as { content?: Array<{ text?: string }>; error?: { message?: string } }
+  const raw = await readJsonResponse(response) as { content?: Array<{ text?: string }>; error?: { message?: string }; usage?: unknown }
   if (!response.ok) throw new Error(raw.error?.message ?? `Provider request failed with ${response.status}`)
-  return { provider: "anthropic", model, content: raw.content?.map((part) => part.text ?? "").join("") ?? "", raw }
+  return { provider: "anthropic", model, content: raw.content?.map((part) => part.text ?? "").join("") ?? "", usage: anthropicUsage(raw), raw }
 }

@@ -1,6 +1,6 @@
 import type { D3CodeConfig } from "../config/config.js"
 import type { SafetyMode } from "../domain/types.js"
-import { chat, type ChatMessage, type ChatRequest, type ChatResponse } from "../llm/client.js"
+import { chat, type ChatMessage, type ChatRequest, type ChatResponse, type ChatUsage } from "../llm/client.js"
 import type { ProjectContext } from "./project-context.js"
 import type { SecretStore } from "../security/secrets.js"
 import { d3Tools, getTool } from "../d3/tools.js"
@@ -47,11 +47,26 @@ export interface D3AgentTurnResult {
   output: string
   messages: ChatMessage[]
   toolEvents: D3AgentToolEvent[]
+  usage?: ChatUsage
 }
 
 export type AgentChatFunction = (config: D3CodeConfig, secrets: SecretStore, request: ChatRequest) => Promise<ChatResponse>
 
 const d3ToolNames = new Set(d3Tools.map((tool) => tool.name))
+
+export function addChatUsage(current: ChatUsage | undefined, next: ChatUsage | undefined): ChatUsage | undefined {
+  if (!next) return current
+  if (!current) return { ...next }
+  const cacheReadInputTokens = (current.cacheReadInputTokens ?? 0) + (next.cacheReadInputTokens ?? 0)
+  const cacheCreationInputTokens = (current.cacheCreationInputTokens ?? 0) + (next.cacheCreationInputTokens ?? 0)
+  return {
+    inputTokens: current.inputTokens + next.inputTokens,
+    outputTokens: current.outputTokens + next.outputTokens,
+    totalTokens: current.totalTokens + next.totalTokens,
+    ...(cacheReadInputTokens ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens ? { cacheCreationInputTokens } : {}),
+  }
+}
 
 export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentState): string {
   const toolCatalog = d3Tools.map((tool) => `- ${tool.name}: ${tool.description}${tool.mutates ? " (mutation-gated)" : ""}`).join("\n")
@@ -121,6 +136,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
 
   const toolEvents: D3AgentToolEvent[] = []
   const maxToolIterations = request.maxToolIterations ?? 4
+  let usage: ChatUsage | undefined
 
   for (let iteration = 0; iteration <= maxToolIterations; iteration += 1) {
     const response = await chatFn(config, secrets, {
@@ -132,14 +148,15 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
       },
       signal: request.signal,
     })
+    usage = addChatUsage(usage, response.usage)
     const assistant: ChatMessage = { role: "assistant", content: response.content }
     messages.push(assistant)
 
     const toolRequest = parseD3ToolRequest(response.content)
-    if (!toolRequest) return { output: response.content, messages, toolEvents }
+    if (!toolRequest) return { output: response.content, messages, toolEvents, usage }
 
     const blocked = blockedToolMessage(toolRequest)
-    if (blocked) return { output: blocked, messages, toolEvents }
+    if (blocked) return { output: blocked, messages, toolEvents, usage }
 
     request.onEvent?.({ type: "tool_start", name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason })
     const result = await runToolByName(config, {
@@ -157,5 +174,6 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
     output: "Stopped after the D3 tool-iteration limit. Ask me to continue if you want the session to keep investigating with the same evidence.",
     messages,
     toolEvents,
+    usage,
   }
 }

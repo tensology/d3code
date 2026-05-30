@@ -7,7 +7,7 @@ import { captureD3Terminal } from "../d3/terminal-capture.js"
 import type { D3ScreenBuffer } from "../d3/screen-buffer.js"
 import type { D3CodeConfig } from "../config/config.js"
 import type { D3Session, SafetyMode } from "../domain/types.js"
-import type { ChatMessage } from "../llm/client.js"
+import type { ChatMessage, ChatUsage } from "../llm/client.js"
 import { defaultSecretStore } from "../security/secrets.js"
 import { handleSlashCommand } from "./commands.js"
 import { handleNaturalIntent } from "./intent.js"
@@ -62,6 +62,20 @@ function transcriptFromSession(session: StoredSession | undefined) {
   ]
 }
 
+function formatTokenUsage(usage: ChatUsage | undefined): string {
+  if (!usage) return "tok --"
+  const extras = [
+    usage.cacheReadInputTokens ? `${usage.cacheReadInputTokens}cr` : undefined,
+    usage.cacheCreationInputTokens ? `${usage.cacheCreationInputTokens}cw` : undefined,
+  ].filter(Boolean)
+  return `tok ${usage.inputTokens}i/${usage.outputTokens}o/${usage.totalTokens}t${extras.length ? ` ${extras.join("/")}` : ""}`
+}
+
+function formatInstructionCount(project: ProjectContext | undefined): string {
+  const count = project?.instructions.length ?? 0
+  return count ? `${count} instr` : "no instr"
+}
+
 export function App(props: AppProps) {
   const app = useApp()
   const [draft, setDraft] = useState<PromptDraft>({ text: "", cursor: 0 })
@@ -85,6 +99,7 @@ export function App(props: AppProps) {
   const [historyIndex, setHistoryIndex] = useState<number | undefined>()
   const [abortMessage, setAbortMessage] = useState("")
   const [activeTask, setActiveTask] = useState("")
+  const [usage, setUsage] = useState<ChatUsage | undefined>()
   const d3Session = useRef<D3Session | undefined>()
   const abortRef = useRef<AbortController | undefined>()
   const streamSuppressRef = useRef(false)
@@ -386,12 +401,13 @@ export function App(props: AppProps) {
       })
       setStreamingAssistant("")
       setMessages(response.messages)
+      setUsage(response.usage)
       for (const event of response.toolEvents) {
         const content = `${event.name}\n${event.result.compact}`
         await record({ type: "tool", content, metadata: { tool: event.name, input: event.input, reason: event.reason } })
       }
       setTranscript((current) => [...current, { role: "assistant", content: response.output || "(empty response)" }])
-      await record({ type: "assistant", content: response.output || "", metadata: { model, toolEvents: response.toolEvents.map((event) => event.name) } })
+      await record({ type: "assistant", content: response.output || "", metadata: { model, usage: response.usage, toolEvents: response.toolEvents.map((event) => event.name) } })
     } catch (error) {
       setStreamingAssistant("")
       setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
@@ -502,7 +518,7 @@ export function App(props: AppProps) {
         {busy ? <Text>{activeTask || "working"}</Text> : <><Text>{renderedDraft.before}</Text><Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text><Text>{renderedDraft.after}</Text></>}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
-      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety} | {project?.instructions.length ? `${project.instructions.length} folder instruction${project.instructions.length === 1 ? "" : "s"}` : "no folder instructions"}</Text>
+      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 off"} | {mode}/{safety} | {formatTokenUsage(usage)} | {formatInstructionCount(project)}</Text>
     </Box>
   )
 }

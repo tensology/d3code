@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
-import { parseD3ToolRequest, runD3AgentTurn, createD3AgentSystemPrompt, type AgentChatFunction } from "../src/tui/agent.js"
+import { addChatUsage, parseD3ToolRequest, runD3AgentTurn, createD3AgentSystemPrompt, type AgentChatFunction } from "../src/tui/agent.js"
 
 const config: D3CodeConfig = {
   version: 1,
@@ -125,6 +125,50 @@ test("agent loop streams final assistant response after a tool result", async ()
 
   assert.equal(result.output, "Done")
   assert.deepEqual(deltas, ["1:Done"])
+})
+
+test("agent loop aggregates token usage across model/tool iterations", async () => {
+  let calls = 0
+  const chatFn: AgentChatFunction = async () => {
+    calls += 1
+    if (calls === 1) {
+      return {
+        provider: "test",
+        model: "test",
+        content: "<d3_tool>{\"name\":\"d3_detect\",\"input\":{}}</d3_tool>",
+        usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+      }
+    }
+    return {
+      provider: "test",
+      model: "test",
+      content: "Done",
+      usage: { inputTokens: 15, outputTokens: 4, totalTokens: 19 },
+    }
+  }
+
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "detect d3",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn,
+  })
+
+  assert.deepEqual(result.usage, { inputTokens: 25, outputTokens: 6, totalTokens: 31 })
+})
+
+test("chat usage accumulator preserves cache token fields", () => {
+  assert.deepEqual(addChatUsage(
+    { inputTokens: 1, outputTokens: 2, totalTokens: 3, cacheReadInputTokens: 4 },
+    { inputTokens: 5, outputTokens: 6, totalTokens: 7, cacheCreationInputTokens: 8 },
+  ), {
+    inputTokens: 6,
+    outputTokens: 8,
+    totalTokens: 10,
+    cacheReadInputTokens: 4,
+    cacheCreationInputTokens: 8,
+  })
 })
 
 test("agent system prompt is D3-only and names reference-manual grounding", () => {
