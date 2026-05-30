@@ -11,6 +11,8 @@ import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 
+const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
+
 export interface AppProps {
   model: string
   safety: SafetyMode
@@ -174,7 +176,9 @@ export function App(props: AppProps) {
             <Text color="cyan">/ide <Text dimColor>open the browser workbench</Text></Text>
           </Box>
           <Box marginTop={1}>
-            <Text dimColor>{welcome?.tokenLine ?? "Token usage appears after the first model response"}</Text>
+            <Text dimColor>
+              Built with ♥ by {terminalLink("Tensology", "https://www.tensology.com")} & {terminalLink("Crystal Logic", "https://www.crystallogic.co.za")}
+            </Text>
           </Box>
         </Box>
       </Box>
@@ -187,11 +191,11 @@ export function App(props: AppProps) {
           </Text>
         ))}
       </Box>
-      <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box marginTop={1} flexDirection="row">
         <Text color="cyan" bold>{busy ? "..." : "›"} </Text>
         <Text>{input}</Text>
       </Box>
+      <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety}</Text>
     </Box>
   )

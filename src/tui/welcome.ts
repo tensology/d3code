@@ -21,6 +21,7 @@ export interface WelcomeSummary {
   mode: string
   safety: SafetyMode
   tokenLine: string
+  creditLine: string
   primaryAction: string
 }
 
@@ -58,6 +59,7 @@ export async function createWelcomeSummary(config: D3CodeConfig, secrets: Secret
     mode: state.mode,
     safety: state.safety,
     tokenLine: "Token usage appears after the first model response",
+    creditLine: "Built with ♥ by Tensology & Crystal Logic",
     primaryAction: profile
       ? "Ask me to inspect files, dictionaries, BASIC, subroutines, or runtime output."
       : "Add a D3 profile when you are ready. /status shows exact setup commands.",
