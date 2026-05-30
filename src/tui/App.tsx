@@ -7,9 +7,9 @@ import { defaultSecretStore } from "../security/secrets.js"
 import { handleSlashCommand } from "./commands.js"
 import { handleNaturalIntent } from "./intent.js"
 import { appendEvent, newSession, saveSession, type StoredSession } from "../sessions/store.js"
-import { createIdeStatusReport, renderIdeStatusReport } from "../quality/ide-status.js"
 import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
+import { renderWelcome } from "./welcome.js"
 
 export interface AppProps {
   model: string
@@ -29,7 +29,7 @@ function messagesFromSession(config: D3CodeConfig, session: StoredSession | unde
 }
 
 function transcriptFromSession(session: StoredSession | undefined) {
-  if (!session) return [{ role: "system", content: "D3 Code ready. Tell me what to inspect or build; use /help for exact controls." }]
+  if (!session) return []
   return [
     { role: "system", content: `Resumed ${session.id}. Tell me what to inspect or build; use /help for exact controls.` },
     ...session.events.map((event) => ({ role: event.type, content: event.content })),
@@ -54,10 +54,11 @@ export function App(props: AppProps) {
 
   useEffect(() => {
     let cancelled = false
-    void createIdeStatusReport(props.config, { model, safety, profile, mode }).then((report) => {
-      if (!cancelled) setTranscript((current) => [...current, { role: "system", content: renderIdeStatusReport(report) }])
+    if (props.session) return
+    void renderWelcome(props.config, secrets, { model, safety, profile, mode }).then((welcome) => {
+      if (!cancelled) setTranscript([{ role: "system", content: welcome }])
     }).catch((error) => {
-      if (!cancelled) setTranscript((current) => [...current, { role: "error", content: `Could not load IDE status: ${(error as Error).message}` }])
+      if (!cancelled) setTranscript([{ role: "error", content: `Could not load launch summary: ${(error as Error).message}` }])
     })
     return () => {
       cancelled = true
@@ -149,8 +150,8 @@ export function App(props: AppProps) {
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Text color="cyan">D3 Code</Text>
-      <Text dimColor>model={model} safety={safety} profile={profile ?? "none"} mode={mode}</Text>
+      <Text color="cyan" bold>D3 Code</Text>
+      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety}</Text>
       <Box flexDirection="column" marginTop={1}>
         {transcript.slice(-18).map((entry, index) => (
           <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : "gray"}>
