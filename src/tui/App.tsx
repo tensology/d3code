@@ -19,7 +19,7 @@ import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
-import { formatBusyStatus, formatPromptMeta, formatTimelineProgress } from "./session-surface.js"
+import { formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress } from "./session-surface.js"
 import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
@@ -605,7 +605,7 @@ export function App(props: AppProps) {
       ? renderTuiD3Screen(capture.screen)
       : capture.result.stdout || capture.result.stderr || "(no D3 output)"
     setStreamingD3Output("")
-    setTranscript((current) => [...current, { role: "tool", content: output }])
+    setTranscript((current) => [...current, { role: "tool", content: `exit ${capture.result.exitCode ?? "unknown"} in ${formatDurationMs(capture.result.durationMs)}\n${output}` }])
   }
 
   const renderedDraft = renderPromptDraft(draft, caretOn)

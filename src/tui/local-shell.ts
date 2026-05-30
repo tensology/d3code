@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { formatDurationMs } from "./session-surface.js"
 
 export interface LocalShellResult {
   command: string
@@ -9,6 +10,7 @@ export interface LocalShellResult {
   stdout: string
   stderr: string
   truncated: boolean
+  durationMs: number
 }
 
 export interface LocalShellOptions {
@@ -29,7 +31,7 @@ function appendLimited(current: string, chunk: Buffer, maxChars: number): { valu
 
 export function renderLocalShellResult(result: LocalShellResult): string {
   const lines = [
-    `exit ${result.exitCode ?? "signal"}${result.signal ? ` (${result.signal})` : ""}`,
+    `exit ${result.exitCode ?? "signal"}${result.signal ? ` (${result.signal})` : ""} in ${formatDurationMs(result.durationMs)}`,
     result.stdout.trimEnd(),
     result.stderr.trimEnd() ? `stderr:\n${result.stderr.trimEnd()}` : "",
     result.truncated ? "... output truncated" : "",
@@ -43,6 +45,7 @@ export async function runLocalShellCommand(command: string, options: LocalShellO
   const timeoutMs = options.timeoutMs ?? 120_000
   const maxOutputChars = options.maxOutputChars ?? 20_000
   return await new Promise((resolve, reject) => {
+    const started = Date.now()
     const child = spawn(shell, ["-lc", command], {
       cwd,
       env: process.env,
@@ -81,7 +84,7 @@ export async function runLocalShellCommand(command: string, options: LocalShellO
     child.on("close", (exitCode, signal) => {
       clearTimeout(timer)
       options.signal?.removeEventListener("abort", abort)
-      resolve({ command, shell, cwd, exitCode, signal, stdout, stderr, truncated })
+      resolve({ command, shell, cwd, exitCode, signal, stdout, stderr, truncated, durationMs: Date.now() - started })
     })
   })
 }

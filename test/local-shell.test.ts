@@ -7,7 +7,8 @@ test("local shell command captures stdout and exit code", async () => {
 
   assert.equal(result.exitCode, 0)
   assert.equal(result.stdout, "d3code-shell")
-  assert.match(renderLocalShellResult(result), /exit 0/)
+  assert.ok(result.durationMs >= 0)
+  assert.match(renderLocalShellResult(result), /exit 0 in \d+ms/)
 })
 
 test("local shell command captures stderr", async () => {

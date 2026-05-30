@@ -11,6 +11,12 @@ export function formatElapsedSeconds(seconds: number): string {
   return `${minutes}m${remainder.toString().padStart(2, "0")}s`
 }
 
+export function formatDurationMs(milliseconds: number): string {
+  if (milliseconds < 1000) return `${Math.max(0, Math.round(milliseconds))}ms`
+  if (milliseconds < 60_000) return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)}s`
+  return formatElapsedSeconds(Math.round(milliseconds / 1000))
+}
+
 export function formatTokenUsage(usage: ChatUsage | undefined): string {
   if (!usage) return "tok --"
   const extras = [
