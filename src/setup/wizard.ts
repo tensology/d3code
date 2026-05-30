@@ -15,6 +15,7 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
   const rl = createInterface({ input, output })
   try {
     console.log("D3 Code first-run setup")
+    console.log("Configure the model first, then optionally point D3 Code at a local or SSH Rocket D3 server.")
     console.log("Providers: " + providers.map((provider) => provider.id).join(", "))
     const providerID = (await rl.question(`Provider [openai]: `)).trim() || "openai"
     const provider = providers.find((item) => item.id === providerID) ?? providers[0]
@@ -28,15 +29,15 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     config.defaultModel = `${provider.id}/${model}`
     config.defaultSafety = normalizeSafety((await rl.question("Default safety ask|plan|trust [ask]: ")).trim() || "ask")
 
-    const localOrSsh = ((await rl.question("D3 connection local|ssh|skip [local]: ")).trim() || "local").toLowerCase()
+    const localOrSsh = ((await rl.question("D3 server connection local|ssh|skip [local]: ")).trim() || "local").toLowerCase()
     if (localOrSsh !== "skip") {
       const profileName = (await rl.question("Profile name [default]: ")).trim() || "default"
-      const account = (await rl.question("D3 account name/path: ")).trim() || undefined
+      const account = (await rl.question("Default D3 account name/path: ")).trim() || undefined
       const allowedAccounts = (await rl.question("Allowed D3 accounts for this profile (comma-separated, blank for no allowlist): ")).trim()
         .split(",")
         .map((item) => item.trim())
         .filter(Boolean)
-      const entryCommand = (await rl.question("Command to enter D3/TCL (blank if shell already lands there): ")).trim() || undefined
+      const entryCommand = (await rl.question("Command to enter D3/TCL on that server (blank if shell already lands there): ")).trim() || undefined
       const promptPattern = (await rl.question("D3 prompt regex [>]: ")).trim() || ">"
       const sessionModeAnswer = ((await rl.question("Session mode oneshot|persistent [persistent]: ")).trim() || "persistent").toLowerCase()
       const sessionMode = sessionModeAnswer === "oneshot" ? "oneshot" : "persistent"
