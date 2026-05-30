@@ -19,7 +19,7 @@ import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
-import { formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress } from "./session-surface.js"
+import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress } from "./session-surface.js"
 import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
@@ -612,6 +612,13 @@ export function App(props: AppProps) {
   const promptMeta = formatPromptMeta({ model, profile, mode, safety, usage, workspaceChanges, project })
   const hasStreamingBlock = Boolean(streamingAssistant || streamingShellOutput || streamingD3Output)
   const pendingTurn = busy && !hasStreamingBlock && activeTask ? formatTimelineProgress(spinnerFrames[busyFrame % spinnerFrames.length]!, activeTask, busySeconds) : ""
+  const busyProgress = streamingAssistant
+    ? `↓ ${estimateStreamTokens(streamingAssistant)} tokens`
+    : streamingShellOutput
+      ? `${streamingShellOutput.length} chars`
+      : streamingD3Output
+        ? `${streamingD3Output.length} chars`
+        : ""
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -669,7 +676,7 @@ export function App(props: AppProps) {
         <Box flexDirection="row">
           <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} </Text>
           {busy ? (
-            <Text>{formatBusyStatus(activeTask, busySeconds)}</Text>
+            <Text>{formatBusyStatus(activeTask, busySeconds, busyProgress)}</Text>
           ) : (
             <>
               <Text>{renderedDraft.before}</Text>

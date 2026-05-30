@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { formatBusyStatus, formatDurationMs, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTimelineProgress, formatTokenUsage } from "../src/tui/session-surface.js"
+import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTimelineProgress, formatTokenUsage } from "../src/tui/session-surface.js"
 
 test("session surface formats elapsed time for active work", () => {
   assert.equal(formatElapsedSeconds(0), "0s")
@@ -10,7 +10,10 @@ test("session surface formats elapsed time for active work", () => {
   assert.equal(formatDurationMs(1250), "1.3s")
   assert.equal(formatDurationMs(65_000), "1m05s")
   assert.equal(formatBusyStatus("streaming response", 5), "working: streaming response 5s  esc to interrupt")
+  assert.equal(formatBusyStatus("streaming response", 5, "↓ 12 tokens"), "working: streaming response 5s · ↓ 12 tokens  esc to interrupt")
   assert.equal(formatTimelineProgress("✢", "running ! sleep", 65), "✢ running ! sleep 1m05s")
+  assert.equal(estimateStreamTokens(""), 0)
+  assert.equal(estimateStreamTokens("hello d3code"), 3)
 })
 
 test("session surface meta matches the compact prompt footer style", () => {

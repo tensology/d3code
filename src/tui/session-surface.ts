@@ -57,8 +57,15 @@ export function formatPromptMeta(input: {
   ].join(" | ")
 }
 
-export function formatBusyStatus(task: string, elapsedSeconds: number): string {
-  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}  esc to interrupt`
+export function estimateStreamTokens(text: string): number {
+  const trimmed = text.trim()
+  if (!trimmed) return 0
+  return Math.max(1, Math.ceil(trimmed.length / 4))
+}
+
+export function formatBusyStatus(task: string, elapsedSeconds: number, progress?: string): string {
+  const progressText = progress ? ` · ${progress}` : ""
+  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}${progressText}  esc to interrupt`
 }
 
 export function formatTimelineProgress(frame: string, task: string, elapsedSeconds: number): string {
