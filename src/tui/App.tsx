@@ -23,6 +23,7 @@ import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptM
 import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
+import { commandSuggestions } from "./command-suggestions.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -243,6 +244,11 @@ export function App(props: AppProps) {
       setStreamingD3Output("")
       return
     }
+    if (key.tab || value === "\t") {
+      setDraft(completeDraftCommand)
+      setHistoryIndex(undefined)
+      return
+    }
     if (key.return || value === "\r" || value === "\n") {
       submitDraft()
       return
@@ -282,6 +288,26 @@ export function App(props: AppProps) {
       return
     }
     if (value) {
+      if (value.includes("\t")) {
+        const tabIndex = value.indexOf("\t")
+        const beforeTab = value.slice(0, tabIndex)
+        const afterTab = value.slice(tabIndex + 1)
+        const draftAtTab = completeDraftCommand(beforeTab ? insertText(draft, beforeTab) : draft)
+        const newlineIndex = afterTab.search(/[\r\n]/)
+        if (newlineIndex !== -1) {
+          const beforeReturn = afterTab.slice(0, newlineIndex)
+          const afterReturn = afterTab.slice(newlineIndex).replace(/^[\r\n]+/, "")
+          const submitDraft = beforeReturn ? insertText(draftAtTab, beforeReturn) : draftAtTab
+          submitLine(submitDraft.text.trim())
+          setDraft({ text: afterReturn, cursor: afterReturn.length })
+          setHistoryIndex(undefined)
+          return
+        }
+        const nextDraft = afterTab ? insertText(draftAtTab, afterTab) : draftAtTab
+        setDraft(nextDraft)
+        setHistoryIndex(undefined)
+        return
+      }
       const newlineIndex = value.search(/[\r\n]/)
       if (newlineIndex !== -1) {
         const beforeReturn = value.slice(0, newlineIndex)
@@ -322,6 +348,13 @@ export function App(props: AppProps) {
       setTranscript((current) => [...current, { role: "error", content: `Could not save prompt history: ${(error as Error).message}` }])
     })
     void submit(line)
+  }
+
+  function completeDraftCommand(current: PromptDraft): PromptDraft {
+    const suggestion = commandSuggestions(current.text, 1)[0]
+    if (!suggestion) return current
+    const text = `${suggestion.name} `
+    return { text, cursor: text.length }
   }
 
   function recallHistory(direction: "up" | "down") {
@@ -619,6 +652,7 @@ export function App(props: AppProps) {
       : streamingD3Output
         ? `${streamingD3Output.length} chars`
         : ""
+  const suggestions = commandSuggestions(draft.text)
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -700,6 +734,18 @@ export function App(props: AppProps) {
                 <Text>{renderedDraft.after}</Text>
               </>
             )}
+          </Box>
+        ) : null}
+        {suggestions.length > 0 ? (
+          <Box flexDirection="column" marginTop={0}>
+            <Text dimColor>commands</Text>
+            {suggestions.map((suggestion, index) => (
+              <Box key={suggestion.name} flexDirection="row">
+                <Text color={index === 0 ? "cyan" : "gray"}>{suggestion.name.padEnd(15)}</Text>
+                <Text dimColor>{suggestion.description}</Text>
+              </Box>
+            ))}
+            <Text dimColor>tab completes the first match</Text>
           </Box>
         ) : null}
         <Box flexDirection="row">
