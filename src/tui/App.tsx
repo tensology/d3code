@@ -18,6 +18,7 @@ import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
+import { formatWorkspaceChangeFooter, renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -100,6 +101,7 @@ export function App(props: AppProps) {
   const [abortMessage, setAbortMessage] = useState("")
   const [activeTask, setActiveTask] = useState("")
   const [usage, setUsage] = useState<ChatUsage | undefined>()
+  const [workspaceChanges, setWorkspaceChanges] = useState<WorkspaceChangeSummary | undefined>()
   const d3Session = useRef<D3Session | undefined>()
   const abortRef = useRef<AbortController | undefined>()
   const streamSuppressRef = useRef(false)
@@ -308,6 +310,7 @@ export function App(props: AppProps) {
     streamIterationRef.current = undefined
     const abortController = new AbortController()
     abortRef.current = abortController
+    const beforeWorkspace = await snapshotWorkspace()
     setTranscript((current) => [...current, { role: "user", content: line }])
     try {
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
@@ -412,6 +415,14 @@ export function App(props: AppProps) {
       setStreamingAssistant("")
       setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
     } finally {
+      const afterWorkspace = await snapshotWorkspace()
+      const summary = summarizeWorkspaceChanges(beforeWorkspace, afterWorkspace)
+      setWorkspaceChanges(summary)
+      if (summary) {
+        const rendered = renderWorkspaceChangeSummary(summary)
+        setTranscript((current) => [...current, { role: "file-change", content: rendered }])
+        await record({ type: "system", content: rendered, metadata: { workspaceChanges: summary } })
+      }
       if (abortRef.current === abortController) abortRef.current = undefined
       setActiveTask("")
       setBusy(false)
@@ -505,8 +516,8 @@ export function App(props: AppProps) {
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box flexDirection="column" marginTop={1}>
         {transcript.slice(-18).map((entry, index) => (
-          <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : entry.role === "tool-start" ? "cyan" : "gray"}>
-            {entry.role === "user" ? "› " : entry.role === "assistant" ? "d3code: " : entry.role === "error" ? "error: " : entry.role === "tool-start" ? "⏺ " : entry.role === "tool" ? "⎿ " : ""}
+          <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : entry.role === "tool-start" || entry.role === "file-change" ? "cyan" : "gray"}>
+            {entry.role === "user" ? "› " : entry.role === "assistant" ? "d3code: " : entry.role === "error" ? "error: " : entry.role === "tool-start" ? "⏺ " : entry.role === "tool" ? "⎿ " : entry.role === "file-change" ? "◆ " : ""}
             {entry.content}
           </Text>
         ))}
@@ -518,7 +529,7 @@ export function App(props: AppProps) {
         {busy ? <Text>{activeTask || "working"}</Text> : <><Text>{renderedDraft.before}</Text><Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text><Text>{renderedDraft.after}</Text></>}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
-      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 off"} | {mode}/{safety} | {formatTokenUsage(usage)} | {formatInstructionCount(project)}</Text>
+      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 off"} | {mode}/{safety} | {formatTokenUsage(usage)} | {formatWorkspaceChangeFooter(workspaceChanges)} | {formatInstructionCount(project)}</Text>
     </Box>
   )
 }
