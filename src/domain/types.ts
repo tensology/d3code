@@ -27,9 +27,14 @@ export interface D3CommandResult {
   durationMs: number
 }
 
+export interface D3RunOptions {
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
+}
+
 export interface D3Session {
   profile: ConnectionProfile
-  run(command: string, timeoutMs?: number): Promise<D3CommandResult>
+  run(command: string, timeoutMs?: number, options?: D3RunOptions): Promise<D3CommandResult>
   close(): Promise<void>
 }
 

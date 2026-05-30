@@ -20,9 +20,9 @@ export interface D3TerminalCaptureWriteResult {
 export async function captureD3Terminal(
   session: D3Session,
   command: string,
-  options: { width?: number; height?: number; timeoutMs?: number } = {},
+  options: { width?: number; height?: number; timeoutMs?: number; onStdout?: (chunk: string) => void; onStderr?: (chunk: string) => void } = {},
 ): Promise<D3TerminalCapture> {
-  const result = await session.run(command, options.timeoutMs)
+  const result = await session.run(command, options.timeoutMs, { onStdout: options.onStdout, onStderr: options.onStderr })
   return {
     profile: session.profile.name,
     account: session.profile.account,

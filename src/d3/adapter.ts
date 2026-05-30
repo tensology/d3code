@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
-import type { ConnectionProfile, D3CommandResult, D3Session } from "../domain/types.js"
+import type { ConnectionProfile, D3CommandResult, D3RunOptions, D3Session } from "../domain/types.js"
 
-function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number): Promise<D3CommandResult> {
+function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number, options: D3RunOptions = {}): Promise<D3CommandResult> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] })
@@ -13,10 +13,14 @@ function runProcess(command: string, args: string[], input: string | undefined, 
     }, timeoutMs)
 
     child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString()
+      const text = chunk.toString()
+      stdout += text
+      options.onStdout?.(text)
     })
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString()
+      const text = chunk.toString()
+      stderr += text
+      options.onStderr?.(text)
     })
     child.on("error", (error) => {
       clearTimeout(timer)
@@ -34,10 +38,10 @@ function runProcess(command: string, args: string[], input: string | undefined, 
 export class LocalD3Session implements D3Session {
   constructor(readonly profile: ConnectionProfile) {}
 
-  async run(command: string, timeoutMs = 30_000): Promise<D3CommandResult> {
+  async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     const entry = this.profile.entryCommand ?? "sh"
-    if (entry === "sh") return runProcess("sh", ["-lc", command], undefined, timeoutMs)
-    return runProcess("sh", ["-lc", `${entry} <<'D3CODE_EOF'\n${command}\nD3CODE_EOF`], undefined, timeoutMs)
+    if (entry === "sh") return runProcess("sh", ["-lc", command], undefined, timeoutMs, options)
+    return runProcess("sh", ["-lc", `${entry} <<'D3CODE_EOF'\n${command}\nD3CODE_EOF`], undefined, timeoutMs, options)
   }
 
   async close(): Promise<void> {}
@@ -73,7 +77,7 @@ export class PersistentLocalD3Session implements D3Session {
     })
   }
 
-  async run(command: string, timeoutMs = 30_000): Promise<D3CommandResult> {
+  async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     this.start()
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
@@ -84,6 +88,8 @@ export class PersistentLocalD3Session implements D3Session {
     })
     const stdoutStart = this.stdout.length
     const stderrStart = this.stderr.length
+    let streamedStdout = 0
+    let streamedStderr = 0
     const marker = `__D3CODE_DONE_${Date.now().toString(36)}_${this.sequence++}__`
     const payload = promptPattern ? `${command}\n` : `${command}\nprintf '\\n${marker}:%s\\n' "$?"\n`
     this.child.stdin.write(payload)
@@ -91,11 +97,19 @@ export class PersistentLocalD3Session implements D3Session {
     const wait = promptPattern
       ? () => {
         if (this.closedError) throw this.closedError
-        return promptPattern.test(this.stdout.slice(stdoutStart))
+        const output = this.stdout.slice(stdoutStart)
+        const stderr = this.stderr.slice(stderrStart)
+        streamedStdout = streamDelta(output, streamedStdout, options.onStdout)
+        streamedStderr = streamDelta(stderr, streamedStderr, options.onStderr)
+        return promptPattern.test(output)
       }
       : () => {
         if (this.closedError) throw this.closedError
-        return this.stdout.slice(stdoutStart).includes(marker)
+        const output = this.stdout.slice(stdoutStart)
+        const stderr = this.stderr.slice(stderrStart)
+        streamedStdout = streamDelta(output.replace(new RegExp(`\\n?${marker}:\\d+\\n?`), ""), streamedStdout, options.onStdout)
+        streamedStderr = streamDelta(stderr, streamedStderr, options.onStderr)
+        return output.includes(marker)
       }
     await waitFor(wait, timeoutMs, `Command timed out after ${timeoutMs}ms: ${command}`)
 
@@ -167,16 +181,22 @@ export class SshD3Session implements D3Session {
     if (!profile.host || !profile.username) throw new Error("SSH profiles require host and username")
   }
 
-  async run(command: string, timeoutMs = 30_000): Promise<D3CommandResult> {
+  async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     const target = `${this.profile.username}@${this.profile.host}`
     const port = this.profile.port ? ["-p", String(this.profile.port)] : []
     const remote = this.profile.entryCommand
       ? `${this.profile.entryCommand} <<'D3CODE_EOF'\n${command}\nD3CODE_EOF`
       : command
-    return runProcess("ssh", [...port, target, remote], undefined, timeoutMs)
+    return runProcess("ssh", [...port, target, remote], undefined, timeoutMs, options)
   }
 
   async close(): Promise<void> {}
+}
+
+function streamDelta(output: string, streamed: number, callback?: (chunk: string) => void): number {
+  if (!callback || output.length <= streamed) return streamed
+  callback(output.slice(streamed))
+  return output.length
 }
 
 export function createD3Session(profile: ConnectionProfile): D3Session {

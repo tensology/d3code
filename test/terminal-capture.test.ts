@@ -25,3 +25,21 @@ test("captures terminal output and writes screen-buffer artifacts", async () => 
     await session.close()
   }
 })
+
+test("terminal capture streams raw D3 output while preserving screen capture", async () => {
+  const session = new PersistentLocalD3Session({ name: "local", type: "local", account: "SALES", sessionMode: "persistent" })
+  try {
+    let streamed = ""
+    const capture = await captureD3Terminal(session, "printf '@(-1)'; sleep 0.05; printf 'READY:'", {
+      width: 20,
+      height: 5,
+      onStdout: (chunk) => {
+        streamed += chunk
+      },
+    })
+    assert.match(streamed, /READY:/)
+    assert.ok(capture.screen.lines.some((line) => line.includes("READY:")))
+  } finally {
+    await session.close()
+  }
+})

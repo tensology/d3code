@@ -14,6 +14,22 @@ test("persistent local D3 session preserves shell state across commands", async 
   }
 })
 
+test("persistent local D3 session streams stdout while command is running", async () => {
+  const session = new PersistentLocalD3Session({ name: "persistent", type: "local", sessionMode: "persistent" })
+  try {
+    let streamed = ""
+    const result = await session.run("printf first; sleep 0.05; printf second", 1_000, {
+      onStdout: (chunk) => {
+        streamed += chunk
+      },
+    })
+    assert.equal(result.stdout, "firstsecond")
+    assert.equal(streamed, "firstsecond")
+  } finally {
+    await session.close()
+  }
+})
+
 test("factory selects persistent local session when profile requests it", () => {
   const session = createD3Session({ name: "persistent", type: "local", sessionMode: "persistent" })
   assert.ok(session instanceof PersistentLocalD3Session)
@@ -41,6 +57,29 @@ test("persistent local D3 session ignores startup prompt before first command", 
   try {
     const result = await session.run("WHO")
     assert.match(result.stdout, /RESULT/)
+  } finally {
+    await session.close()
+  }
+})
+
+test("persistent local D3 session streams prompted output without startup prompt", async () => {
+  const session = new PersistentLocalD3Session({
+    name: "prompted",
+    type: "local",
+    sessionMode: "persistent",
+    entryCommand: "node -e \"process.stdout.write('D3>');process.stdin.on('data',d=>setTimeout(()=>process.stdout.write('RESULT\\\\nD3>'),20))\"",
+    promptPattern: "D3>",
+  })
+  try {
+    let streamed = ""
+    const result = await session.run("WHO", 1_000, {
+      onStdout: (chunk) => {
+        streamed += chunk
+      },
+    })
+    assert.match(result.stdout, /RESULT/)
+    assert.match(streamed, /RESULT/)
+    assert.doesNotMatch(streamed, /^D3>/)
   } finally {
     await session.close()
   }

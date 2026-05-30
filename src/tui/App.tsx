@@ -83,6 +83,7 @@ export function App(props: AppProps) {
   const [welcome, setWelcome] = useState<WelcomeSummary | undefined>()
   const [streamingAssistant, setStreamingAssistant] = useState("")
   const [streamingShellOutput, setStreamingShellOutput] = useState("")
+  const [streamingD3Output, setStreamingD3Output] = useState("")
   const [project, setProject] = useState<ProjectContext | undefined>()
   const [caretOn, setCaretOn] = useState(true)
   const [busyFrame, setBusyFrame] = useState(0)
@@ -179,6 +180,7 @@ export function App(props: AppProps) {
         setBusy(false)
         setStreamingAssistant("")
         setStreamingShellOutput("")
+        setStreamingD3Output("")
         return
       }
       app.exit()
@@ -190,6 +192,7 @@ export function App(props: AppProps) {
       setBusy(false)
       setStreamingAssistant("")
       setStreamingShellOutput("")
+      setStreamingD3Output("")
       return
     }
     if (busy) return
@@ -326,6 +329,7 @@ export function App(props: AppProps) {
     setActiveTask(line.startsWith("/") ? `running ${line.split(/\s+/)[0]}` : "asking model")
     setBusy(true)
     setStreamingShellOutput("")
+    setStreamingD3Output("")
     streamSuppressRef.current = false
     streamIterationRef.current = undefined
     const abortController = new AbortController()
@@ -439,6 +443,7 @@ export function App(props: AppProps) {
     } catch (error) {
       setStreamingAssistant("")
       setStreamingShellOutput("")
+      setStreamingD3Output("")
       setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
     } finally {
       const afterWorkspace = await snapshotWorkspace()
@@ -507,10 +512,17 @@ export function App(props: AppProps) {
     }
     if (!d3Session.current) d3Session.current = createD3Session(selected)
     assertD3Allowed(safety, line, safety === "trust")
-    const capture = await captureD3Terminal(d3Session.current, line, { width: 80, height: 18 })
+    setActiveTask(`running D3 ${line.split(/\s+/)[0] ?? "command"}`)
+    const capture = await captureD3Terminal(d3Session.current, line, {
+      width: 80,
+      height: 18,
+      onStdout: (chunk) => setStreamingD3Output((current) => `${current}${chunk}`),
+      onStderr: (chunk) => setStreamingD3Output((current) => `${current}${current.endsWith("\n") || current.length === 0 ? "" : "\n"}stderr: ${chunk}`),
+    })
     const output = capture.screen.events.length > 0
       ? renderTuiD3Screen(capture.screen)
       : capture.result.stdout || capture.result.stderr || "(no D3 output)"
+    setStreamingD3Output("")
     setTranscript((current) => [...current, { role: "tool", content: output }])
   }
 
@@ -565,6 +577,7 @@ export function App(props: AppProps) {
         ))}
         {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
         {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `running\n${streamingShellOutput.trimEnd()}` }} /> : null}
+        {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `D3 running\n${streamingD3Output.trimEnd()}` }} /> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
