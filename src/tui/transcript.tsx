@@ -31,6 +31,7 @@ export function transcriptPrefix(role: string): string {
   if (role === "user") return "› "
   if (role === "shell-input") return "! "
   if (role === "assistant") return "d3code: "
+  if (role === "assistant-stream") return "  ⎿ "
   if (role === "error") return "error: "
   if (role === "system") return "  ⎿ "
   if (role === "tool-start") return "⏺ "
@@ -42,7 +43,7 @@ export function transcriptPrefix(role: string): string {
 
 export function transcriptColor(role: string): string {
   if (role === "error") return "red"
-  if (role === "assistant") return "green"
+  if (role === "assistant" || role === "assistant-stream") return "green"
   if (role === "shell-input") return "yellow"
   if (role === "user") return "white"
   if (role === "tool-start" || role === "file-change" || role === "shell-output") return "cyan"
@@ -76,6 +77,7 @@ function FileChangeBlock({ content }: { content: string }) {
 }
 
 export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
+  if (entry.role === "assistant" || entry.role === "assistant-stream") return <ResponseBlock content={`d3code\n${entry.content}`} titleColor="green" maxLines={14} />
   if (entry.role === "tool") return <ResponseBlock content={entry.content} />
   if (entry.role === "shell-output") return <ResponseBlock content={entry.content} />
   if (entry.role === "system") return <ResponseBlock content={entry.content} titleColor="gray" maxLines={14} />

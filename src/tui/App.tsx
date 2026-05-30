@@ -22,6 +22,7 @@ import { renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChan
 import { formatBusyStatus, formatPromptMeta } from "./session-surface.js"
 import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
+import { nextPacedText } from "./paced-text.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -39,6 +40,24 @@ function renderTuiD3Screen(buffer: D3ScreenBuffer): string {
     `D3 screen ${buffer.width}x${buffer.height} cursor row=${buffer.row} col=${buffer.col}`,
     ...buffer.lines.slice(0, visibleEnd).map((line) => `|${line.trimEnd()}|`),
   ].join("\n")
+}
+
+function usePacedText(source: string, live: boolean, delayMs = 24) {
+  const [shown, setShown] = useState(source)
+  useEffect(() => {
+    if (!live) {
+      setShown(source)
+      return
+    }
+    setShown((current) => source.startsWith(current) && current.length <= source.length ? current : source)
+  }, [source, live])
+  useEffect(() => {
+    if (!live) return
+    if (shown.length >= source.length) return
+    const timer = setTimeout(() => setShown((current) => nextPacedText(source, current.length)), delayMs)
+    return () => clearTimeout(timer)
+  }, [source, shown, live, delayMs])
+  return live ? shown : source
 }
 
 export interface AppProps {
@@ -100,6 +119,9 @@ export function App(props: AppProps) {
   const streamIterationRef = useRef<number | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
+  const pacedAssistant = usePacedText(streamingAssistant, busy && Boolean(streamingAssistant))
+  const pacedShellOutput = usePacedText(streamingShellOutput, busy && Boolean(streamingShellOutput), 16)
+  const pacedD3Output = usePacedText(streamingD3Output, busy && Boolean(streamingD3Output), 16)
 
   useEffect(() => {
     let cancelled = false
@@ -575,9 +597,9 @@ export function App(props: AppProps) {
         {transcript.slice(-18).map((entry, index) => (
           <TranscriptEntryView key={`${entry.role}-${index}`} entry={entry} />
         ))}
-        {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
-        {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `running\n${streamingShellOutput.trimEnd()}` }} /> : null}
-        {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `D3 running\n${streamingD3Output.trimEnd()}` }} /> : null}
+        {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: pacedAssistant }} /> : null}
+        {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `running\n${pacedShellOutput.trimEnd()}` }} /> : null}
+        {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `D3 running\n${pacedD3Output.trimEnd()}` }} /> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
