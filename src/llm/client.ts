@@ -11,6 +11,7 @@ export interface ChatRequest {
   modelRef: string
   messages: ChatMessage[]
   onToken?: (token: string) => void
+  signal?: AbortSignal
 }
 
 export interface ChatResponse {
@@ -46,7 +47,7 @@ async function providerKey(config: D3CodeConfig, secrets: SecretStore, provider:
 export async function chat(config: D3CodeConfig, secrets: SecretStore, request: ChatRequest): Promise<ChatResponse> {
   const { provider, model } = resolveModel(request.modelRef)
   if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages)
-  return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages, provider.baseURL, provider.chatPath, request.onToken)
+  return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages, provider.baseURL, provider.chatPath, request.onToken, request.signal)
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -86,7 +87,7 @@ async function readOpenAIStream(response: Response, onToken: (token: string) => 
   return content
 }
 
-async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[], configuredBaseURL?: string, configuredChatPath = "/v1/chat/completions", onToken?: (token: string) => void): Promise<ChatResponse> {
+async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[], configuredBaseURL?: string, configuredChatPath = "/v1/chat/completions", onToken?: (token: string) => void, signal?: AbortSignal): Promise<ChatResponse> {
   const key = provider === "ollama" ? "" : await providerKey(config, secrets, provider, env)
   const baseURL = provider === "openrouter"
     ? configuredBaseURL ?? "https://openrouter.ai/api"
@@ -101,6 +102,7 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
       ...(key ? { authorization: `Bearer ${key}` } : {}),
     },
     body: JSON.stringify(body),
+    signal,
   })
   if (onToken && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
     const content = await readOpenAIStream(response, onToken)

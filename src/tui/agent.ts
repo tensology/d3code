@@ -21,6 +21,7 @@ export interface D3AgentTurnRequest extends D3AgentState {
   maxToolIterations?: number
   chatFn?: AgentChatFunction
   onToken?: (token: string) => void
+  signal?: AbortSignal
 }
 
 export interface D3AgentToolRequest {
@@ -116,7 +117,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
   const maxToolIterations = request.maxToolIterations ?? 4
 
   for (let iteration = 0; iteration <= maxToolIterations; iteration += 1) {
-    const response = await chatFn(config, secrets, { modelRef: request.model, messages, onToken: iteration === 0 ? request.onToken : undefined })
+    const response = await chatFn(config, secrets, { modelRef: request.model, messages, onToken: iteration === 0 ? request.onToken : undefined, signal: request.signal })
     const assistant: ChatMessage = { role: "assistant", content: response.content }
     messages.push(assistant)
 

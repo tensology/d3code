@@ -16,6 +16,7 @@ import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 import { loadProjectContext, type ProjectContext } from "./project-context.js"
+import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -62,7 +63,7 @@ function transcriptFromSession(session: StoredSession | undefined) {
 
 export function App(props: AppProps) {
   const app = useApp()
-  const [input, setInput] = useState("")
+  const [draft, setDraft] = useState<PromptDraft>({ text: "", cursor: 0 })
   const initialMode = props.mode ?? "chat"
   const initialSession = props.session ?? newSession(props.model, props.safety, props.profile)
   const initialContext = { model: props.session?.model ?? props.model, safety: props.session?.safety ?? props.safety, profile: props.session?.profile ?? props.profile, mode: initialMode }
@@ -79,7 +80,11 @@ export function App(props: AppProps) {
   const [project, setProject] = useState<ProjectContext | undefined>()
   const [caretOn, setCaretOn] = useState(true)
   const [busyFrame, setBusyFrame] = useState(0)
+  const [history, setHistory] = useState<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState<number | undefined>()
+  const [abortMessage, setAbortMessage] = useState("")
   const d3Session = useRef<D3Session | undefined>()
+  const abortRef = useRef<AbortController | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
 
@@ -136,26 +141,136 @@ export function App(props: AppProps) {
 
   useInput((value, key) => {
     if (key.ctrl && value === "c") {
+      if (busy) {
+        abortRef.current?.abort()
+        setAbortMessage("Interrupted. Finishing any already-returned cleanup.")
+        setBusy(false)
+        setStreamingAssistant("")
+        return
+      }
       app.exit()
+      return
+    }
+    if (key.escape && busy) {
+      abortRef.current?.abort()
+      setAbortMessage("Interrupted. Press Enter for the next instruction.")
+      setBusy(false)
+      setStreamingAssistant("")
       return
     }
     if (busy) return
     if (key.return) {
-      const line = input.trim()
-      setInput("")
+      const line = draft.text.trim()
+      setDraft({ text: "", cursor: 0 })
+      setHistoryIndex(undefined)
       if (!line) return
+      setHistory((current) => [...current.filter((entry) => entry !== line), line].slice(-80))
       void submit(line)
       return
     }
-    if (key.backspace || key.delete) {
-      setInput((current) => current.slice(0, -1))
+    if (key.upArrow) {
+      recallHistory("up")
       return
     }
-    if (value) setInput((current) => current + value)
+    if (key.downArrow) {
+      recallHistory("down")
+      return
+    }
+    if (key.leftArrow) {
+      setDraft(moveLeft)
+      return
+    }
+    if (key.rightArrow) {
+      setDraft(moveRight)
+      return
+    }
+    if (key.ctrl && value === "a") {
+      setDraft(moveHome)
+      return
+    }
+    if (key.ctrl && value === "e") {
+      setDraft(moveEnd)
+      return
+    }
+    if (key.ctrl && value === "u") {
+      setDraft({ text: "", cursor: 0 })
+      setHistoryIndex(undefined)
+      return
+    }
+    if (key.backspace || key.delete) {
+      setDraft(key.delete ? deleteForward : backspace)
+      setHistoryIndex(undefined)
+      return
+    }
+    if (value) {
+      if (value.includes("\u001B")) {
+        applyRawTerminalInput(value)
+        return
+      }
+      setDraft((current) => insertText(current, value))
+      setHistoryIndex(undefined)
+    }
   })
+
+  function recallHistory(direction: "up" | "down") {
+    setHistoryIndex((current) => {
+      if (history.length === 0) return undefined
+      if (direction === "up") {
+        const next = current === undefined ? history.length - 1 : Math.max(0, current - 1)
+        const text = history[next] ?? ""
+        setDraft({ text, cursor: text.length })
+        return next
+      }
+      if (current === undefined) return undefined
+      const next = current + 1
+      if (next >= history.length) {
+        setDraft({ text: "", cursor: 0 })
+        return undefined
+      }
+      const text = history[next] ?? ""
+      setDraft({ text, cursor: text.length })
+      return next
+    })
+  }
+
+  function applyRawTerminalInput(value: string) {
+    let index = 0
+    while (index < value.length) {
+      const rest = value.slice(index)
+      if (rest.startsWith("\u001B[D")) {
+        setDraft(moveLeft)
+        index += 3
+      } else if (rest.startsWith("\u001B[C")) {
+        setDraft(moveRight)
+        index += 3
+      } else if (rest.startsWith("\u001B[A")) {
+        recallHistory("up")
+        index += 3
+      } else if (rest.startsWith("\u001B[B")) {
+        recallHistory("down")
+        index += 3
+      } else if (rest.startsWith("\u001B[H") || rest.startsWith("\u001B[1~")) {
+        setDraft(moveHome)
+        index += rest.startsWith("\u001B[1~") ? 4 : 3
+      } else if (rest.startsWith("\u001B[F") || rest.startsWith("\u001B[4~")) {
+        setDraft(moveEnd)
+        index += rest.startsWith("\u001B[4~") ? 4 : 3
+      } else {
+        const char = value[index]!
+        if (char !== "\u001B") {
+          setDraft((current) => insertText(current, char))
+          setHistoryIndex(undefined)
+        }
+        index += 1
+      }
+    }
+  }
 
   async function submit(line: string) {
     setBusy(true)
+    setAbortMessage("")
+    const abortController = new AbortController()
+    abortRef.current = abortController
     setTranscript((current) => [...current, { role: "user", content: line }])
     try {
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
@@ -212,6 +327,7 @@ export function App(props: AppProps) {
         mode,
         project,
         onToken: (token) => setStreamingAssistant((current) => current + token),
+        signal: abortController.signal,
       })
       setStreamingAssistant("")
       setMessages(response.messages)
@@ -224,8 +340,9 @@ export function App(props: AppProps) {
       await record({ type: "assistant", content: response.output || "", metadata: { model, toolEvents: response.toolEvents.map((event) => event.name) } })
     } catch (error) {
       setStreamingAssistant("")
-      setTranscript((current) => [...current, { role: "error", content: (error as Error).message }])
+      setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
     } finally {
+      if (abortRef.current === abortController) abortRef.current = undefined
       setBusy(false)
     }
   }
@@ -271,6 +388,8 @@ export function App(props: AppProps) {
       : capture.result.stdout || capture.result.stderr || "(no D3 output)"
     setTranscript((current) => [...current, { role: "tool", content: output }])
   }
+
+  const renderedDraft = renderPromptDraft(draft, caretOn)
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -321,11 +440,11 @@ export function App(props: AppProps) {
           </Text>
         ))}
         {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
+        {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
       <Box marginTop={1} flexDirection="row">
         <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} </Text>
-        <Text>{busy ? "working" : input}</Text>
-        {!busy ? <Text inverse={caretOn} dimColor={!caretOn}> </Text> : null}
+        {busy ? <Text>working</Text> : <><Text>{renderedDraft.before}</Text><Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text><Text>{renderedDraft.after}</Text></>}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety} | {project?.instructions.length ? `${project.instructions.length} folder instruction${project.instructions.length === 1 ? "" : "s"}` : "no folder instructions"}</Text>
