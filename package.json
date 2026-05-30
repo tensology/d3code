@@ -1,0 +1,33 @@
+{
+  "name": "d3code",
+  "version": "0.1.0",
+  "description": "Agentic terminal coding environment for Rocket D3.",
+  "type": "module",
+  "bin": {
+    "d3code": "./dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --loader ts-node/esm src/cli.ts",
+    "start": "node dist/src/cli.js",
+    "test": "npm run build && node --test dist/**/*.test.js",
+    "regression": "npm test && node dist/src/cli.js doctor && node dist/src/cli.js install-proof && node dist/src/cli.js manual-scope reference/d3_reference_manual_10.3.4_5-28-2026.pdf && node dist/src/cli.js manual-scope reference/d3_user_guide_version_10_3_4_2026-05-28-20-56-09.pdf && node dist/src/cli.js product-audit --with-acceptance --allow-incomplete && node dist/src/cli.js acceptance",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "ink": "^5.1.0",
+    "jsonc-parser": "^3.3.1",
+    "react": "^18.3.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/react": "^18.3.18",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

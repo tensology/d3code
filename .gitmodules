@@ -1,0 +1,3 @@
+[submodule "reference/rocket-mvbasic"]
+	path = reference/rocket-mvbasic
+	url = https://github.com/RocketSoftware/rocket-mvbasic.git
