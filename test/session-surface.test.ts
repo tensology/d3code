@@ -1,12 +1,13 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { formatBusyStatus, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTokenUsage } from "../src/tui/session-surface.js"
+import { formatBusyStatus, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTimelineProgress, formatTokenUsage } from "../src/tui/session-surface.js"
 
 test("session surface formats elapsed time for active work", () => {
   assert.equal(formatElapsedSeconds(0), "0s")
   assert.equal(formatElapsedSeconds(59), "59s")
   assert.equal(formatElapsedSeconds(65), "1m05s")
   assert.equal(formatBusyStatus("streaming response", 5), "working: streaming response 5s  esc to interrupt")
+  assert.equal(formatTimelineProgress("✢", "running ! sleep", 65), "✢ running ! sleep 1m05s")
 })
 
 test("session surface meta matches the compact prompt footer style", () => {

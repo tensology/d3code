@@ -54,3 +54,7 @@ export function formatPromptMeta(input: {
 export function formatBusyStatus(task: string, elapsedSeconds: number): string {
   return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}  esc to interrupt`
 }
+
+export function formatTimelineProgress(frame: string, task: string, elapsedSeconds: number): string {
+  return `${frame} ${task || "working"} ${formatElapsedSeconds(elapsedSeconds)}`
+}

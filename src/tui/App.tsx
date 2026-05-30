@@ -19,7 +19,7 @@ import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
-import { formatBusyStatus, formatPromptMeta } from "./session-surface.js"
+import { formatBusyStatus, formatPromptMeta, formatTimelineProgress } from "./session-surface.js"
 import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
@@ -529,8 +529,8 @@ export function App(props: AppProps) {
         await record({ type: "system", content: rendered, metadata: { workspaceChanges: summary } })
       }
       if (abortRef.current === abortController) abortRef.current = undefined
-      setActiveTask("")
       setBusy(false)
+      setActiveTask("")
       const nextQueuedLine = queuedLineRef.current
       if (nextQueuedLine) {
         queuedLineRef.current = ""
@@ -611,7 +611,7 @@ export function App(props: AppProps) {
   const renderedDraft = renderPromptDraft(draft, caretOn)
   const promptMeta = formatPromptMeta({ model, profile, mode, safety, usage, workspaceChanges, project })
   const hasStreamingBlock = Boolean(streamingAssistant || streamingShellOutput || streamingD3Output)
-  const pendingTurn = busy && !hasStreamingBlock && activeTask ? `${spinnerFrames[busyFrame % spinnerFrames.length]} ${activeTask}` : ""
+  const pendingTurn = busy && !hasStreamingBlock && activeTask ? formatTimelineProgress(spinnerFrames[busyFrame % spinnerFrames.length]!, activeTask, busySeconds) : ""
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
