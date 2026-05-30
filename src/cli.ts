@@ -35,7 +35,7 @@ import { auditGoalAgainstBundle, renderGoalBundleAudit } from "./goal/audit.js"
 import { applyBundleEvidenceToGoal, renderAppliedGoalEvidence } from "./goal/evidence.js"
 import { renderGoalNext } from "./goal/next.js"
 import { listGoals, loadGoal, saveGoal } from "./goal/store.js"
-import { providers, resolveModel } from "./providers/catalog.js"
+import { normalizeProviderID, providers, resolveModel } from "./providers/catalog.js"
 import { createModelProofReport, renderModelProofReport } from "./providers/proof.js"
 import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBias } from "./providers/routing.js"
 import { createReadinessReport, renderReadinessReport } from "./quality/readiness.js"
@@ -231,9 +231,9 @@ program
   }) => {
     if (options.provider || options.defaultModel || options.apiKeyEnv || options.defaultSafety || options.skipD3 || options.d3 !== "skip" || options.profileName || options.account || options.entry || options.prompt || options.session || options.host || options.user || options.allowedAccounts) {
       const config = await loadConfig()
-      const provider = options.provider ?? "openai"
+      const provider = normalizeProviderID(options.provider ?? "openai")
       const providerInfo = providers.find((item) => item.id === provider)
-      if (!providerInfo) throw new Error(`Unknown provider: ${provider}`)
+      if (!providerInfo) throw new Error(`Unknown provider: ${options.provider ?? provider}`)
       config.defaultModel = `${provider}/${options.defaultModel ?? providerInfo.defaultModel}`
       if (options.apiKeyEnv) config.modelSecrets[provider] = `env:${options.apiKeyEnv}`
       if (options.defaultSafety) config.defaultSafety = parseSafety(options.defaultSafety)

@@ -1,6 +1,6 @@
 import type { D3CodeConfig } from "../config/config.js"
 import type { SecretStore } from "../security/secrets.js"
-import { providers, resolveModel } from "./catalog.js"
+import { normalizeProviderID, providers, resolveModel } from "./catalog.js"
 import { createModelRoutingPlan, type ModelBias } from "./routing.js"
 
 export interface ProviderProofItem {
@@ -25,7 +25,7 @@ function rank(status: ProviderProofItem["status"]): number {
 }
 
 function providerOf(modelRef: string): string {
-  return modelRef.split("/")[0] ?? ""
+  return normalizeProviderID(modelRef.split("/")[0] ?? "")
 }
 
 async function secretPresent(secrets: SecretStore | undefined, ref: string | undefined): Promise<boolean> {
@@ -55,11 +55,11 @@ export async function createModelProofReport(config: D3CodeConfig, secrets?: Sec
   }
 
   for (const provider of providers) {
-    const configuredRef = config.modelSecrets[provider.id]
+    const configuredRef = config.modelSecrets[provider.id] ?? (provider.id === "ollama" ? config.modelSecrets.local : undefined)
     const envPresent = provider.env.some((name) => Boolean(process.env[name]))
     const configuredPresent = await secretPresent(secrets, configuredRef)
-    const local = provider.id === "local"
-    const status: ProviderProofItem["status"] = local
+    const ollama = provider.id === "ollama"
+    const status: ProviderProofItem["status"] = ollama
       ? process.env.D3CODE_LOCAL_BASE_URL ? "ok" : "action"
       : configuredPresent || envPresent ? "ok" : configuredRef ? "action" : "missing"
     items.push(item({
@@ -71,18 +71,18 @@ export async function createModelProofReport(config: D3CodeConfig, secrets?: Sec
         `secret-ref:${configuredRef ?? "none"}`,
         `secret-present:${configuredPresent ? "yes" : "no"}`,
         `env-present:${envPresent ? "yes" : "no"}`,
-        ...(local ? [`base-url:${process.env.D3CODE_LOCAL_BASE_URL ?? "default:http://localhost:11434"}`] : []),
+        ...(ollama ? [`base-url:${process.env.D3CODE_LOCAL_BASE_URL ?? "default:http://localhost:11434"}`] : []),
       ],
       next: status === "ok"
         ? `Provider ${provider.id} can be selected with /model ${provider.id}/${provider.defaultModel}.`
-        : local
-          ? "Set D3CODE_LOCAL_BASE_URL if the local OpenAI-compatible endpoint is not the default Ollama URL. Do not include /v1; D3 Code adds it."
+        : ollama
+          ? "Set D3CODE_LOCAL_BASE_URL if Ollama is not at the default URL. Do not include /v1; D3 Code adds it."
           : `Set ${provider.env.join(" or ")} or run setup with --api-key-env for ${provider.id}.`,
     }))
   }
 
   const routing = createModelRoutingPlan(config, options.mode ?? "migrate", options.bias ?? "balanced")
-  const missingRouteProviders = [...new Set(routing.routes.map((route) => providerOf(route.recommended)).filter((provider) => provider !== "local" && !config.modelSecrets[provider] && !providers.find((item) => item.id === provider)?.env.some((env) => Boolean(process.env[env]))))]
+  const missingRouteProviders = [...new Set(routing.routes.map((route) => providerOf(route.recommended)).filter((provider) => provider !== "ollama" && !config.modelSecrets[provider] && !providers.find((item) => item.id === provider)?.env.some((env) => Boolean(process.env[env]))))]
   items.push(item({
     id: "routing-readiness",
     status: routing.ready && missingRouteProviders.length === 0 ? "ok" : "action",

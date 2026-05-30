@@ -29,7 +29,7 @@ test("chat system prompt includes mode skills and active D3 runtime context", ()
 })
 
 test("chat system prompt carries explicit no-profile context", () => {
-  const prompt = createChatSystemPrompt(config, { model: "local/local/default", safety: "plan", mode: "audit" })
+  const prompt = createChatSystemPrompt(config, { model: "ollama/llama3.1", safety: "plan", mode: "audit" })
   assert.match(prompt, /profile: none/)
   assert.match(prompt, /allowed accounts: none/)
   assert.match(prompt, /In plan safety/)

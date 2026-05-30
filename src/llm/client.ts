@@ -49,10 +49,10 @@ export async function chat(config: D3CodeConfig, secrets: SecretStore, request: 
 }
 
 async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[]): Promise<ChatResponse> {
-  const key = provider === "local" ? "" : await providerKey(config, secrets, provider, env)
+  const key = provider === "ollama" ? "" : await providerKey(config, secrets, provider, env)
   const baseURL = provider === "openrouter"
     ? "https://openrouter.ai/api"
-    : provider === "local"
+    : provider === "ollama"
       ? process.env.D3CODE_LOCAL_BASE_URL ?? "http://localhost:11434"
       : "https://api.openai.com"
   const response = await fetch(`${baseURL}/v1/chat/completions`, {

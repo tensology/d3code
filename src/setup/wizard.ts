@@ -2,7 +2,7 @@ import { createInterface } from "node:readline/promises"
 import { stdin as input, stdout as output } from "node:process"
 import type { D3CodeConfig } from "../config/config.js"
 import { saveConfig } from "../config/config.js"
-import { providers } from "../providers/catalog.js"
+import { normalizeProviderID, providers } from "../providers/catalog.js"
 import type { SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 
@@ -17,14 +17,14 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     console.log("D3 Code first-run setup")
     console.log("Configure the model first, then optionally point D3 Code at a local or SSH Rocket D3 server.")
     console.log("Providers: " + providers.map((provider) => provider.id).join(", "))
-    const providerID = (await rl.question(`Provider [openai]: `)).trim() || "openai"
+    const providerID = normalizeProviderID((await rl.question(`Provider [openai]: `)).trim() || "openai")
     const provider = providers.find((item) => item.id === providerID) ?? providers[0]
-    if (provider.id === "local") {
-      console.log("Local uses an OpenAI-compatible endpoint. By default that is Ollama at http://localhost:11434.")
+    if (provider.id === "ollama") {
+      console.log("Ollama uses the local OpenAI-compatible endpoint at http://localhost:11434 by default.")
       console.log("Use the exact model name installed locally, for example llama3.1 or qwen2.5-coder:7b.")
     }
     const model = (await rl.question(`Model [${provider.defaultModel}]: `)).trim() || provider.defaultModel
-    const key = provider.id === "local" ? "" : await rl.question(`API key for ${provider.name} (blank to use env ${provider.env.join("/")}): `)
+    const key = provider.id === "ollama" ? "" : await rl.question(`API key for ${provider.name} (blank to use env ${provider.env.join("/")}): `)
     if (key.trim()) {
       const ref = `keychain:model:${provider.id}`
       await secrets.set(ref, key.trim())

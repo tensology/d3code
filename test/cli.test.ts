@@ -116,7 +116,7 @@ test("CLI lists baked-in modes and skills", async () => {
 
   const routingJson = await cli(["model-routing", "audit", "--bias", "local", "--json"])
   const parsedRouting = JSON.parse(routingJson.stdout) as { routes: Array<{ recommended: string }> }
-  assert.ok(parsedRouting.routes.every((route) => route.recommended === "local/local/default"))
+  assert.ok(parsedRouting.routes.every((route) => route.recommended === "ollama/llama3.1"))
 })
 
 test("CLI runs mock end-to-end acceptance", async () => {

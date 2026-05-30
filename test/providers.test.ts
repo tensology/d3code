@@ -27,17 +27,23 @@ test("creates D3 mode-aware model routing plans", () => {
   assert.match(renderModelRoutingPlan(plan), /D3-to-web architect/)
 })
 
-test("model routing can bias toward local endpoints", () => {
+test("model routing can bias toward Ollama", () => {
   const plan = createModelRoutingPlan({
     version: 1,
-    defaultModel: "local/local/default",
+    defaultModel: "ollama/llama3.1",
     defaultSafety: "plan",
     profiles: [],
     modelSecrets: {},
   }, "audit", "local")
 
   assert.equal(plan.ready, true)
-  assert.ok(plan.routes.every((route) => route.recommended === "local/local/default"))
+  assert.ok(plan.routes.every((route) => route.recommended === "ollama/llama3.1"))
+})
+
+test("resolves legacy local model refs to Ollama", () => {
+  const resolved = resolveModel("local/local/default")
+  assert.equal(resolved.provider.id, "ollama")
+  assert.equal(resolved.model, "llama3.1")
 })
 
 test("model proof verifies default provider and routing readiness", async () => {

@@ -1,7 +1,7 @@
 import type { D3CodeConfig } from "../config/config.js"
 import type { SafetyMode } from "../domain/types.js"
 import type { D3CodeModeID } from "../skills/modes.js"
-import { providers } from "./catalog.js"
+import { normalizeProviderID, providers } from "./catalog.js"
 
 export type ModelBias = "quality" | "balanced" | "speed" | "local"
 
@@ -43,7 +43,7 @@ const routeSets: Record<D3CodeModeID, Array<Omit<ModelRoute, "requiredSecret">>>
   ],
   audit: [
     route("D3 database/code auditor", "openai/gpt-5", "anthropic/claude-sonnet-4-5", "Audit mode needs careful ranking of dictionary, index, data-shape, and BASIC risks.", "plan"),
-    route("large-output compactor", "openai/gpt-5-nano", "local/local/default", "Use a small model or local endpoint for noisy command summaries.", "plan"),
+    route("large-output compactor", "openai/gpt-5-nano", "ollama/llama3.1", "Use a small model or Ollama for noisy command summaries.", "plan"),
   ],
   api: [
     route("REST contract designer", "openai/gpt-5", "anthropic/claude-sonnet-4-5", "OpenAPI and D3 dictionary mapping need correctness over raw speed.", "ask"),
@@ -64,7 +64,7 @@ function route(role: string, recommended: string, fallback: string, rationale: s
 }
 
 function providerOf(modelRef: string): string {
-  return modelRef.split("/")[0] ?? ""
+  return normalizeProviderID(modelRef.split("/")[0] ?? "")
 }
 
 function secretFor(modelRef: string): string {
@@ -77,7 +77,7 @@ function score(route: Omit<ModelRoute, "requiredSecret">, bias: ModelBias): Omit
     return { ...route, recommended: route.fallback, fallback: route.recommended, rationale: `${route.rationale} Speed bias swaps to the lower-latency fallback first.` }
   }
   if (bias === "local") {
-    return { ...route, recommended: "local/local/default", fallback: route.recommended, rationale: `${route.rationale} Local bias prefers an OpenAI-compatible local endpoint when configured.` }
+    return { ...route, recommended: "ollama/llama3.1", fallback: route.recommended, rationale: `${route.rationale} Local bias prefers Ollama when configured.` }
   }
   return route
 }
@@ -94,7 +94,7 @@ export function createModelRoutingPlan(config: D3CodeConfig, mode: string, bias:
     bias,
     configuredDefault: config.defaultModel,
     configuredSecrets,
-    ready: routes.every((entry) => configuredSecrets.includes(providerOf(entry.recommended)) || providerOf(entry.recommended) === "local"),
+    ready: routes.every((entry) => configuredSecrets.includes(providerOf(entry.recommended)) || providerOf(entry.recommended) === "ollama"),
     routes,
   }
 }
