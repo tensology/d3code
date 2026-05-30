@@ -18,8 +18,8 @@
   <a href="#what-d3-code-is"><strong>What it is</strong></a> .
   <a href="#getting-rocket-d3"><strong>Getting Rocket D3</strong></a> .
   <a href="#quick-start"><strong>Quick start</strong></a> .
-  <a href="#installing-next-to-a-d3-server"><strong>Server install</strong></a> .
-  <a href="#what-d3-code-adds"><strong>Features</strong></a> .
+  <a href="#inside-the-session"><strong>Inside the session</strong></a> .
+  <a href="#building-applications"><strong>Building apps</strong></a> .
   <a href="#proof-and-safety"><strong>Proof</strong></a>
 </p>
 
@@ -47,11 +47,13 @@ build an app from bundle d3-app-bundle.json to ./app-output
 
 D3 Code handles the D3-aware parts directly when it can. Slash commands still exist for precise control and repeatable proof, but the intended experience is a Claude Code/OpenCode-style session where the assistant can inspect D3 and build application pieces from your request.
 
+That direction matters. In a normal coding-agent tool, the session is the product: the model has project context, can call bounded tools, keeps history, asks before risky work, and turns a loose request into file changes or proof. D3 Code applies that same pattern to Rocket D3. The difference is that the "project" is not just a Git checkout. It is also an account, dictionaries, BASIC, multivalue data, TCL behavior, terminal evidence, and the server rules around all of that.
+
 In practical terms, D3 Code is made of five pieces:
 
 | Piece | What it means |
 |---|---|
-| **CLI/TUI harness** | The `d3code` command starts a terminal agent, loads your model/provider settings, remembers the active D3 profile, and exposes D3-aware slash commands. |
+| **Session harness** | The `d3code` command starts an interactive terminal agent, loads your model/provider settings, remembers the active D3 profile, and routes normal requests through D3-aware tools. |
 | **D3 connection profiles** | Profiles describe how to reach D3: local shell or SSH, entry command, account, prompt pattern, allowed accounts, and whether to keep a persistent session alive. |
 | **D3 tool layer** | Instead of treating D3 as plain text in a terminal, D3 Code has tools for items, dictionaries, locks, AQL/TCL, BASIC compile/catalog, subroutine calls, account indexing, and terminal captures. |
 | **Safety and proof layer** | Risky operations are classified before they run. Writes, compile/catalog, and subroutine calls require explicit confirmation, and proof commands record what was actually checked. |
@@ -77,7 +79,7 @@ D3 Code sits beside an existing D3 server. It gives an operator or developer a D
 | **Application buildout** | Turn a D3 estate slice into resource models, screen plans, access plans, API routes, OpenAPI schemas, adapter code, mock data, smoke tests, QA evidence, and a runnable web/API scaffold. |
 | **Evidence** | Keep proof gates explicit: setup proof, profile doctor, live-proof folders, QA evidence, completion audit, and rollback notes. |
 
-The point is not "AI magic." The point is to give the agent enough real D3 evidence to help build the application, not just guess at tables and endpoints from a vague description.
+The point is not "AI magic." The point is to give the session enough real D3 evidence to help build the application, not just guess at files, screens, tables, and endpoints from a vague description.
 
 ---
 
@@ -119,7 +121,7 @@ npm link
 d3code
 ```
 
-That last command is the important bit. On first run, if `~/.d3code/config.json` does not exist, `d3code` opens the setup wizard and asks for:
+That last command is the product. On first run, if `~/.d3code/config.json` does not exist, `d3code` opens the setup wizard and asks for:
 
 1. model provider, for example OpenAI, Anthropic, OpenRouter, or a local endpoint
 2. model name
@@ -128,25 +130,16 @@ That last command is the important bit. On first run, if `~/.d3code/config.json`
 5. D3 connection type: local, SSH, or skip
 6. D3 profile name, account, entry command, prompt pattern, and persistent-session preference
 
-After setup:
-
-```bash
-d3code doctor
-d3code setup-proof
-d3code profile-doctor --profile default
-d3code --mode chat
-```
-
-If you chose a different profile name in the wizard, use that name instead of `default`.
-
-Inside the session, start with plain language:
+After setup, stay inside the session and start with plain language:
 
 ```text
 show me the files
+read item 100 from CUSTOMERS
+look at the BASIC program GET.CUSTOMER in BP
 build an application from files CUSTOMERS,ORDERS programs BP to ./app-output
 ```
 
-The second request captures a D3 bundle from the active profile, writes `d3-app-bundle.json`, generates the runnable app/API slice, and tells you which proof commands to run next.
+D3 Code should feel closer to Claude Code or OpenCode than a pile of one-off shell commands: you ask for work, it pulls D3 context through guarded tools, and it gives you output or generated files.
 
 ---
 
@@ -180,14 +173,7 @@ In the setup wizard:
 | D3 prompt regex | usually `>` unless your site uses something else |
 | Session mode | `persistent` for account-stateful work |
 
-Then prove it:
-
-```bash
-d3code detect
-d3code login --profile prod --account DM --safety ask
-d3code profile-doctor --profile prod
-d3code live-proof --profile prod --run
-```
+Then run `d3code` and work in the session. If the profile is wrong, ask the session to switch profile/account or use `/profile` and `/login` as explicit controls.
 
 ### Option B: Install on your workstation and connect by SSH
 
@@ -224,24 +210,47 @@ d3code setup \
   --allowed-accounts DM,SALES
 ```
 
-Then prove it:
-
-```bash
-d3code setup-proof
-d3code profile-doctor --profile prod
-d3code terminal-plan --profile prod
-d3code cockpit-terminal --profile prod
-```
+Then run `d3code`, select that profile, and work in the session. The lower-level proof commands still exist, but they are escape hatches, not the primary experience.
 
 ---
 
-## What D3 Code Adds
+## Inside The Session
 
-### From D3 account to application
+D3 Code is meant to be opened and used like a coding-agent terminal, not memorized like a long command manual.
 
-D3 Code is meant to help build complete application slices from a D3 estate.
+The intended loop is:
 
-The interactive workflow is:
+```text
+$ d3code
+
+d3code> show me what account I am in
+d3code> list the files
+d3code> read dictionary NAME from CUSTOMERS
+d3code> inspect the BASIC around VALUECARD.SYNC
+d3code> build an application from files CUSTOMERS,ORDERS programs BP to ./app-output
+```
+
+What happens behind the scenes:
+
+| You ask for | D3 Code should do |
+|---|---|
+| Account/file discovery | Use the active local/SSH D3 profile to inspect the account, files, dictionaries, and indexed context. |
+| Reads | Pull items, dictionary entries, locks, indexes, selected records, BASIC source, and cached search hits. |
+| Application work | Capture D3 evidence, derive resources/screens/actions/access/data shape, then generate or update a runnable app/API slice. |
+| Risky operations | Stop before writes, compile/catalog, subroutine calls, account changes, or destructive TCL unless confirmation is explicit. |
+| Follow-up work | Keep the session history, profile, model, mode, safety setting, and generated evidence available as context. |
+
+Slash commands such as `/read`, `/bundle-ui-plan`, or `/webapp-smoke` are still available for exact repeatability. They are not meant to be how you think about the product day to day.
+
+Today, D3 Code already has the terminal session, profile/config memory, guarded D3 tools, persisted session history, slash-command escape hatches, and natural intents for common reads and application build requests. The next major product gap is deeper model-driven tool use: the assistant should be able to decide which D3 tools to call over several steps, explain what it found, ask before mutation, and keep building without the user translating everything into command names.
+
+---
+
+## Building Applications
+
+D3 Code is meant to help build complete application slices from a D3 estate from inside the session.
+
+The interactive workflow should be:
 
 1. **Connect to a real account** - local or SSH profile, pinned account, prompt pattern, and safety mode.
 2. **Type what you want** - for example, "build an application from files CUSTOMERS,ORDERS programs BP to ./app-output".
@@ -254,24 +263,7 @@ This is different from a normal CRUD generator. A D3 application often hides its
 
 The generated app slice is not the final product by itself. It is the starting point a developer or coding agent can keep building: replace mock adapters with live D3 calls, refine screens, add workflows, add authorization, wire front-end components, and use the proof commands to check that the modern app still matches the legacy behavior.
 
-### D3-aware commands
-
-| Command | Purpose |
-|---|---|
-| `d3code profiles` | List configured local/SSH D3 profiles. |
-| `d3code detect` | Detect local D3 availability. |
-| `d3code login --profile prod --account DM` | Verify or switch account with WHO/VERSION proof. |
-| `d3code read-item CUSTOMERS 100 --profile prod` | Read a D3 item. |
-| `d3code read-dict CUSTOMERS NAME --profile prod` | Read a dictionary item. |
-| `d3code locks --profile prod` | Inspect lock state. |
-| `d3code query-aql LIST CUSTOMERS --profile prod` | Run read-oriented AQL/TCL. |
-| `d3code diff-item CUSTOMERS 100 --profile prod --body-file proposed.txt` | Preview a write. |
-| `d3code write-item CUSTOMERS 100 --profile prod --body-file proposed.txt --confirm` | Write only after confirmation. |
-| `d3code compile-basic BP GET.CUSTOMER --profile prod --confirm` | Compile BASIC with confirmation. |
-| `d3code catalog-basic BP GET.CUSTOMER --profile prod --confirm` | Catalog BASIC with confirmation. |
-| `d3code call-subroutine GET.CUSTOMER 100 --profile prod --confirm` | Call a subroutine with confirmation. |
-
-### Operating modes
+### Session Modes
 
 | Mode | Use it for |
 |---|---|
@@ -284,45 +276,7 @@ The generated app slice is not the final product by itself. It is the starting p
 | `qa` | Regression and proof workflows. |
 | `gsd` | Goal, phase, evidence, and completion-gate tracking. |
 
-```bash
-d3code --mode migrate
-d3code mode-info migrate
-d3code runbook migrate
-d3code workflow migrate
-d3code recipe migrate
-```
-
-### Bundle pipeline
-
-D3 Code's main migration artifact is a D3 application bundle:
-
-```bash
-d3code bundle-capture \
-  --profile prod \
-  --account SALES \
-  --files CUSTOMERS,ORDERS \
-  --program-files BP \
-  --sample-limit 5 > d3-app-bundle.json
-```
-
-From that bundle:
-
-```bash
-d3code bundle-audit d3-app-bundle.json
-d3code bundle-code-map d3-app-bundle.json
-d3code bundle-index-plan d3-app-bundle.json
-d3code bundle-data-plan d3-app-bundle.json
-d3code bundle-ui-plan d3-app-bundle.json
-d3code bundle-access-plan d3-app-bundle.json
-d3code bundle-brief d3-app-bundle.json
-d3code bundle-backlog d3-app-bundle.json
-d3code bundle-artifacts d3-app-bundle.json --out ./migration-output
-d3code webapp-check ./migration-output
-d3code webapp-smoke ./migration-output --record
-d3code bundle-readiness d3-app-bundle.json --artifacts-dir ./migration-output
-```
-
-This is how D3 Code moves from "we inspected a legacy account" to "we have a runnable application slice with a UI shell, API routes, D3 adapter boundary, mock data, generated contracts, smoke tests, and explicit proof gaps."
+You can switch modes inside the session, for example: `/mode audit`, `/mode modernize`, `/mode migrate`, or `/mode qa`.
 
 ---
 
@@ -339,16 +293,21 @@ D3 Code deliberately separates inspection from mutation.
 | Subroutine calls | Require confirmation because business logic may mutate state. |
 | Live proof | Profile doctor, terminal capture, compile/catalog transcript, operator notes, and rollback evidence are tracked separately. |
 
-Proof commands:
+Inside the session, proof usually appears as the next thing D3 Code tells you to run or review after it inspects/builds something. For exact repeatability, the same checks are available as slash commands and CLI commands.
 
-```bash
-d3code acceptance
-d3code setup-proof
-d3code readiness
-d3code product-audit --allow-incomplete
-d3code live-proof-init ./live-proof --profile prod --account DM
-d3code live-proof-check ./live-proof
-```
+---
+
+## Escape Hatches
+
+D3 Code is session-first, but the underlying commands remain available for automation, CI, and exact repro. Use them when you want a scriptable action instead of a conversation:
+
+| Need | Session request | Exact command shape |
+|---|---|---|
+| Read an item | `read item 100 from CUSTOMERS` | `d3code read-item CUSTOMERS 100 --profile prod` |
+| Capture an app slice | `build an application from files CUSTOMERS,ORDERS programs BP to ./app-output` | `d3code bundle-capture ...` then `d3code bundle-artifacts ...` |
+| Check generated app | `check the generated app in ./app-output` | `d3code webapp-check ./app-output` |
+| Record smoke proof | `smoke test ./app-output and record proof` | `d3code webapp-smoke ./app-output --record` |
+| Audit readiness | `is this slice ready?` | `d3code bundle-readiness d3-app-bundle.json --artifacts-dir ./app-output` |
 
 ---
 

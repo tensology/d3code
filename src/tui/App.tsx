@@ -28,9 +28,9 @@ function messagesFromSession(config: D3CodeConfig, session: StoredSession | unde
 }
 
 function transcriptFromSession(session: StoredSession | undefined) {
-  if (!session) return [{ role: "system", content: "D3 Code ready. Loading cockpit. Type /help or /status any time." }]
+  if (!session) return [{ role: "system", content: "D3 Code ready. Tell me what to inspect or build; use /help for exact controls." }]
   return [
-    { role: "system", content: `Resumed ${session.id}. Loading cockpit. Type /help or /status any time.` },
+    { role: "system", content: `Resumed ${session.id}. Tell me what to inspect or build; use /help for exact controls.` },
     ...session.events.map((event) => ({ role: event.type, content: event.content })),
   ]
 }
