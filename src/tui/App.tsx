@@ -501,6 +501,7 @@ export function App(props: AppProps) {
       setStreamingD3Output("")
       setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
     } finally {
+      setActiveTask("checking files")
       const afterWorkspace = await snapshotWorkspace()
       const summary = summarizeWorkspaceChanges(beforeWorkspace, afterWorkspace)
       setWorkspaceChanges(summary)
@@ -586,7 +587,7 @@ export function App(props: AppProps) {
   const renderedDraft = renderPromptDraft(draft, caretOn)
   const promptMeta = formatPromptMeta({ model, profile, mode, safety, usage, workspaceChanges, project })
   const hasStreamingBlock = Boolean(streamingAssistant || streamingShellOutput || streamingD3Output)
-  const pendingTurn = busy && !hasStreamingBlock ? `${spinnerFrames[busyFrame % spinnerFrames.length]} ${activeTask || "thinking"}` : ""
+  const pendingTurn = busy && !hasStreamingBlock && activeTask ? `${spinnerFrames[busyFrame % spinnerFrames.length]} ${activeTask}` : ""
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
