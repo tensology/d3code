@@ -5,6 +5,7 @@ import type { SafetyMode } from "../domain/types.js"
 import { chat, type ChatMessage } from "../llm/client.js"
 import { defaultSecretStore } from "../security/secrets.js"
 import { handleSlashCommand } from "./commands.js"
+import { handleNaturalIntent } from "./intent.js"
 import { appendEvent, newSession, saveSession, type StoredSession } from "../sessions/store.js"
 import { createCockpitReport, renderCockpitReport } from "../quality/cockpit.js"
 import { createChatSystemPrompt, type ChatRuntimeContext } from "./context.js"
@@ -112,6 +113,14 @@ export function App(props: AppProps) {
           await record({ type: "system", content: result.output, metadata: { command: line } })
         }
         if (result.exit) app.exit()
+        return
+      }
+      const intentResult = await handleNaturalIntent(line, props.config, { model, safety, profile, mode })
+      if (intentResult) {
+        if (intentResult.output) {
+          setTranscript((current) => [...current, { role: "assistant", content: intentResult.output }])
+          await record({ type: "assistant", content: intentResult.output, metadata: { intent: line, model, safety, profile, mode } })
+        }
         return
       }
       const nextMessages = [...messages, { role: "user" as const, content: line }]

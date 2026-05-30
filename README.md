@@ -35,6 +35,18 @@ D3 Code is the harness around that existing D3 environment.
 
 If you know tools like OpenCode, Codex, Claude Code, or other terminal coding agents, D3 Code is that idea pointed at Rocket D3 instead of a normal source-code repo. It gives an AI model a controlled set of D3-aware tools, a safety policy, a memory/config layer, and repeatable proof commands. The model does not get raw unlimited shell access to your production database. It works through D3 Code's profiles, command classifiers, adapters, and evidence gates.
 
+Once you are inside `d3code`, you should not have to think in command names first. You can type normal requests like:
+
+```text
+show me the files in this account
+read item 100 from CUSTOMERS
+read dictionary NAME from CUSTOMERS
+build an application from files CUSTOMERS,ORDERS programs BP to ./app-output
+build an app from bundle d3-app-bundle.json to ./app-output
+```
+
+D3 Code handles the D3-aware parts directly when it can. Slash commands still exist for precise control and repeatable proof, but the intended experience is a Claude Code/OpenCode-style session where the assistant can inspect D3 and build application pieces from your request.
+
 In practical terms, D3 Code is made of five pieces:
 
 | Piece | What it means |
@@ -126,6 +138,15 @@ d3code --mode chat
 ```
 
 If you chose a different profile name in the wizard, use that name instead of `default`.
+
+Inside the session, start with plain language:
+
+```text
+show me the files
+build an application from files CUSTOMERS,ORDERS programs BP to ./app-output
+```
+
+The second request captures a D3 bundle from the active profile, writes `d3-app-bundle.json`, generates the runnable app/API slice, and tells you which proof commands to run next.
 
 ---
 
@@ -220,13 +241,14 @@ d3code cockpit-terminal --profile prod
 
 D3 Code is meant to help build complete application slices from a D3 estate.
 
-The workflow is:
+The interactive workflow is:
 
 1. **Connect to a real account** - local or SSH profile, pinned account, prompt pattern, and safety mode.
-2. **Capture the D3 truth** - files, dictionaries, records, indexes, BASIC programs, subroutine relationships, screen hints, access clues, and terminal evidence.
-3. **Turn that into an application model** - resources, fields, multivalue child structures, validations, relationships, screen plans, access plans, and service boundaries.
-4. **Generate a runnable app/API slice** - OpenAPI contract, D3 adapter seam, routes, mock data, browser UI shell, dashboard/proof data, terminal bridge contract, and smoke tests.
-5. **Keep extending with proof** - each generated slice carries readiness checks, QA evidence, completion audit gaps, and rollback notes so the application can grow without losing track of what is proven.
+2. **Type what you want** - for example, "build an application from files CUSTOMERS,ORDERS programs BP to ./app-output".
+3. **D3 Code captures the D3 truth** - files, dictionaries, records, indexes, BASIC programs, subroutine relationships, screen hints, access clues, and terminal evidence.
+4. **D3 Code turns that into an application model** - resources, fields, multivalue child structures, validations, relationships, screen plans, access plans, and service boundaries.
+5. **D3 Code generates a runnable app/API slice** - OpenAPI contract, D3 adapter seam, routes, mock data, browser UI shell, dashboard/proof data, terminal bridge contract, and smoke tests.
+6. **Keep extending with proof** - each generated slice carries readiness checks, QA evidence, completion audit gaps, and rollback notes so the application can grow without losing track of what is proven.
 
 This is different from a normal CRUD generator. A D3 application often hides its shape across dictionaries, BASIC, PROC/screen flows, multivalue records, account conventions, and years of operator practice. D3 Code's job is to extract that shape and turn it into buildable application structure.
 
