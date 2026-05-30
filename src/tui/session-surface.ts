@@ -2,6 +2,7 @@ import type { ChatUsage } from "../llm/client.js"
 import type { ProjectContext } from "./project-context.js"
 import type { WorkspaceChangeSummary } from "./workspace-changes.js"
 import { formatWorkspaceChangeFooter } from "./workspace-changes.js"
+import { basename } from "node:path"
 
 export function formatElapsedSeconds(seconds: number): string {
   if (seconds < 60) return `${Math.max(0, seconds)}s`
@@ -24,6 +25,12 @@ export function formatInstructionCount(project: ProjectContext | undefined): str
   return count ? `${count} instr` : "no instr"
 }
 
+export function formatProjectLocation(project: ProjectContext | undefined, fallback = process.cwd()): string {
+  const cwd = project?.cwd ?? fallback
+  const name = basename(cwd) || cwd
+  return `cwd ${name}`
+}
+
 export function formatPromptMeta(input: {
   model: string
   profile?: string
@@ -39,10 +46,11 @@ export function formatPromptMeta(input: {
     `${input.mode}/${input.safety}`,
     formatTokenUsage(input.usage),
     formatWorkspaceChangeFooter(input.workspaceChanges),
+    formatProjectLocation(input.project),
     formatInstructionCount(input.project),
   ].join(" | ")
 }
 
 export function formatBusyStatus(task: string, elapsedSeconds: number): string {
-  return `${task || "working"} ${formatElapsedSeconds(elapsedSeconds)}  esc interrupt`
+  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}  esc to interrupt`
 }

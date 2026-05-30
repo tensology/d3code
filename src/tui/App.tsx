@@ -85,6 +85,20 @@ function transcriptFromSession(session: StoredSession | undefined) {
   ]
 }
 
+function initialTaskForLine(line: string, mode: string): string {
+  if (line.startsWith("!")) {
+    const command = line.slice(1).trim().split(/\s+/)[0]
+    return `running ! ${command || "shell"}`
+  }
+  if (line === "/d3" || line.startsWith("/d3 ")) return "attaching D3 terminal"
+  if (mode === "d3" && !line.startsWith("/")) {
+    const command = line.trim().split(/\s+/)[0]
+    return `running D3 ${command || "command"}`
+  }
+  if (line.startsWith("/")) return `running ${line.split(/\s+/)[0]}`
+  return "asking model"
+}
+
 export function App(props: AppProps) {
   const app = useApp()
   const [draft, setDraft] = useState<PromptDraft>({ text: "", cursor: 0 })
@@ -348,7 +362,7 @@ export function App(props: AppProps) {
 
   async function submit(line: string) {
     setAbortMessage("")
-    setActiveTask(line.startsWith("/") ? `running ${line.split(/\s+/)[0]}` : "asking model")
+    setActiveTask(initialTaskForLine(line, mode))
     setBusy(true)
     setStreamingShellOutput("")
     setStreamingD3Output("")
@@ -398,7 +412,11 @@ export function App(props: AppProps) {
           setTranscript((current) => [...current, { role: "system", content: result.output }])
           await record({ type: "system", content: result.output, metadata: { command: line } })
         }
-        if (result.exit) app.exit()
+        if (result.exit) {
+          setActiveTask("")
+          setBusy(false)
+          app.exit()
+        }
         return
       }
       const intentResult = await handleNaturalIntent(line, props.config, { model, safety, profile, mode })
