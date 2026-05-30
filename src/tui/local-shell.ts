@@ -16,6 +16,8 @@ export interface LocalShellOptions {
   signal?: AbortSignal
   timeoutMs?: number
   maxOutputChars?: number
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
 }
 
 function appendLimited(current: string, chunk: Buffer, maxChars: number): { value: string; truncated: boolean } {
@@ -58,14 +60,18 @@ export async function runLocalShellCommand(command: string, options: LocalShellO
     }
     options.signal?.addEventListener("abort", abort, { once: true })
     child.stdout.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8")
       const next = appendLimited(stdout, chunk, maxOutputChars)
       stdout = next.value
       truncated = truncated || next.truncated
+      options.onStdout?.(text)
     })
     child.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8")
       const next = appendLimited(stderr, chunk, maxOutputChars)
       stderr = next.value
       truncated = truncated || next.truncated
+      options.onStderr?.(text)
     })
     child.on("error", (error) => {
       clearTimeout(timer)

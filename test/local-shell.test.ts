@@ -17,3 +17,15 @@ test("local shell command captures stderr", async () => {
   assert.equal(result.stderr, "d3code-error")
   assert.match(renderLocalShellResult(result), /stderr:\nd3code-error/)
 })
+
+test("local shell command streams output chunks before completion", async () => {
+  let streamed = ""
+  const result = await runLocalShellCommand("printf one; sleep 0.05; printf two", {
+    onStdout: (chunk) => {
+      streamed += chunk
+    },
+  })
+
+  assert.equal(result.stdout, "onetwo")
+  assert.equal(streamed, "onetwo")
+})

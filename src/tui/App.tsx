@@ -82,6 +82,7 @@ export function App(props: AppProps) {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>(transcriptFromSession(props.session))
   const [welcome, setWelcome] = useState<WelcomeSummary | undefined>()
   const [streamingAssistant, setStreamingAssistant] = useState("")
+  const [streamingShellOutput, setStreamingShellOutput] = useState("")
   const [project, setProject] = useState<ProjectContext | undefined>()
   const [caretOn, setCaretOn] = useState(true)
   const [busyFrame, setBusyFrame] = useState(0)
@@ -177,6 +178,7 @@ export function App(props: AppProps) {
         setAbortMessage("Interrupted. Finishing any already-returned cleanup.")
         setBusy(false)
         setStreamingAssistant("")
+        setStreamingShellOutput("")
         return
       }
       app.exit()
@@ -187,6 +189,7 @@ export function App(props: AppProps) {
       setAbortMessage("Interrupted. Press Enter for the next instruction.")
       setBusy(false)
       setStreamingAssistant("")
+      setStreamingShellOutput("")
       return
     }
     if (busy) return
@@ -322,6 +325,7 @@ export function App(props: AppProps) {
     setAbortMessage("")
     setActiveTask(line.startsWith("/") ? `running ${line.split(/\s+/)[0]}` : "asking model")
     setBusy(true)
+    setStreamingShellOutput("")
     streamSuppressRef.current = false
     streamIterationRef.current = undefined
     const abortController = new AbortController()
@@ -434,6 +438,7 @@ export function App(props: AppProps) {
       await record({ type: "assistant", content: response.output || "", metadata: { model, usage: response.usage, toolEvents: response.toolEvents.map((event) => event.name) } })
     } catch (error) {
       setStreamingAssistant("")
+      setStreamingShellOutput("")
       setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
     } finally {
       const afterWorkspace = await snapshotWorkspace()
@@ -483,8 +488,13 @@ export function App(props: AppProps) {
       return
     }
     setActiveTask(`running ! ${command.split(/\s+/)[0]}`)
-    const result = await runLocalShellCommand(command, { signal })
+    const result = await runLocalShellCommand(command, {
+      signal,
+      onStdout: (chunk) => setStreamingShellOutput((current) => `${current}${chunk}`),
+      onStderr: (chunk) => setStreamingShellOutput((current) => `${current}${current.endsWith("\n") || current.length === 0 ? "" : "\n"}stderr: ${chunk}`),
+    })
     const output = renderLocalShellResult(result)
+    setStreamingShellOutput("")
     setTranscript((current) => [...current, { role: "shell-output", content: output || "exit 0" }])
     await record({ type: "tool", content: `shell\n$ ${command}\n${output}`, metadata: { tool: "local_shell", command, exitCode: result.exitCode, signal: result.signal } })
   }
@@ -554,6 +564,7 @@ export function App(props: AppProps) {
           <TranscriptEntryView key={`${entry.role}-${index}`} entry={entry} />
         ))}
         {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
+        {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `running\n${streamingShellOutput.trimEnd()}` }} /> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
