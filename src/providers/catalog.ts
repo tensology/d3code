@@ -32,10 +32,10 @@ export const providers: ProviderInfo[] = [
   },
   {
     id: "local",
-    name: "Local OpenAI-compatible",
+    name: "Local/Ollama OpenAI-compatible",
     env: ["D3CODE_LOCAL_BASE_URL"],
     defaultModel: "local/default",
-    models: ["local/default"],
+    models: ["local/default", "llama3.1", "qwen2.5-coder:7b", "codellama"],
     openAICompatible: true,
   },
 ]

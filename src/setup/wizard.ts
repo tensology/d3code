@@ -19,8 +19,12 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     console.log("Providers: " + providers.map((provider) => provider.id).join(", "))
     const providerID = (await rl.question(`Provider [openai]: `)).trim() || "openai"
     const provider = providers.find((item) => item.id === providerID) ?? providers[0]
+    if (provider.id === "local") {
+      console.log("Local uses an OpenAI-compatible endpoint. By default that is Ollama at http://localhost:11434.")
+      console.log("Use the exact model name installed locally, for example llama3.1 or qwen2.5-coder:7b.")
+    }
     const model = (await rl.question(`Model [${provider.defaultModel}]: `)).trim() || provider.defaultModel
-    const key = await rl.question(`API key for ${provider.name} (blank to use env ${provider.env.join("/")}): `)
+    const key = provider.id === "local" ? "" : await rl.question(`API key for ${provider.name} (blank to use env ${provider.env.join("/")}): `)
     if (key.trim()) {
       const ref = `keychain:model:${provider.id}`
       await secrets.set(ref, key.trim())

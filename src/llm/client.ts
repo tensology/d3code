@@ -53,7 +53,7 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
   const baseURL = provider === "openrouter"
     ? "https://openrouter.ai/api"
     : provider === "local"
-      ? process.env.D3CODE_LOCAL_BASE_URL ?? "http://localhost:11434/v1"
+      ? process.env.D3CODE_LOCAL_BASE_URL ?? "http://localhost:11434"
       : "https://api.openai.com"
   const response = await fetch(`${baseURL}/v1/chat/completions`, {
     method: "POST",

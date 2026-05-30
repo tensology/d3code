@@ -71,12 +71,12 @@ export async function createModelProofReport(config: D3CodeConfig, secrets?: Sec
         `secret-ref:${configuredRef ?? "none"}`,
         `secret-present:${configuredPresent ? "yes" : "no"}`,
         `env-present:${envPresent ? "yes" : "no"}`,
-        ...(local ? [`base-url:${process.env.D3CODE_LOCAL_BASE_URL ?? "default:http://localhost:11434/v1"}`] : []),
+        ...(local ? [`base-url:${process.env.D3CODE_LOCAL_BASE_URL ?? "default:http://localhost:11434"}`] : []),
       ],
       next: status === "ok"
         ? `Provider ${provider.id} can be selected with /model ${provider.id}/${provider.defaultModel}.`
         : local
-          ? "Set D3CODE_LOCAL_BASE_URL if the local OpenAI-compatible endpoint is not the default Ollama URL."
+          ? "Set D3CODE_LOCAL_BASE_URL if the local OpenAI-compatible endpoint is not the default Ollama URL. Do not include /v1; D3 Code adds it."
           : `Set ${provider.env.join(" or ")} or run setup with --api-key-env for ${provider.id}.`,
     }))
   }
