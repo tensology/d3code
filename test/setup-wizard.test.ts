@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { resolveSetupChoice, type Choice } from "../src/setup/wizard.js"
+import { isFreeModelID, orderSetupModels, resolveSetupChoice, type Choice } from "../src/setup/wizard.js"
 
 const choices: Choice[] = [
   { id: "openai", label: "OpenAI" },
@@ -29,6 +29,25 @@ test("setup choices support numbered model selection", () => {
   assert.equal(resolveSetupChoice("2", models, "anthropic/claude-sonnet-4.5"), "openai/gpt-5")
   assert.equal(resolveSetupChoice("", models, "anthropic/claude-sonnet-4.5"), "anthropic/claude-sonnet-4.5")
   assert.equal(resolveSetupChoice("custom/model", models, "anthropic/claude-sonnet-4.5"), "custom/model")
+})
+
+test("setup model list orders free models first", () => {
+  const ordered = orderSetupModels([
+    "openai/gpt-5",
+    "nvidia/nemotron:free",
+    "kilo-auto/free",
+    "anthropic/claude-sonnet-4.5",
+  ])
+
+  assert.deepEqual(ordered, [
+    "nvidia/nemotron:free",
+    "kilo-auto/free",
+    "openai/gpt-5",
+    "anthropic/claude-sonnet-4.5",
+  ])
+  assert.equal(isFreeModelID("nvidia/nemotron:free"), true)
+  assert.equal(isFreeModelID("kilo-auto/free"), true)
+  assert.equal(isFreeModelID("openai/gpt-5"), false)
 })
 
 test("setup choices preserve unknown typed values for validation elsewhere", () => {

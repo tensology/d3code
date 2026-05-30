@@ -3,6 +3,7 @@ import { stdin as input, stdout as output } from "node:process"
 import type { D3CodeConfig } from "../config/config.js"
 import { saveConfig } from "../config/config.js"
 import { normalizeProviderID, providers } from "../providers/catalog.js"
+import { discoverProviderModels } from "../providers/model-discovery.js"
 import type { SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 
@@ -33,8 +34,27 @@ export function resolveSetupChoice(input: string, choices: Choice[], fallback: s
   return choices.find((choice) => choice.id.toLowerCase() === answer || choice.label.toLowerCase() === answer)?.id ?? answer
 }
 
-function modelChoices(provider: { models: string[] }): Choice[] {
-  return provider.models.map((model) => ({ id: model, label: model }))
+export function isFreeModelID(model: string): boolean {
+  const normalized = model.toLowerCase()
+  return normalized.endsWith(":free") || normalized.endsWith("/free") || normalized.includes(":free/")
+}
+
+export function orderSetupModels(models: string[]): string[] {
+  const free: string[] = []
+  const paid: string[] = []
+  for (const model of models) {
+    if (isFreeModelID(model)) free.push(model)
+    else paid.push(model)
+  }
+  return [...free, ...paid]
+}
+
+function modelChoices(models: string[]): Choice[] {
+  return models.map((model) => ({ id: model, label: isFreeModelID(model) ? `${model} (free)` : model }))
+}
+
+function displayModelChoices(models: string[], limit = 50): string[] {
+  return orderSetupModels(models).slice(0, limit)
 }
 
 export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore): Promise<D3CodeConfig> {
@@ -60,9 +80,13 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
       await secrets.set(ref, key.trim())
       config.modelSecrets[provider.id] = ref
     }
-    const models = modelChoices(provider)
-    renderChoices(`${provider.name} model`, models)
-    const model = resolveSetupChoice(await rl.question(`Model 1-${models.length} [1 ${provider.defaultModel}]: `), models, provider.defaultModel)
+    const discovery = await discoverProviderModels(provider, key.trim() || undefined)
+    if (discovery.warning) console.log(discovery.warning)
+    const visibleModels = displayModelChoices(discovery.models)
+    const models = modelChoices(visibleModels)
+    renderChoices(`${provider.name} model${discovery.source === "provider" ? ` (${discovery.models.length} fetched)` : ""}`, models)
+    if (discovery.models.length > visibleModels.length) console.log(`Showing first ${visibleModels.length}. Type any exact model id to use another fetched model.`)
+    const model = resolveSetupChoice(await rl.question(`Model 1-${models.length} [1 ${visibleModels[0] ?? provider.defaultModel}]: `), models, visibleModels[0] ?? provider.defaultModel)
     config.defaultModel = `${provider.id}/${model}`
     renderChoices("Default approval mode", [
       { id: "ask", label: "Ask", hint: "confirm risky actions before they run" },
@@ -126,6 +150,12 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     }
     await saveConfig(config)
     return config
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ABORT_ERR") {
+      console.log("\nSetup cancelled.")
+      return config
+    }
+    throw error
   } finally {
     rl.close()
   }
