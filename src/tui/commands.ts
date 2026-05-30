@@ -132,7 +132,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /status, /ide|/id [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -145,6 +145,30 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
           "Normal text is sent to the selected model with D3 Code system context.",
         ].join("\n"),
       }
+    case "/setup":
+      return {
+        output: [
+          "D3 Code setup",
+          "",
+          "For the full interactive setup wizard, exit this session and run:",
+          "  d3code setup",
+          "",
+          "That wizard configures the AI provider/key/model first, then optionally creates a Rocket D3 profile.",
+          "After setup, come back here and use:",
+          "  /profile",
+          "  /d3",
+        ].join("\n"),
+      }
+    case "/d3":
+      return {
+        output: [
+          "D3 terminal mode is handled by the live TUI shell.",
+          "Use /d3 [profile] from `d3code` to attach to the configured Rocket D3 runtime.",
+          "Once attached, type TCL/D3 commands directly. Use /chat to return to the agent.",
+        ].join("\n"),
+      }
+    case "/chat":
+      return { output: "Already in agent chat. Use /d3 to attach to the D3 runtime terminal." }
     case "/status":
       return { output: renderIdeStatusReport(await createIdeStatusReport(config, state)) }
     case "/ide":

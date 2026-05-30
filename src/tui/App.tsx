@@ -1,7 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Box, Text, useApp, useInput } from "ink"
+import { selectProfile } from "../config/config.js"
+import { assertD3Allowed } from "../core/permissions.js"
+import { createD3Session } from "../d3/adapter.js"
+import { captureD3Terminal } from "../d3/terminal-capture.js"
+import type { D3ScreenBuffer } from "../d3/screen-buffer.js"
 import type { D3CodeConfig } from "../config/config.js"
-import type { SafetyMode } from "../domain/types.js"
+import type { D3Session, SafetyMode } from "../domain/types.js"
 import type { ChatMessage } from "../llm/client.js"
 import { defaultSecretStore } from "../security/secrets.js"
 import { handleSlashCommand } from "./commands.js"
@@ -12,6 +17,14 @@ import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
+
+function renderTuiD3Screen(buffer: D3ScreenBuffer): string {
+  const visibleEnd = Math.max(1, ...buffer.lines.map((line, index) => line.trim().length ? index + 1 : 0))
+  return [
+    `D3 screen ${buffer.width}x${buffer.height} cursor row=${buffer.row} col=${buffer.col}`,
+    ...buffer.lines.slice(0, visibleEnd).map((line) => `|${line.trimEnd()}|`),
+  ].join("\n")
+}
 
 export interface AppProps {
   model: string
@@ -53,6 +66,7 @@ export function App(props: AppProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(messagesFromSession(props.config, props.session, initialContext))
   const [transcript, setTranscript] = useState<Array<{ role: string; content: string }>>(transcriptFromSession(props.session))
   const [welcome, setWelcome] = useState<WelcomeSummary | undefined>()
+  const d3Session = useRef<D3Session | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
 
   useEffect(() => {
@@ -65,6 +79,13 @@ export function App(props: AppProps) {
     })
     return () => {
       cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      void d3Session.current?.close()
+      d3Session.current = undefined
     }
   }, [])
 
@@ -99,6 +120,21 @@ export function App(props: AppProps) {
     setTranscript((current) => [...current, { role: "user", content: line }])
     try {
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
+      if (line === "/d3" || line.startsWith("/d3 ")) {
+        await enterD3Terminal(line.split(/\s+/)[1])
+        return
+      }
+      if (line === "/chat") {
+        await d3Session.current?.close()
+        d3Session.current = undefined
+        setMode("chat")
+        setTranscript((current) => [...current, { role: "system", content: "Back in agent chat. Use /d3 to attach to the D3 runtime again." }])
+        return
+      }
+      if (mode === "d3" && !line.startsWith("/")) {
+        await submitD3TerminalLine(line)
+        return
+      }
       if (line.startsWith("/")) {
         const result = await handleSlashCommand(line, props.config, { model, safety, profile, mode })
         if (result.clear) setTranscript([])
@@ -151,6 +187,48 @@ export function App(props: AppProps) {
     }
   }
 
+  async function enterD3Terminal(profileName?: string) {
+    const selected = selectProfile(props.config, profileName ?? profile)
+    if (!selected) {
+      setTranscript((current) => [...current, { role: "error", content: "No D3 profile configured. Run /setup for the setup path, then use /profile to select it." }])
+      return
+    }
+    await d3Session.current?.close()
+    d3Session.current = createD3Session(selected)
+    setProfile(selected.name)
+    setMode("d3")
+    const loginCommand = selected.account ? `LOGTO ${selected.account}\nWHO\nVERSION` : "WHO\nVERSION"
+    const capture = await captureD3Terminal(d3Session.current, loginCommand, { width: 80, height: 18 })
+    setTranscript((current) => [
+      ...current,
+      {
+        role: "system",
+        content: [
+          `D3 terminal attached to ${selected.name}${selected.account ? ` / ${selected.account}` : ""}.`,
+          "Manual grounding: D3 logon lands at a TCL ':' prompt or inside an application/menu screen after user and master dictionary/account are accepted.",
+          "Type D3/TCL commands directly. Use /chat to return to the agent.",
+          "",
+          renderTuiD3Screen(capture.screen),
+        ].join("\n"),
+      },
+    ])
+  }
+
+  async function submitD3TerminalLine(line: string) {
+    const selected = selectProfile(props.config, profile)
+    if (!selected) {
+      setTranscript((current) => [...current, { role: "error", content: "No D3 profile selected. Use /profile <name> or /setup first." }])
+      return
+    }
+    if (!d3Session.current) d3Session.current = createD3Session(selected)
+    assertD3Allowed(safety, line, safety === "trust")
+    const capture = await captureD3Terminal(d3Session.current, line, { width: 80, height: 18 })
+    const output = capture.screen.events.length > 0
+      ? renderTuiD3Screen(capture.screen)
+      : capture.result.stdout || capture.result.stderr || "(no D3 output)"
+    setTranscript((current) => [...current, { role: "tool", content: output }])
+  }
+
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
       <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="row">
@@ -172,7 +250,9 @@ export function App(props: AppProps) {
           <Text>{welcome?.primaryAction ?? "Loading connection state..."}</Text>
           <Box marginTop={1} flexDirection="column">
             <Text color="cyan">/help <Text dimColor>controls and slash commands</Text></Text>
-            <Text color="cyan">/status <Text dimColor>full readiness report</Text></Text>
+            <Text color="cyan">/setup <Text dimColor>configure AI provider and D3 profile</Text></Text>
+            <Text color="cyan">/profile <Text dimColor>show or switch D3 profiles</Text></Text>
+            <Text color="cyan">/d3 <Text dimColor>attach to the D3 runtime terminal</Text></Text>
             <Text color="cyan">/ide <Text dimColor>open the browser workbench</Text></Text>
           </Box>
           <Box marginTop={1}>

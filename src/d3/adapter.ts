@@ -48,11 +48,13 @@ export class PersistentLocalD3Session implements D3Session {
   private stdout = ""
   private stderr = ""
   private sequence = 0
+  private closedError?: Error
 
   constructor(readonly profile: ConnectionProfile) {}
 
   private start(): void {
     if (this.child) return
+    this.closedError = undefined
     const entry = this.profile.entryCommand
     this.child = entry
       ? spawn("sh", ["-lc", entry], { stdio: ["pipe", "pipe", "pipe"] })
@@ -63,22 +65,38 @@ export class PersistentLocalD3Session implements D3Session {
     this.child.stderr.on("data", (chunk) => {
       this.stderr += chunk.toString()
     })
+    this.child.on("error", (error) => {
+      this.closedError = error
+    })
+    this.child.on("close", (code, signal) => {
+      this.closedError = new Error(`Persistent D3 session exited before the prompt was seen: code=${code ?? "null"} signal=${signal ?? "null"}`)
+    })
   }
 
   async run(command: string, timeoutMs = 30_000): Promise<D3CommandResult> {
     this.start()
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
+    const promptPattern = this.profile.promptPattern ? new RegExp(this.profile.promptPattern) : undefined
+    if (promptPattern && this.stdout.length === 0) await absorbStartupPrompt(() => {
+      if (this.closedError) throw this.closedError
+      return promptPattern.test(this.stdout)
+    })
     const stdoutStart = this.stdout.length
     const stderrStart = this.stderr.length
-    const promptPattern = this.profile.promptPattern ? new RegExp(this.profile.promptPattern) : undefined
     const marker = `__D3CODE_DONE_${Date.now().toString(36)}_${this.sequence++}__`
     const payload = promptPattern ? `${command}\n` : `${command}\nprintf '\\n${marker}:%s\\n' "$?"\n`
     this.child.stdin.write(payload)
 
     const wait = promptPattern
-      ? () => promptPattern.test(this.stdout.slice(stdoutStart))
-      : () => this.stdout.slice(stdoutStart).includes(marker)
+      ? () => {
+        if (this.closedError) throw this.closedError
+        return promptPattern.test(this.stdout.slice(stdoutStart))
+      }
+      : () => {
+        if (this.closedError) throw this.closedError
+        return this.stdout.slice(stdoutStart).includes(marker)
+      }
     await waitFor(wait, timeoutMs, `Command timed out after ${timeoutMs}ms: ${command}`)
 
     const stdout = this.stdout.slice(stdoutStart)
@@ -101,13 +119,31 @@ export class PersistentLocalD3Session implements D3Session {
   }
 }
 
+async function absorbStartupPrompt(predicate: () => boolean, timeoutMs = 150): Promise<void> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (predicate()) return
+    await delay(10)
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function waitFor(predicate: () => boolean, timeoutMs: number, timeoutMessage: string): Promise<void> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
     const timer = setInterval(() => {
-      if (predicate()) {
+      try {
+        if (predicate()) {
+          clearInterval(timer)
+          resolve()
+          return
+        }
+      } catch (error) {
         clearInterval(timer)
-        resolve()
+        reject(error)
         return
       }
       if (Date.now() - started > timeoutMs) {

@@ -28,6 +28,17 @@ test("slash command changes model", async () => {
   assert.equal(result.state?.model, "anthropic/claude-sonnet-4-5")
 })
 
+test("slash command documents setup and D3 terminal entrypoints", async () => {
+  const setup = await handleSlashCommand("/setup", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "chat" })
+  assert.match(setup.output, /d3code setup/)
+  assert.match(setup.output, /\/profile/)
+  assert.match(setup.output, /\/d3/)
+
+  const d3 = await handleSlashCommand("/d3", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "chat" })
+  assert.match(d3.output, /live TUI shell/)
+  assert.match(d3.output, /\/chat/)
+})
+
 test("slash command renders model routing plan", async () => {
   const result = await handleSlashCommand("/model-routing migrate --bias speed", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
   assert.match(result.output, /D3 Model Routing Plan: migrate/)
