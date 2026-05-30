@@ -33,6 +33,10 @@ export function resolveSetupChoice(input: string, choices: Choice[], fallback: s
   return choices.find((choice) => choice.id.toLowerCase() === answer || choice.label.toLowerCase() === answer)?.id ?? answer
 }
 
+function modelChoices(provider: { models: string[] }): Choice[] {
+  return provider.models.map((model) => ({ id: model, label: model }))
+}
+
 export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore): Promise<D3CodeConfig> {
   const rl = createInterface({ input, output })
   try {
@@ -49,15 +53,16 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     const provider = providers.find((item) => item.id === providerID) ?? providers[0]
     if (provider.id === "ollama") {
       console.log("Ollama uses the local OpenAI-compatible endpoint at http://localhost:11434 by default.")
-      console.log("Use the exact model name installed locally, for example llama3.1 or qwen2.5-coder:7b.")
     }
-    const model = (await rl.question(`Model [${provider.defaultModel}]: `)).trim() || provider.defaultModel
     const key = provider.id === "ollama" ? "" : await rl.question(`API key for ${provider.name} (blank to use env ${provider.env.join("/")}): `)
     if (key.trim()) {
       const ref = `keychain:model:${provider.id}`
       await secrets.set(ref, key.trim())
       config.modelSecrets[provider.id] = ref
     }
+    const models = modelChoices(provider)
+    renderChoices(`${provider.name} model`, models)
+    const model = resolveSetupChoice(await rl.question(`Model 1-${models.length} [1 ${provider.defaultModel}]: `), models, provider.defaultModel)
     config.defaultModel = `${provider.id}/${model}`
     renderChoices("Default approval mode", [
       { id: "ask", label: "Ask", hint: "confirm risky actions before they run" },
