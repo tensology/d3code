@@ -2,40 +2,40 @@ import type { BundleArtifacts, D3ApplicationBundle } from "./bundle.js"
 import { createD3AccessPlan } from "./access-plan.js"
 import { createDataValidationPlan } from "./data-plan.js"
 
-export interface DashboardNode {
+export interface IdeNode {
   id: string
   label: string
   kind: "account" | "user" | "file" | "dictionary" | "program" | "subroutine" | "index" | "screen" | "data-model"
   risk: "ok" | "review" | "warning" | "blocked"
 }
 
-export interface DashboardEdge {
+export interface IdeEdge {
   from: string
   to: string
   label: string
 }
 
-export interface BundleDashboardReport {
+export interface BundleIdeReport {
   account: string
   profile: string
-  nodes: DashboardNode[]
-  edges: DashboardEdge[]
+  nodes: IdeNode[]
+  edges: IdeEdge[]
   panels: Array<{ id: string; title: string; items: string[] }>
   nextCommands: string[]
 }
 
-function riskFromCount(count: number): DashboardNode["risk"] {
+function riskFromCount(count: number): IdeNode["risk"] {
   if (count === 0) return "ok"
   if (count < 3) return "review"
   if (count < 6) return "warning"
   return "blocked"
 }
 
-export function createBundleDashboardReport(bundle: D3ApplicationBundle, artifacts: BundleArtifacts): BundleDashboardReport {
+export function createBundleIdeReport(bundle: D3ApplicationBundle, artifacts: BundleArtifacts): BundleIdeReport {
   const accessPlan = createD3AccessPlan(bundle, artifacts)
   const dataPlan = createDataValidationPlan(bundle, artifacts)
-  const nodes: DashboardNode[] = [{ id: `account:${bundle.account}`, label: bundle.account, kind: "account", risk: "review" }]
-  const edges: DashboardEdge[] = []
+  const nodes: IdeNode[] = [{ id: `account:${bundle.account}`, label: bundle.account, kind: "account", risk: "review" }]
+  const edges: IdeEdge[] = []
   for (const user of bundle.users) {
     nodes.push({ id: `user:${user.id}`, label: user.name ? `${user.name} (${user.id})` : user.id, kind: "user", risk: user.roles.length ? "ok" : "review" })
     edges.push({ from: `user:${user.id}`, to: `account:${bundle.account}`, label: "can access" })
@@ -108,9 +108,9 @@ export function createBundleDashboardReport(bundle: D3ApplicationBundle, artifac
   }
 }
 
-export function renderBundleDashboardReport(report: BundleDashboardReport): string {
+export function renderBundleIdeReport(report: BundleIdeReport): string {
   return [
-    `# D3 Dashboard: ${report.account}`,
+    `# D3 IDE: ${report.account}`,
     "",
     `Profile: ${report.profile}`,
     `Nodes: ${report.nodes.length}`,

@@ -161,9 +161,9 @@ test("slash command renders terminal bridge plan", async () => {
   assert.match(result.output, /legacy screen-buffer adapter/)
 })
 
-test("slash command renders cockpit terminal contract", async () => {
-  const result = await handleSlashCommand("/cockpit-terminal prod", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
-  assert.match(result.output, /D3 Cockpit Terminal Contract/)
+test("slash command renders IDE terminal contract", async () => {
+  const result = await handleSlashCommand("/ide-terminal prod", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
+  assert.match(result.output, /D3 IDE Terminal Contract/)
   assert.match(result.output, /UOPY typed adapter/)
 })
 

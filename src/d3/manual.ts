@@ -125,7 +125,7 @@ export const manualCommandCapabilities: ManualCommandCapability[] = [
     commands: ["CRT", "DISPLAY", "INPUT", "@()", "PROC", "MENU"],
     pattern: /\b(CRT|DISPLAY|INPUT|PROC|MENU|cursor-control|terminal type|@\(-?\d+)/i,
     surface: "typed",
-    cli: ["terminal-capture", "screen-parse", "bundle-screen-plan", "cockpit-terminal"],
+    cli: ["terminal-capture", "screen-parse", "bundle-screen-plan", "ide-terminal"],
     notes: "Transcript capture and screen parsing are typed; real PowerTerm parity remains live-proof gated.",
   },
   {

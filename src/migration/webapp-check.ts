@@ -65,15 +65,15 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
   const openApiPath = join(root, "openapi.json")
   const mockDataPath = join(root, "mock-data.json")
   const uiPlanPath = join(root, "public/ui-plan.json")
-  const dashboardDataPath = join(root, "public/dashboard-data.json")
-  const proofDashboardPath = join(root, "public/proof-dashboard.json")
+  const ideDataPath = join(root, "public/ide-data.json")
+  const proofDataPath = join(root, "public/proof-data.json")
   const accessPlanPath = join(root, "access-plan.json")
   const publicDataValidationPath = join(root, "public", "data-validation-plan.json")
   const publicIndexValidationPath = join(root, "public", "index-validation-plan.json")
   const publicCodeModernizationPath = join(root, "public", "code-modernization-plan.json")
   const publicScreenModernizationPath = join(root, "public", "screen-modernization-plan.json")
-  const cockpitTerminalPath = join(root, "cockpit-terminal.json")
-  const publicCockpitTerminalPath = join(root, "public", "cockpit-terminal.json")
+  const ideTerminalPath = join(root, "ide-terminal.json")
+  const publicIdeTerminalPath = join(root, "public", "ide-terminal.json")
   const connectorStrategyPath = join(root, "d3-connector-strategy.json")
   const skillPackPath = join(root, "d3code-skill-pack.json")
   const skillManifestPath = join(root, "d3code-skill-manifest.json")
@@ -117,22 +117,22 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
     items.push(item("http-server", serverText.includes("createServer") ? "ok" : "missing", serverText.includes("createServer") ? "HTTP server is present" : "HTTP server is missing"))
     items.push(item("static-ui-route", serverText.includes("sendStatic") ? "ok" : "missing", serverText.includes("sendStatic") ? "static UI route is present" : "static UI route is missing"))
     items.push(item("ui-plan-route", serverText.includes("/ui-plan.json") ? "ok" : "warning", serverText.includes("/ui-plan.json") ? "UI plan route is present" : "UI plan route is missing"))
-    items.push(item("dashboard-data-route", serverText.includes("/dashboard-data.json") ? "ok" : "warning", serverText.includes("/dashboard-data.json") ? "dashboard data route is present" : "dashboard data route is missing"))
-    items.push(item("proof-dashboard-route", serverText.includes("/proof-dashboard.json") ? "ok" : "warning", serverText.includes("/proof-dashboard.json") ? "proof dashboard route is present" : "proof dashboard route is missing"))
+    items.push(item("ide-data-route", serverText.includes("/ide-data.json") ? "ok" : "warning", serverText.includes("/ide-data.json") ? "IDE data route is present" : "IDE data route is missing"))
+    items.push(item("proof-data-route", serverText.includes("/proof-data.json") ? "ok" : "warning", serverText.includes("/proof-data.json") ? "proof IDE route is present" : "proof IDE route is missing"))
     items.push(item("validation-plan-routes", serverText.includes("/data-validation-plan.json") && serverText.includes("/index-validation-plan.json") ? "ok" : "warning", serverText.includes("/data-validation-plan.json") && serverText.includes("/index-validation-plan.json") ? "data/index validation plan routes are present" : "data/index validation plan routes are missing"))
     items.push(item("modernization-plan-routes", serverText.includes("/code-modernization-plan.json") && serverText.includes("/screen-modernization-plan.json") ? "ok" : "warning", serverText.includes("/code-modernization-plan.json") && serverText.includes("/screen-modernization-plan.json") ? "code/screen modernization plan routes are present" : "code/screen modernization plan routes are missing"))
     items.push(item("skill-manifest-route", serverText.includes("/skill-manifest.json") ? "ok" : "warning", serverText.includes("/skill-manifest.json") ? "skill manifest route is present" : "skill manifest route is missing"))
     items.push(item("reference-skill-audit-route", serverText.includes("/reference-skill-audit.json") ? "ok" : "warning", serverText.includes("/reference-skill-audit.json") ? "reference skill audit route is present" : "reference skill audit route is missing"))
     items.push(item("operations-artifact-routes", serverText.includes("/subagent-prompts.json") && serverText.includes("/live-operator-runbook.json") ? "ok" : "warning", serverText.includes("/subagent-prompts.json") && serverText.includes("/live-operator-runbook.json") ? "subagent prompt and live runbook routes are present" : "subagent prompt or live runbook routes are missing"))
-    items.push(item("cockpit-terminal-route", serverText.includes("/cockpit-terminal.json") ? "ok" : "warning", serverText.includes("/cockpit-terminal.json") ? "cockpit terminal contract route is present" : "cockpit terminal contract route is missing"))
+    items.push(item("ide-terminal-route", serverText.includes("/ide-terminal.json") ? "ok" : "warning", serverText.includes("/ide-terminal.json") ? "IDE terminal contract route is present" : "IDE terminal contract route is missing"))
     items.push(item("connector-strategy-route", serverText.includes("/connector-strategy.json") ? "ok" : "warning", serverText.includes("/connector-strategy.json") ? "connector strategy route is present" : "connector strategy route is missing"))
     items.push(item("access-plan-route", serverText.includes("/access-plan.json") ? "ok" : "warning", serverText.includes("/access-plan.json") ? "access plan route is present" : "access plan route is missing"))
-    items.push(item("access-role-guard", serverText.includes("x-d3code-role") && serverText.includes("D3 access denied") ? "ok" : "missing", serverText.includes("x-d3code-role") && serverText.includes("D3 access denied") ? "cockpit role guard is present on mutation routes" : "cockpit role guard is missing from mutation routes"))
+    items.push(item("access-role-guard", serverText.includes("x-d3code-role") && serverText.includes("D3 access denied") ? "ok" : "missing", serverText.includes("x-d3code-role") && serverText.includes("D3 access denied") ? "IDE role guard is present on mutation routes" : "IDE role guard is missing from mutation routes"))
     items.push(item("mutation-journal", serverText.includes("writeMutationJournal") && serverText.includes("mutation-journal.jsonl") ? "ok" : "missing", serverText.includes("writeMutationJournal") && serverText.includes("mutation-journal.jsonl") ? "mutation journal is written by generated write routes" : "mutation journal is missing from generated write routes"))
     items.push(item("mutation-rollback-proof", serverText.includes("rollback:") && serverText.includes("before payload") ? "ok" : "missing", serverText.includes("rollback:") && serverText.includes("before payload") ? "mutation journal includes rollback instructions" : "mutation journal rollback instructions are missing"))
-    items.push(item("terminal-send-route", serverText.includes("/terminal/send") ? "ok" : "missing", serverText.includes("/terminal/send") ? "cockpit terminal send route is present" : "cockpit terminal send route is missing"))
+    items.push(item("terminal-send-route", serverText.includes("/terminal/send") ? "ok" : "missing", serverText.includes("/terminal/send") ? "IDE terminal send route is present" : "IDE terminal send route is missing"))
     items.push(item("terminal-screen-parser", serverText.includes("parseTerminalScreen") && serverText.includes("D3CODE_TERMINAL_ENABLED") ? "ok" : "missing", serverText.includes("parseTerminalScreen") && serverText.includes("D3CODE_TERMINAL_ENABLED") ? "terminal screen parser and live-D3 enable guard are present" : "terminal screen parser or live-D3 enable guard is missing"))
-    items.push(item("terminal-journal", serverText.includes("writeTerminalJournal") && serverText.includes("terminal-journal.jsonl") ? "ok" : "missing", serverText.includes("writeTerminalJournal") && serverText.includes("terminal-journal.jsonl") ? "terminal screen metadata journal is written by cockpit terminal route" : "terminal screen metadata journal is missing from cockpit terminal route"))
+    items.push(item("terminal-journal", serverText.includes("writeTerminalJournal") && serverText.includes("terminal-journal.jsonl") ? "ok" : "missing", serverText.includes("writeTerminalJournal") && serverText.includes("terminal-journal.jsonl") ? "terminal screen metadata journal is written by IDE terminal route" : "terminal screen metadata journal is missing from IDE terminal route"))
     items.push(item("terminal-transcript-redaction", serverText.includes("D3CODE_TERMINAL_RECORD_TRANSCRIPT") && serverText.includes("transcriptRedacted") ? "ok" : "missing", serverText.includes("D3CODE_TERMINAL_RECORD_TRANSCRIPT") && serverText.includes("transcriptRedacted") ? "terminal transcript capture is redacted unless explicitly enabled" : "terminal transcript redaction guard is missing"))
   }
 
@@ -156,7 +156,7 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
   if (apiSmokeTestText) {
     items.push(item("api-smoke-health", apiSmokeTestText.includes("/health") && apiSmokeTestText.includes("D3CODE_MOCK") ? "ok" : "missing", apiSmokeTestText.includes("/health") && apiSmokeTestText.includes("D3CODE_MOCK") ? "mock health smoke test is present" : "mock health smoke test is incomplete"))
     items.push(item("api-smoke-openapi", apiSmokeTestText.includes("/openapi.json") && apiSmokeTestText.includes("3.1.0") ? "ok" : "missing", apiSmokeTestText.includes("/openapi.json") && apiSmokeTestText.includes("3.1.0") ? "OpenAPI smoke test is present" : "OpenAPI smoke test is missing"))
-    items.push(item("api-smoke-public-artifacts", apiSmokeTestText.includes("/ui-plan.json") && apiSmokeTestText.includes("/dashboard-data.json") && apiSmokeTestText.includes("/proof-dashboard.json") && apiSmokeTestText.includes("/skill-manifest.json") ? "ok" : "missing", apiSmokeTestText.includes("/ui-plan.json") && apiSmokeTestText.includes("/dashboard-data.json") && apiSmokeTestText.includes("/proof-dashboard.json") && apiSmokeTestText.includes("/skill-manifest.json") ? "public cockpit/proof/skill artifact smoke tests are present" : "public cockpit/proof/skill artifact smoke tests are missing"))
+    items.push(item("api-smoke-public-artifacts", apiSmokeTestText.includes("/ui-plan.json") && apiSmokeTestText.includes("/ide-data.json") && apiSmokeTestText.includes("/proof-data.json") && apiSmokeTestText.includes("/skill-manifest.json") ? "ok" : "missing", apiSmokeTestText.includes("/ui-plan.json") && apiSmokeTestText.includes("/ide-data.json") && apiSmokeTestText.includes("/proof-data.json") && apiSmokeTestText.includes("/skill-manifest.json") ? "public IDE/proof/skill artifact smoke tests are present" : "public IDE/proof/skill artifact smoke tests are missing"))
     items.push(item("api-smoke-reference-skill-audit", apiSmokeTestText.includes("/reference-skill-audit.json") && apiSmokeTestText.includes("referenceSkillAudit.items") ? "ok" : "missing", apiSmokeTestText.includes("/reference-skill-audit.json") && apiSmokeTestText.includes("referenceSkillAudit.items") ? "reference skill audit smoke test is present" : "reference skill audit smoke test is missing"))
     items.push(item("api-smoke-operations-artifacts", apiSmokeTestText.includes("/subagent-prompts.json") && apiSmokeTestText.includes("/live-operator-runbook.json") && apiSmokeTestText.includes("subagentPrompts.packets") && apiSmokeTestText.includes("liveRunbook.phases") ? "ok" : "missing", apiSmokeTestText.includes("/subagent-prompts.json") && apiSmokeTestText.includes("/live-operator-runbook.json") && apiSmokeTestText.includes("subagentPrompts.packets") && apiSmokeTestText.includes("liveRunbook.phases") ? "subagent prompt and live runbook smoke tests are present" : "subagent prompt or live runbook smoke tests are missing"))
     items.push(item("api-smoke-validation-plans", apiSmokeTestText.includes("/data-validation-plan.json") && apiSmokeTestText.includes("/index-validation-plan.json") && apiSmokeTestText.includes("dataValidation.items") && apiSmokeTestText.includes("indexValidation.items") ? "ok" : "missing", apiSmokeTestText.includes("/data-validation-plan.json") && apiSmokeTestText.includes("/index-validation-plan.json") && apiSmokeTestText.includes("dataValidation.items") && apiSmokeTestText.includes("indexValidation.items") ? "data/index validation plan smoke tests are present" : "data/index validation plan smoke tests are missing"))
@@ -164,10 +164,10 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
     items.push(item("api-smoke-mock-data", apiSmokeTestText.includes("mockData") && apiSmokeTestText.includes("mock-data.json") ? "ok" : "missing", apiSmokeTestText.includes("mockData") && apiSmokeTestText.includes("mock-data.json") ? "captured mock data smoke test is present" : "captured mock data smoke test is missing"))
     items.push(item("api-smoke-free-port", apiSmokeTestText.includes("createTcpServer") && apiSmokeTestText.includes("freePort") ? "ok" : "missing", apiSmokeTestText.includes("createTcpServer") && apiSmokeTestText.includes("freePort") ? "generated smoke tests reserve available ports" : "generated smoke tests use collision-prone fixed/random ports"))
     items.push(item("api-smoke-record-roundtrip", apiSmokeTestText.includes("formatD3Record") && apiSmokeTestText.includes("parseD3Record") ? "ok" : "missing", apiSmokeTestText.includes("formatD3Record") && apiSmokeTestText.includes("parseD3Record") ? "D3 record roundtrip smoke test is present" : "D3 record roundtrip smoke test is missing"))
-    items.push(item("api-smoke-access-denied", apiSmokeTestText.includes("access denied") && apiSmokeTestText.includes("D3CODE_ALLOW_WRITES") ? "ok" : "missing", apiSmokeTestText.includes("access denied") && apiSmokeTestText.includes("D3CODE_ALLOW_WRITES") ? "cockpit access-denied write smoke test is present" : "cockpit access-denied write smoke test is missing"))
-    items.push(item("api-smoke-terminal-send", apiSmokeTestText.includes("/terminal/send") && apiSmokeTestText.includes("terminal.screen.lines") ? "ok" : "missing", apiSmokeTestText.includes("/terminal/send") && apiSmokeTestText.includes("terminal.screen.lines") ? "mock cockpit terminal send smoke test is present" : "mock cockpit terminal send smoke test is missing"))
-    items.push(item("api-smoke-terminal-journal", apiSmokeTestText.includes("terminal-journal.jsonl") && apiSmokeTestText.includes("transcriptRedacted") ? "ok" : "missing", apiSmokeTestText.includes("terminal-journal.jsonl") && apiSmokeTestText.includes("transcriptRedacted") ? "mock cockpit terminal journal smoke test is present" : "mock cockpit terminal journal smoke test is missing"))
-    items.push(item("api-smoke-cockpit-terminal", apiSmokeTestText.includes("/cockpit-terminal.json") && apiSmokeTestText.includes("requiredLiveProof") && apiSmokeTestText.includes("terminal-capture") && apiSmokeTestText.includes("sendPolicy.enabledByDefault") && apiSmokeTestText.includes("compile-catalog") ? "ok" : "missing", apiSmokeTestText.includes("/cockpit-terminal.json") && apiSmokeTestText.includes("requiredLiveProof") && apiSmokeTestText.includes("terminal-capture") && apiSmokeTestText.includes("sendPolicy.enabledByDefault") && apiSmokeTestText.includes("compile-catalog") ? "cockpit terminal contract smoke test is present" : "cockpit terminal contract smoke test is missing"))
+    items.push(item("api-smoke-access-denied", apiSmokeTestText.includes("access denied") && apiSmokeTestText.includes("D3CODE_ALLOW_WRITES") ? "ok" : "missing", apiSmokeTestText.includes("access denied") && apiSmokeTestText.includes("D3CODE_ALLOW_WRITES") ? "IDE access-denied write smoke test is present" : "IDE access-denied write smoke test is missing"))
+    items.push(item("api-smoke-terminal-send", apiSmokeTestText.includes("/terminal/send") && apiSmokeTestText.includes("terminal.screen.lines") ? "ok" : "missing", apiSmokeTestText.includes("/terminal/send") && apiSmokeTestText.includes("terminal.screen.lines") ? "mock IDE terminal send smoke test is present" : "mock IDE terminal send smoke test is missing"))
+    items.push(item("api-smoke-terminal-journal", apiSmokeTestText.includes("terminal-journal.jsonl") && apiSmokeTestText.includes("transcriptRedacted") ? "ok" : "missing", apiSmokeTestText.includes("terminal-journal.jsonl") && apiSmokeTestText.includes("transcriptRedacted") ? "mock IDE terminal journal smoke test is present" : "mock IDE terminal journal smoke test is missing"))
+    items.push(item("api-smoke-ide-terminal", apiSmokeTestText.includes("/ide-terminal.json") && apiSmokeTestText.includes("requiredLiveProof") && apiSmokeTestText.includes("terminal-capture") && apiSmokeTestText.includes("sendPolicy.enabledByDefault") && apiSmokeTestText.includes("compile-catalog") ? "ok" : "missing", apiSmokeTestText.includes("/ide-terminal.json") && apiSmokeTestText.includes("requiredLiveProof") && apiSmokeTestText.includes("terminal-capture") && apiSmokeTestText.includes("sendPolicy.enabledByDefault") && apiSmokeTestText.includes("compile-catalog") ? "IDE terminal contract smoke test is present" : "IDE terminal contract smoke test is missing"))
     items.push(item("api-smoke-connector-strategy", apiSmokeTestText.includes("/connector-strategy.json") && apiSmokeTestText.includes("screen-buffer") && apiSmokeTestText.includes("uopy") ? "ok" : "missing", apiSmokeTestText.includes("/connector-strategy.json") && apiSmokeTestText.includes("screen-buffer") && apiSmokeTestText.includes("uopy") ? "connector strategy smoke test is present" : "connector strategy smoke test is missing"))
     items.push(item("api-smoke-mutation-journal", apiSmokeTestText.includes("mutation-journal.jsonl") && apiSmokeTestText.includes("JOURNAL-SMOKE") && apiSmokeTestText.includes("\"rollback\"") ? "ok" : "missing", apiSmokeTestText.includes("mutation-journal.jsonl") && apiSmokeTestText.includes("JOURNAL-SMOKE") && apiSmokeTestText.includes("\"rollback\"") ? "mock mutation journal smoke test is present" : "mock mutation journal smoke test is missing"))
   }
@@ -191,27 +191,27 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
   items.push(item("openapi", await exists(openApiPath) ? "ok" : "warning", await exists(openApiPath) ? "openapi.json exists" : "openapi.json is missing"))
   items.push(item("mock-data", await exists(mockDataPath) ? "ok" : "warning", await exists(mockDataPath) ? "mock-data.json exists" : "mock-data.json is missing; generated mock mode has no captured records"))
   items.push(item("ui-plan", await exists(uiPlanPath) ? "ok" : "warning", await exists(uiPlanPath) ? "public/ui-plan.json exists" : "public/ui-plan.json is missing; generated browser UI has only resource metadata"))
-  const dashboardDataText = await readIfExists(dashboardDataPath)
-  items.push(item("dashboard-data", dashboardDataText ? "ok" : "warning", dashboardDataText ? "public/dashboard-data.json exists" : "public/dashboard-data.json is missing; cockpit graph has no bundled estate data"))
-  if (dashboardDataText) {
+  const ideDataText = await readIfExists(ideDataPath)
+  items.push(item("ide-data", ideDataText ? "ok" : "warning", ideDataText ? "public/ide-data.json exists" : "public/ide-data.json is missing; IDE graph has no bundled estate data"))
+  if (ideDataText) {
     try {
-      const dashboard = JSON.parse(dashboardDataText) as { nodes?: unknown[]; edges?: unknown[]; panels?: Array<{ id?: string }> }
-      items.push(item("dashboard-data-graph", Array.isArray(dashboard.nodes) && Array.isArray(dashboard.edges) ? "ok" : "warning", Array.isArray(dashboard.nodes) && Array.isArray(dashboard.edges) ? `nodes:${dashboard.nodes.length}; edges:${dashboard.edges.length}` : "dashboard graph nodes/edges are missing"))
-      items.push(item("dashboard-data-panels", dashboard.panels?.some((panel) => panel.id === "risks") && dashboard.panels?.some((panel) => panel.id === "model") ? "ok" : "warning", dashboard.panels ? `panels:${dashboard.panels.map((panel) => panel.id).join(",")}` : "dashboard panels are missing"))
+      const ide = JSON.parse(ideDataText) as { nodes?: unknown[]; edges?: unknown[]; panels?: Array<{ id?: string }> }
+      items.push(item("ide-data-graph", Array.isArray(ide.nodes) && Array.isArray(ide.edges) ? "ok" : "warning", Array.isArray(ide.nodes) && Array.isArray(ide.edges) ? `nodes:${ide.nodes.length}; edges:${ide.edges.length}` : "IDE graph nodes/edges are missing"))
+      items.push(item("ide-data-panels", ide.panels?.some((panel) => panel.id === "risks") && ide.panels?.some((panel) => panel.id === "model") ? "ok" : "warning", ide.panels ? `panels:${ide.panels.map((panel) => panel.id).join(",")}` : "IDE panels are missing"))
     } catch {
-      items.push(item("dashboard-data-json", "warning", "public/dashboard-data.json is not valid JSON"))
+      items.push(item("ide-data-json", "warning", "public/ide-data.json is not valid JSON"))
     }
   }
-  const proofDashboardText = await readIfExists(proofDashboardPath)
-  items.push(item("proof-dashboard", proofDashboardText ? "ok" : "warning", proofDashboardText ? "public/proof-dashboard.json exists" : "public/proof-dashboard.json is missing; GSD proof state is not bundled for the cockpit"))
-  if (proofDashboardText) {
+  const proofDataText = await readIfExists(proofDataPath)
+  items.push(item("proof-data", proofDataText ? "ok" : "warning", proofDataText ? "public/proof-data.json exists" : "public/proof-data.json is missing; GSD proof state is not bundled for the IDE"))
+  if (proofDataText) {
     try {
-      const proof = JSON.parse(proofDashboardText) as { readiness?: { gates?: unknown[] }; completion?: { requirements?: unknown[] }; release?: { decision?: string }; qaEvidence?: unknown }
-      items.push(item("proof-dashboard-readiness", Array.isArray(proof.readiness?.gates) ? "ok" : "warning", Array.isArray(proof.readiness?.gates) ? `gates:${proof.readiness.gates.length}` : "proof dashboard readiness gates are missing"))
-      items.push(item("proof-dashboard-completion", Array.isArray(proof.completion?.requirements) ? "ok" : "warning", Array.isArray(proof.completion?.requirements) ? `requirements:${proof.completion.requirements.length}` : "proof dashboard completion requirements are missing"))
-      items.push(item("proof-dashboard-release", proof.release?.decision ? "ok" : "warning", proof.release?.decision ? `decision:${proof.release.decision}` : "proof dashboard release decision is missing"))
+      const proof = JSON.parse(proofDataText) as { readiness?: { gates?: unknown[] }; completion?: { requirements?: unknown[] }; release?: { decision?: string }; qaEvidence?: unknown }
+      items.push(item("proof-data-readiness", Array.isArray(proof.readiness?.gates) ? "ok" : "warning", Array.isArray(proof.readiness?.gates) ? `gates:${proof.readiness.gates.length}` : "proof IDE readiness gates are missing"))
+      items.push(item("proof-data-completion", Array.isArray(proof.completion?.requirements) ? "ok" : "warning", Array.isArray(proof.completion?.requirements) ? `requirements:${proof.completion.requirements.length}` : "proof IDE completion requirements are missing"))
+      items.push(item("proof-data-release", proof.release?.decision ? "ok" : "warning", proof.release?.decision ? `decision:${proof.release.decision}` : "proof IDE release decision is missing"))
     } catch {
-      items.push(item("proof-dashboard-json", "warning", "public/proof-dashboard.json is not valid JSON"))
+      items.push(item("proof-data-json", "warning", "public/proof-data.json is not valid JSON"))
     }
   }
   const dataValidationText = await readIfExists(publicDataValidationPath)
@@ -255,7 +255,7 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
     }
   }
   const accessPlanText = await readIfExists(accessPlanPath)
-  items.push(item("access-plan", accessPlanText ? "ok" : "warning", accessPlanText ? "access-plan.json exists" : "access-plan.json is missing; cockpit user/role access proof is not bundled"))
+  items.push(item("access-plan", accessPlanText ? "ok" : "warning", accessPlanText ? "access-plan.json exists" : "access-plan.json is missing; IDE user/role access proof is not bundled"))
   if (accessPlanText) {
     try {
       const accessPlan = JSON.parse(accessPlanText) as { users?: unknown[]; grants?: unknown[] }
@@ -265,28 +265,28 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
       items.push(item("access-plan-json", "warning", "access-plan.json is not valid JSON"))
     }
   }
-  const cockpitTerminalText = await readIfExists(cockpitTerminalPath)
-  items.push(item("cockpit-terminal-contract", cockpitTerminalText ? "ok" : "warning", cockpitTerminalText ? "cockpit-terminal.json exists" : "cockpit-terminal.json is missing; terminal bridge proof is not bundled"))
-  if (cockpitTerminalText) {
+  const ideTerminalText = await readIfExists(ideTerminalPath)
+  items.push(item("ide-terminal-contract", ideTerminalText ? "ok" : "warning", ideTerminalText ? "ide-terminal.json exists" : "ide-terminal.json is missing; terminal bridge proof is not bundled"))
+  if (ideTerminalText) {
     try {
-      const contract = JSON.parse(cockpitTerminalText) as { terminalModel?: string; features?: Array<{ id?: string }>; sendPolicy?: { enabledByDefault?: boolean; enableEnv?: string; blockedUntil?: string[] }; commandPlan?: Array<{ id?: string; safety?: string }>; screenParity?: { requiredEvidence?: string[]; unsupportedUntilProven?: string[] } }
-      items.push(item("cockpit-terminal-powerterm", contract.terminalModel ? "ok" : "warning", contract.terminalModel ? `terminal model: ${contract.terminalModel}` : "terminal model is missing"))
-      items.push(item("cockpit-terminal-uopy-risk", contract.features?.some((feature) => feature.id === "uopy") ? "ok" : "warning", contract.features?.some((feature) => feature.id === "uopy") ? "UOPY adapter risk is represented" : "UOPY adapter risk is missing"))
-      items.push(item("cockpit-terminal-send-policy", contract.sendPolicy?.enabledByDefault === false && contract.sendPolicy.enableEnv === "D3CODE_TERMINAL_ENABLED=1" ? "ok" : "warning", contract.sendPolicy ? "terminal sends are explicitly gated" : "terminal send policy is missing"))
-      items.push(item("cockpit-terminal-command-plan", contract.commandPlan?.some((command) => command.id === "screen-capture") && contract.commandPlan?.some((command) => command.id === "compile-catalog" && command.safety === "confirm") ? "ok" : "warning", contract.commandPlan ? `commands:${contract.commandPlan.map((command) => command.id).join(",")}` : "terminal command plan is missing"))
-      items.push(item("cockpit-terminal-screen-parity", contract.screenParity?.requiredEvidence?.some((entry) => entry.includes("@()")) && contract.screenParity?.unsupportedUntilProven?.some((entry) => entry.includes("UOPY")) ? "ok" : "warning", contract.screenParity ? "PowerTerm screen parity evidence is explicit" : "screen parity contract is missing"))
+      const contract = JSON.parse(ideTerminalText) as { terminalModel?: string; features?: Array<{ id?: string }>; sendPolicy?: { enabledByDefault?: boolean; enableEnv?: string; blockedUntil?: string[] }; commandPlan?: Array<{ id?: string; safety?: string }>; screenParity?: { requiredEvidence?: string[]; unsupportedUntilProven?: string[] } }
+      items.push(item("ide-terminal-powerterm", contract.terminalModel ? "ok" : "warning", contract.terminalModel ? `terminal model: ${contract.terminalModel}` : "terminal model is missing"))
+      items.push(item("ide-terminal-uopy-risk", contract.features?.some((feature) => feature.id === "uopy") ? "ok" : "warning", contract.features?.some((feature) => feature.id === "uopy") ? "UOPY adapter risk is represented" : "UOPY adapter risk is missing"))
+      items.push(item("ide-terminal-send-policy", contract.sendPolicy?.enabledByDefault === false && contract.sendPolicy.enableEnv === "D3CODE_TERMINAL_ENABLED=1" ? "ok" : "warning", contract.sendPolicy ? "terminal sends are explicitly gated" : "terminal send policy is missing"))
+      items.push(item("ide-terminal-command-plan", contract.commandPlan?.some((command) => command.id === "screen-capture") && contract.commandPlan?.some((command) => command.id === "compile-catalog" && command.safety === "confirm") ? "ok" : "warning", contract.commandPlan ? `commands:${contract.commandPlan.map((command) => command.id).join(",")}` : "terminal command plan is missing"))
+      items.push(item("ide-terminal-screen-parity", contract.screenParity?.requiredEvidence?.some((entry) => entry.includes("@()")) && contract.screenParity?.unsupportedUntilProven?.some((entry) => entry.includes("UOPY")) ? "ok" : "warning", contract.screenParity ? "PowerTerm screen parity evidence is explicit" : "screen parity contract is missing"))
     } catch {
-      items.push(item("cockpit-terminal-json", "warning", "cockpit-terminal.json is not valid JSON"))
+      items.push(item("ide-terminal-json", "warning", "ide-terminal.json is not valid JSON"))
     }
   }
-  items.push(item("public-cockpit-terminal-contract", await exists(publicCockpitTerminalPath) ? "ok" : "warning", await exists(publicCockpitTerminalPath) ? "public cockpit-terminal.json exists for generated cockpit rendering" : "public cockpit-terminal.json is missing"))
+  items.push(item("public-ide-terminal-contract", await exists(publicIdeTerminalPath) ? "ok" : "warning", await exists(publicIdeTerminalPath) ? "public ide-terminal.json exists for generated IDE rendering" : "public ide-terminal.json is missing"))
   const connectorStrategyText = await readIfExists(connectorStrategyPath)
   items.push(item("d3-connector-strategy", connectorStrategyText ? "ok" : "warning", connectorStrategyText ? "d3-connector-strategy.json exists" : "d3-connector-strategy.json is missing; connector proof is not bundled"))
   if (connectorStrategyText) {
     try {
-      const strategy = JSON.parse(connectorStrategyText) as { layers?: Array<{ id?: string }>; cockpitRequirements?: string[]; liveSpikes?: string[] }
+      const strategy = JSON.parse(connectorStrategyText) as { layers?: Array<{ id?: string }>; ideRequirements?: string[]; liveSpikes?: string[] }
       items.push(item("d3-connector-strategy-layers", strategy.layers?.some((layer) => layer.id === "screen-buffer") && strategy.layers?.some((layer) => layer.id === "uopy") ? "ok" : "warning", strategy.layers ? `layers:${strategy.layers.map((layer) => layer.id).join(",")}` : "connector strategy layers are missing"))
-      items.push(item("d3-connector-strategy-proof", strategy.cockpitRequirements?.some((entry) => entry.includes("UOPY")) && strategy.liveSpikes?.some((entry) => entry.includes("terminal-capture")) ? "ok" : "warning", "connector strategy names cockpit requirements and terminal-capture live proof"))
+      items.push(item("d3-connector-strategy-proof", strategy.ideRequirements?.some((entry) => entry.includes("UOPY")) && strategy.liveSpikes?.some((entry) => entry.includes("terminal-capture")) ? "ok" : "warning", "connector strategy names IDE requirements and terminal-capture live proof"))
     } catch {
       items.push(item("d3-connector-strategy-json", "warning", "d3-connector-strategy.json is not valid JSON"))
     }
@@ -316,7 +316,7 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
       items.push(item("d3code-skill-manifest-json", "warning", "d3code-skill-manifest.json is not valid JSON"))
     }
   }
-  items.push(item("public-skill-manifest", await exists(publicSkillManifestPath) ? "ok" : "warning", await exists(publicSkillManifestPath) ? "public skill-manifest.json exists for cockpit/subagent inspection" : "public skill-manifest.json is missing"))
+  items.push(item("public-skill-manifest", await exists(publicSkillManifestPath) ? "ok" : "warning", await exists(publicSkillManifestPath) ? "public skill-manifest.json exists for IDE/subagent inspection" : "public skill-manifest.json is missing"))
   const referenceSkillAuditText = await readIfExists(referenceSkillAuditPath)
   items.push(item("d3code-reference-skill-audit", referenceSkillAuditText ? "ok" : "warning", referenceSkillAuditText ? "d3code-reference-skill-audit.json exists" : "d3code-reference-skill-audit.json is missing; per-reference skill proof is not bundled"))
   if (referenceSkillAuditText) {
@@ -329,7 +329,7 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
     }
   }
   const publicReferenceSkillAuditText = await readIfExists(publicReferenceSkillAuditPath)
-  items.push(item("public-reference-skill-audit", publicReferenceSkillAuditText ? "ok" : "warning", publicReferenceSkillAuditText ? "public reference-skill-audit.json exists for cockpit rendering" : "public reference-skill-audit.json is missing"))
+  items.push(item("public-reference-skill-audit", publicReferenceSkillAuditText ? "ok" : "warning", publicReferenceSkillAuditText ? "public reference-skill-audit.json exists for IDE rendering" : "public reference-skill-audit.json is missing"))
   if (publicReferenceSkillAuditText) {
     try {
       const audit = JSON.parse(publicReferenceSkillAuditText) as { ready?: boolean; total?: number; items?: unknown[] }
@@ -350,7 +350,7 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
     }
   }
   const publicSubagentPromptsText = await readIfExists(publicSubagentPromptsPath)
-  items.push(item("public-subagent-prompts", publicSubagentPromptsText ? "ok" : "warning", publicSubagentPromptsText ? "public subagent-prompts.json exists for cockpit operations rendering" : "public subagent-prompts.json is missing"))
+  items.push(item("public-subagent-prompts", publicSubagentPromptsText ? "ok" : "warning", publicSubagentPromptsText ? "public subagent-prompts.json exists for IDE operations rendering" : "public subagent-prompts.json is missing"))
   if (publicSubagentPromptsText) {
     try {
       const prompts = JSON.parse(publicSubagentPromptsText) as { packets?: Array<{ prompt?: string; allowedTools?: unknown[]; deniedActions?: unknown[] }> }
@@ -375,7 +375,7 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
     }
   }
   const publicLiveRunbookText = await readIfExists(publicLiveRunbookPath)
-  items.push(item("public-live-operator-runbook", publicLiveRunbookText ? "ok" : "warning", publicLiveRunbookText ? "public live-operator-runbook.json exists for cockpit operations rendering" : "public live-operator-runbook.json is missing"))
+  items.push(item("public-live-operator-runbook", publicLiveRunbookText ? "ok" : "warning", publicLiveRunbookText ? "public live-operator-runbook.json exists for IDE operations rendering" : "public live-operator-runbook.json is missing"))
   if (publicLiveRunbookText) {
     try {
       const runbook = JSON.parse(publicLiveRunbookText) as { phases?: Array<{ id?: string; commands?: unknown[]; evidence?: unknown[] }> }
@@ -403,13 +403,13 @@ export async function checkGeneratedWebApp(root: string): Promise<WebAppCheckRep
   if (indexText) items.push(item("ui-resource-shell", indexText.includes("resources") ? "ok" : "missing", indexText.includes("resources") ? "resource browser shell is present" : "resource browser shell is missing"))
   if (appText) items.push(item("ui-health-fetch", appText.includes("/health") ? "ok" : "missing", appText.includes("/health") ? "UI fetches health endpoint" : "UI does not fetch health endpoint"))
   if (appText) items.push(item("ui-plan-rendering", appText.includes("/ui-plan.json") && appText.includes("renderScreenPlan") ? "ok" : "warning", appText.includes("/ui-plan.json") && appText.includes("renderScreenPlan") ? "UI renders generated screen plan" : "UI screen plan rendering is missing"))
-  if (appText) items.push(item("ui-dashboard-rendering", appText.includes("/dashboard-data.json") && appText.includes("renderCockpit") ? "ok" : "warning", appText.includes("/dashboard-data.json") && appText.includes("renderCockpit") ? "UI renders bundled D3 cockpit graph data" : "UI cockpit graph rendering is missing"))
-  if (appText) items.push(item("ui-proof-rendering", appText.includes("/proof-dashboard.json") && appText.includes("renderProofDashboard") ? "ok" : "warning", appText.includes("/proof-dashboard.json") && appText.includes("renderProofDashboard") ? "UI renders bundled GSD proof dashboard data" : "UI proof dashboard rendering is missing"))
+  if (appText) items.push(item("ui-ide-rendering", appText.includes("/ide-data.json") && appText.includes("renderIdeEstate") ? "ok" : "warning", appText.includes("/ide-data.json") && appText.includes("renderIdeEstate") ? "UI renders bundled D3 IDE graph data" : "UI IDE graph rendering is missing"))
+  if (appText) items.push(item("ui-proof-rendering", appText.includes("/proof-data.json") && appText.includes("renderProofData") ? "ok" : "warning", appText.includes("/proof-data.json") && appText.includes("renderProofData") ? "UI renders bundled GSD proof IDE data" : "UI proof IDE rendering is missing"))
   if (appText) items.push(item("ui-validation-rendering", appText.includes("/data-validation-plan.json") && appText.includes("/index-validation-plan.json") && appText.includes("renderValidationPlans") ? "ok" : "warning", appText.includes("/data-validation-plan.json") && appText.includes("/index-validation-plan.json") && appText.includes("renderValidationPlans") ? "UI renders bundled D3 data/index validation plans" : "UI validation plan rendering is missing"))
   if (appText) items.push(item("ui-modernization-rendering", appText.includes("/code-modernization-plan.json") && appText.includes("/screen-modernization-plan.json") && appText.includes("renderModernizationPlans") ? "ok" : "warning", appText.includes("/code-modernization-plan.json") && appText.includes("/screen-modernization-plan.json") && appText.includes("renderModernizationPlans") ? "UI renders bundled D3 code/screen modernization plans" : "UI modernization plan rendering is missing"))
   if (appText) items.push(item("ui-skill-manifest-rendering", appText.includes("/skill-manifest.json") && appText.includes("/reference-skill-audit.json") && appText.includes("renderSkillManifest") ? "ok" : "warning", appText.includes("/skill-manifest.json") && appText.includes("/reference-skill-audit.json") && appText.includes("renderSkillManifest") ? "UI renders bundled baked skill manifest and reference audit" : "UI skill manifest/reference audit rendering is missing"))
   if (appText) items.push(item("ui-operations-rendering", appText.includes("/subagent-prompts.json") && appText.includes("/live-operator-runbook.json") && appText.includes("renderOperations") ? "ok" : "warning", appText.includes("/subagent-prompts.json") && appText.includes("/live-operator-runbook.json") && appText.includes("renderOperations") ? "UI renders bundled subagent prompts and live runbook" : "UI operations rendering is missing"))
-  if (appText) items.push(item("ui-cockpit-terminal-rendering", appText.includes("/cockpit-terminal.json") && appText.includes("renderTerminalContract") ? "ok" : "warning", appText.includes("/cockpit-terminal.json") && appText.includes("renderTerminalContract") ? "UI renders bundled cockpit terminal contract" : "UI cockpit terminal contract rendering is missing"))
+  if (appText) items.push(item("ui-ide-terminal-rendering", appText.includes("/ide-terminal.json") && appText.includes("renderTerminalContract") ? "ok" : "warning", appText.includes("/ide-terminal.json") && appText.includes("renderTerminalContract") ? "UI renders bundled IDE terminal contract" : "UI IDE terminal contract rendering is missing"))
   if (appText) items.push(item("ui-connector-rendering", appText.includes("/connector-strategy.json") && appText.includes("renderConnectorStrategy") ? "ok" : "warning", appText.includes("/connector-strategy.json") && appText.includes("renderConnectorStrategy") ? "UI renders bundled D3 connector strategy" : "UI connector strategy rendering is missing"))
 
   return {

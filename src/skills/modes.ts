@@ -403,7 +403,7 @@ export function renderModeRunbook(modeID: string): string {
     "## Evidence Gate",
     "- Every audit finding needs a file/item/command reference.",
     "- Every migration artifact needs bundle, audit, OpenAPI, adapter, or QA output evidence.",
-    "- Every cockpit terminal claim needs connector-strategy, profile-doctor, terminal-capture, or screen-buffer evidence.",
+    "- Every IDE terminal claim needs connector-strategy, profile-doctor, terminal-capture, or screen-buffer evidence.",
     "- Every modernization claim needs lint, compile/catalog, fixture, or explicit live-D3 gap evidence.",
     "",
   ].join("\n")

@@ -81,7 +81,7 @@ export const referenceSkillFamilies: ReferenceSkillFamily[] = [
     reference: "health, guard, careful, freeze, unfreeze",
     status: "adapted",
     productSkills: ["gstack-health-guard", "d3-release-readiness"],
-    productSurfaces: ["readiness", "setup-proof", "permission", "profile-doctor", "terminal-plan", "cockpit-terminal", "terminal-capture", "safety modes", "safety-guard"],
+    productSurfaces: ["readiness", "setup-proof", "permission", "profile-doctor", "terminal-plan", "ide-terminal", "terminal-capture", "safety modes", "safety-guard"],
     rationale: "Safety and health checks are D3-specific gates around setup proof, profile checks, terminal transcript capture, destructive TCL, and regression proof.",
   },
   {
@@ -113,7 +113,7 @@ export const referenceSkillFamilies: ReferenceSkillFamily[] = [
     reference: "design-review, design-consultation, design-html, design-shotgun",
     status: "adapted",
     productSkills: ["gstack-design-review", "web-app-dogfooding"],
-    productSurfaces: ["migrate mode", "qa mode", "ide", "bundle-ui-plan", "bundle-access-plan", "bundle-screen-plan", "cockpit-terminal", "terminal-capture", "screen-parse", "bundle-brief"],
+    productSurfaces: ["migrate mode", "qa mode", "ide", "bundle-ui-plan", "bundle-access-plan", "bundle-screen-plan", "ide-terminal", "terminal-capture", "screen-parse", "bundle-brief"],
     rationale: "Design skills are adapted for migrated web UX parity, generated UI and access plans, and D3 legacy screen understanding, including terminal transcript capture and IDE inspection.",
   },
   {
@@ -177,7 +177,7 @@ export const referenceSkillFamilies: ReferenceSkillFamily[] = [
     reference: "docs/usage/Connection.md, OnlineEditing.md, HashedFileEditing.md, Compile.md, Debugging.md, Diagnostics.md, References.md, Completion.md",
     status: "adapted",
     productSkills: ["mvbasic-ide-parity", "d3-database-audit", "d3-migration-map"],
-    productSurfaces: ["mvbasic-reference-audit", "ide", "cockpit-terminal", "bundle-code-plan", "bundle-screen-plan", "bundle-access-plan", "live-proof"],
+    productSurfaces: ["mvbasic-reference-audit", "ide", "ide-terminal", "bundle-code-plan", "bundle-screen-plan", "bundle-access-plan", "live-proof"],
     rationale: "Rocket MV BASIC extension docs become an IDE-parity checklist for D3 Code: profile/account connection, online editing locks, hashed-file workbench behavior, compile/catalog loops, diagnostics, references, completion, and explicit debugger-proof boundaries.",
   },
 ]

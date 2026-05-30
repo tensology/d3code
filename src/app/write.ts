@@ -8,8 +8,8 @@ import { createModernizationBacklog, renderModernizationBacklog } from "./backlo
 import { createModernizationBrief } from "./brief.js"
 import { createCodeModernizationPlan, renderCodeModernizationPlan } from "./code-plan.js"
 import { createCompletionAuditReport, renderCompletionAuditReport } from "./completion-audit.js"
-import { createBundleDashboardReport } from "./dashboard.js"
-import { renderDashboardHtml } from "./dashboard-html.js"
+import { createBundleIdeReport } from "./ide-report.js"
+import { renderIdeHtml } from "./ide-html.js"
 import { createDataValidationPlan, renderDataValidationPlan } from "./data-plan.js"
 import { createBundleEvidenceReport, renderBundleEvidenceReport } from "./evidence.js"
 import { createIndexValidationPlan, renderIndexValidationPlan } from "./index-plan.js"
@@ -23,7 +23,7 @@ import { createScreenModernizationPlan, renderScreenModernizationPlan } from "./
 import { createBundleSkillManifest, createBundleSkillPack, renderBundleSkillPack } from "./skill-pack.js"
 import { createBundleSubagentPlan, createBundleSubagentPromptPack, renderBundleSubagentPlan, renderBundleSubagentPromptPack } from "./subagents.js"
 import { createWebUiPlan, renderWebUiPlan } from "./ui-plan.js"
-import { createCockpitTerminalContract, renderCockpitTerminalContract } from "../d3/cockpit-terminal.js"
+import { createIdeTerminalContract, renderIdeTerminalContract } from "../d3/ide-terminal.js"
 import { createD3ConnectorStrategy, renderD3ConnectorStrategy } from "../d3/connector-strategy.js"
 import { writeLiveProofScaffold } from "../d3/live-proof-artifacts.js"
 import { checkGeneratedWebApp } from "../migration/webapp-check.js"
@@ -93,7 +93,7 @@ export async function refreshBundleProofArtifacts(outDir: string, artifacts: Bun
   await writeFile(releaseReportMarkdownPath, renderBundleReleaseReport(releaseReport))
   written.push(releaseReportMarkdownPath)
 
-  const proofDashboard = {
+  const proofData = {
     account: bundle.account,
     profile: bundle.profile,
     readiness: {
@@ -116,13 +116,13 @@ export async function refreshBundleProofArtifacts(outDir: string, artifacts: Bun
       checks: qaEvidence.checks.map((check) => ({ id: check.id, status: check.status, message: check.message })),
     } : null,
   }
-  const proofDashboardJsonPath = join(outDir, "proof-dashboard.json")
-  await writeFile(proofDashboardJsonPath, `${JSON.stringify(proofDashboard, null, 2)}\n`)
-  written.push(proofDashboardJsonPath)
+  const proofDataJsonPath = join(outDir, "proof-data.json")
+  await writeFile(proofDataJsonPath, `${JSON.stringify(proofData, null, 2)}\n`)
+  written.push(proofDataJsonPath)
   await mkdir(join(outDir, "public"), { recursive: true })
-  const publicProofDashboardJsonPath = join(outDir, "public", "proof-dashboard.json")
-  await writeFile(publicProofDashboardJsonPath, `${JSON.stringify(proofDashboard, null, 2)}\n`)
-  written.push(publicProofDashboardJsonPath)
+  const publicProofDataJsonPath = join(outDir, "public", "proof-data.json")
+  await writeFile(publicProofDataJsonPath, `${JSON.stringify(proofData, null, 2)}\n`)
+  written.push(publicProofDataJsonPath)
 
   return { written }
 }
@@ -211,23 +211,23 @@ export async function writeBundleArtifacts(outDir: string, artifacts: BundleArti
     const accessPlanMarkdownPath = join(outDir, "access-plan.md")
     await writeFile(accessPlanMarkdownPath, renderD3AccessPlan(accessPlan))
     written.push(accessPlanMarkdownPath)
-    const dashboardHtmlPath = join(outDir, "dashboard.html")
-    const dashboardReport = createBundleDashboardReport(bundle, artifacts)
-    await writeFile(dashboardHtmlPath, renderDashboardHtml(dashboardReport))
-    written.push(dashboardHtmlPath)
-    const publicDashboardDataPath = join(outDir, "public", "dashboard-data.json")
+    const ideHtmlPath = join(outDir, "ide.html")
+    const ideReport = createBundleIdeReport(bundle, artifacts)
+    await writeFile(ideHtmlPath, renderIdeHtml(ideReport))
+    written.push(ideHtmlPath)
+    const publicIdeDataPath = join(outDir, "public", "ide-data.json")
     await mkdir(join(outDir, "public"), { recursive: true })
-    await writeFile(publicDashboardDataPath, `${JSON.stringify(dashboardReport, null, 2)}\n`)
-    written.push(publicDashboardDataPath)
-    const terminalContract = createCockpitTerminalContract({ name: bundle.profile, type: "local", account: bundle.account })
-    const terminalContractJsonPath = join(outDir, "cockpit-terminal.json")
+    await writeFile(publicIdeDataPath, `${JSON.stringify(ideReport, null, 2)}\n`)
+    written.push(publicIdeDataPath)
+    const terminalContract = createIdeTerminalContract({ name: bundle.profile, type: "local", account: bundle.account })
+    const terminalContractJsonPath = join(outDir, "ide-terminal.json")
     await writeFile(terminalContractJsonPath, `${JSON.stringify(terminalContract, null, 2)}\n`)
     written.push(terminalContractJsonPath)
-    const publicTerminalContractJsonPath = join(outDir, "public", "cockpit-terminal.json")
+    const publicTerminalContractJsonPath = join(outDir, "public", "ide-terminal.json")
     await writeFile(publicTerminalContractJsonPath, `${JSON.stringify(terminalContract, null, 2)}\n`)
     written.push(publicTerminalContractJsonPath)
-    const terminalContractMarkdownPath = join(outDir, "cockpit-terminal.md")
-    await writeFile(terminalContractMarkdownPath, renderCockpitTerminalContract(terminalContract))
+    const terminalContractMarkdownPath = join(outDir, "ide-terminal.md")
+    await writeFile(terminalContractMarkdownPath, renderIdeTerminalContract(terminalContract))
     written.push(terminalContractMarkdownPath)
     const connectorStrategy = createD3ConnectorStrategy({ name: bundle.profile, type: "local", account: bundle.account })
     const connectorStrategyJsonPath = join(outDir, "d3-connector-strategy.json")

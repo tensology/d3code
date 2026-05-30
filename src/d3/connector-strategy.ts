@@ -17,7 +17,7 @@ export interface D3ConnectorStrategy {
   answer: string
   defaultPath: string
   layers: D3ConnectorLayer[]
-  cockpitRequirements: string[]
+  ideRequirements: string[]
   liveSpikes: string[]
   failureModes: string[]
 }
@@ -31,16 +31,16 @@ export function createD3ConnectorStrategy(profile?: ConnectionProfile): D3Connec
   return {
     profile: profile?.name,
     account: profile?.account,
-    answer: "Yes, the cockpit can expose a D3 terminal, but the reliable connector has to be layered: persistent PTY for account/session state, typed TCL for automation, a PowerTerm-aware screen buffer for legacy forms, and UOPY only as an optional typed data/subroutine adapter.",
+    answer: "Yes, the IDE can expose a D3 terminal, but the reliable connector has to be layered: persistent PTY for account/session state, typed TCL for automation, a PowerTerm-aware screen buffer for legacy forms, and UOPY only as an optional typed data/subroutine adapter.",
     defaultPath: ready
-      ? "Attach cockpit terminal to the configured persistent D3 session, capture representative screen programs, then graduate proven flows into typed tools."
+      ? "Attach IDE terminal to the configured persistent D3 session, capture representative screen programs, then graduate proven flows into typed tools."
       : "Create a persistent local or SSH profile first; one-shot commands are acceptable for read-only probes but not enough for screen programs.",
     layers: [
       {
         id: "pty-session",
         status: ready ? "ready" : profile ? "partial" : "blocked",
         purpose: "Own the real login/session boundary for D3: Unix login, D3 account, LOGTO state, TERM settings, prompts, paged output, and compile/catalog context.",
-        useWhen: ["interactive cockpit terminal", "screen programs", "compile/catalog loops", "operator proof"],
+        useWhen: ["interactive IDE terminal", "screen programs", "compile/catalog loops", "operator proof"],
         notEnoughFor: ["structured field extraction without a screen parser", "unguarded writes", "multi-agent access without a session lease"],
         proof: ready ? ["sessionMode=persistent", "promptPattern configured", "profile-doctor passes"] : ["profile-add-local/profile-add-ssh with --session persistent", "promptPattern required"],
       },
@@ -55,8 +55,8 @@ export function createD3ConnectorStrategy(profile?: ConnectionProfile): D3Connec
       {
         id: "screen-buffer",
         status: ready ? "partial" : "blocked",
-        purpose: "Translate legacy D3 screen output into stable cockpit state: cursor moves, clears, prompts, menu selections, INPUT/CRT/DISPLAY flows, PROC screens, and operator keystrokes.",
-        useWhen: ["PowerTerm-style programs", "screen modernization", "AI form reconstruction", "dashboard terminal replay"],
+        purpose: "Translate legacy D3 screen output into stable IDE state: cursor moves, clears, prompts, menu selections, INPUT/CRT/DISPLAY flows, PROC screens, and operator keystrokes.",
+        useWhen: ["PowerTerm-style programs", "screen modernization", "AI form reconstruction", "IDE terminal replay"],
         notEnoughFor: ["blind automatic rewrites", "guaranteeing all terminal definitions before live capture", "replacing operator approval"],
         proof: ["terminal-capture", "screen-buffer.json/md", "operator-approved transcript", "bundle-screen-plan"],
       },
@@ -64,7 +64,7 @@ export function createD3ConnectorStrategy(profile?: ConnectionProfile): D3Connec
         id: "terminal-definition",
         status: ready ? "partial" : "blocked",
         purpose: "Preserve D3 terminal semantics that PowerTerm-era applications rely on: TERM width/depth, define-terminal mappings, @() cursor/control functions, screen utilities, protected fields, paging, and status-line behavior.",
-        useWhen: ["cockpit terminal parity", "legacy screen replay", "screen-to-web migration", "operator training capture"],
+        useWhen: ["IDE terminal parity", "legacy screen replay", "screen-to-web migration", "operator training capture"],
         notEnoughFor: ["assuming xterm compatibility", "claiming screen migration readiness without operator capture", "replacing D3 BASIC screen-flow analysis"],
         proof: ["manual-scope terminal/control sections", "TERM/define-terminal capture", "representative PowerTerm session transcript", "screen-buffer parity notes"],
       },
@@ -72,9 +72,9 @@ export function createD3ConnectorStrategy(profile?: ConnectionProfile): D3Connec
         id: "mvbasic-ide-parity",
         status: "partial",
         purpose: "Borrow the proven IDE workflow shape from Rocket MV BASIC docs: connected account folders, online editing cache boundaries, READU/WRITE locks, hashed-file record editing, compile/catalog tasks, diagnostics, references, completion, and explicit debugger limits.",
-        useWhen: ["D3 cockpit design", "record/file workbench", "BASIC language intelligence", "lock-aware editing", "operator runbooks"],
+        useWhen: ["D3 IDE design", "record/file workbench", "BASIC language intelligence", "lock-aware editing", "operator runbooks"],
         notEnoughFor: ["claiming Rocket D3 support from U2-only behavior", "live debugging without a dedicated D3 adapter", "PowerTerm screen parity"],
-        proof: ["mvbasic-reference-audit", "lock/conflict tests", "compile/catalog transcript", "hashed-file cockpit smoke test"],
+        proof: ["mvbasic-reference-audit", "lock/conflict tests", "compile/catalog transcript", "hashed-file IDE smoke test"],
       },
       {
         id: "uopy",
@@ -93,11 +93,11 @@ export function createD3ConnectorStrategy(profile?: ConnectionProfile): D3Connec
         proof: ["goal evidence", "completion-audit", "live-proof", "bundle-readiness"],
       },
     ],
-    cockpitRequirements: [
+    ideRequirements: [
       "Show raw transcript, parsed screen buffer, current profile/account, safety classification, and command journal together.",
       "Keep terminal sends default-off for generated web scaffolds until D3CODE_TERMINAL_ENABLED=1 is set.",
       "Treat screen programs as stateful flows, not plain xterm output.",
-      "Capture target TERM/define-terminal settings and map D3 @() control functions before calling the cockpit PowerTerm-compatible.",
+      "Capture target TERM/define-terminal settings and map D3 @() control functions before calling the IDE PowerTerm-compatible.",
       "Use Rocket MV BASIC reference behavior as an IDE-parity checklist, while keeping D3-specific live proof separate from U2/jBASE assumptions.",
       "Require operator-approved captures before converting legacy D3 screens into modern UI layouts.",
       "Keep UOPY behind a parity spike and fallback path; never make it the only connector.",
@@ -138,8 +138,8 @@ export function renderD3ConnectorStrategy(strategy: D3ConnectorStrategy): string
       `  Proof: ${layer.proof.join("; ")}`,
     ]),
     "",
-    "Cockpit Requirements:",
-    ...strategy.cockpitRequirements.map((item) => `- ${item}`),
+    "IDE Requirements:",
+    ...strategy.ideRequirements.map((item) => `- ${item}`),
     "",
     "Live Spikes:",
     ...strategy.liveSpikes.map((item) => `- ${item}`),

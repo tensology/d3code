@@ -63,9 +63,9 @@ test("CLI lists baked-in modes and skills", async () => {
   assert.match(terminalPlan.stdout, /D3 Terminal Bridge Plan/)
   assert.match(terminalPlan.stdout, /UOPY/)
 
-  const cockpitTerminal = await cli(["cockpit-terminal"])
-  assert.match(cockpitTerminal.stdout, /D3 Cockpit Terminal Contract/)
-  assert.match(cockpitTerminal.stdout, /PowerTerm/)
+  const ideTerminal = await cli(["ide-terminal"])
+  assert.match(ideTerminal.stdout, /D3 IDE Terminal Contract/)
+  assert.match(ideTerminal.stdout, /PowerTerm/)
 
   const connectorStrategy = await cli(["connector-strategy"])
   assert.match(connectorStrategy.stdout, /D3 Connector Strategy/)
@@ -518,9 +518,9 @@ test("CLI generates bundle artifacts and bundle index", async () => {
   assert.ok(parsedWritten.written.some((file) => file.endsWith("screen-modernization-plan.md")))
   assert.ok(parsedWritten.written.some((file) => file.endsWith("web-ui-plan.json")))
   assert.ok(parsedWritten.written.some((file) => file.endsWith("web-ui-plan.md")))
-  assert.ok(parsedWritten.written.some((file) => file.endsWith("cockpit-terminal.json")))
-  assert.ok(parsedWritten.written.some((file) => file.endsWith("public/cockpit-terminal.json")))
-  assert.ok(parsedWritten.written.some((file) => file.endsWith("cockpit-terminal.md")))
+  assert.ok(parsedWritten.written.some((file) => file.endsWith("ide-terminal.json")))
+  assert.ok(parsedWritten.written.some((file) => file.endsWith("public/ide-terminal.json")))
+  assert.ok(parsedWritten.written.some((file) => file.endsWith("ide-terminal.md")))
   assert.ok(parsedWritten.written.some((file) => file.endsWith("d3-connector-strategy.json")))
   assert.ok(parsedWritten.written.some((file) => file.endsWith("d3-connector-strategy.md")))
   assert.ok(parsedWritten.written.some((file) => file.endsWith("reconciliation-plan.json")))
@@ -581,7 +581,7 @@ test("CLI generates bundle artifacts and bundle index", async () => {
   assert.ok(parsedRefreshed.written.some((file) => file.endsWith("completion-audit.json")))
   assert.ok(parsedRefreshed.written.some((file) => file.endsWith("goal-evidence.json")))
   assert.ok(parsedRefreshed.written.some((file) => file.endsWith("release-report.json")))
-  assert.ok(parsedRefreshed.written.some((file) => file.endsWith("proof-dashboard.json")))
+  assert.ok(parsedRefreshed.written.some((file) => file.endsWith("proof-data.json")))
 
   const readinessWithArtifacts = await cli(["bundle-readiness", fixture, "--artifacts-dir", out, "--json"])
   const parsedReadiness = JSON.parse(readinessWithArtifacts.stdout) as { gates: Array<{ id: string; status: string }> }
@@ -605,7 +605,7 @@ test("CLI generates bundle artifacts and bundle index", async () => {
   assert.match(await readFile(join(out, "goal-evidence.md"), "utf8"), /qa-evidence=ready/)
   assert.match(await readFile(join(out, "completion-audit.md"), "utf8"), /qa-evidence:ok/)
   assert.match(await readFile(join(out, "release-report.md"), "utf8"), /Decision: canary|Decision: blocked/)
-  assert.match(await readFile(join(out, "public/proof-dashboard.json"), "utf8"), /readiness/)
+  assert.match(await readFile(join(out, "public/proof-data.json"), "utf8"), /readiness/)
 })
 
 test("CLI captures bundle through local shell profile", async () => {

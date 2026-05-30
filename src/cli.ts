@@ -18,7 +18,7 @@ import { detectLocalD3 } from "./d3/detect.js"
 import { createLiveProofReport, profileDoctorGoalEvidence, renderLiveProofReport } from "./d3/live-proof.js"
 import { checkLiveProofArtifacts, renderLiveProofArtifactReport, renderLiveProofScaffold, writeLiveProofScaffold } from "./d3/live-proof-artifacts.js"
 import { diagnoseProfile, renderProfileDoctor } from "./d3/profile-doctor.js"
-import { createCockpitTerminalContract, renderCockpitTerminalContract } from "./d3/cockpit-terminal.js"
+import { createIdeTerminalContract, renderIdeTerminalContract } from "./d3/ide-terminal.js"
 import { parseD3ScreenTranscript, renderD3ScreenBuffer } from "./d3/screen-buffer.js"
 import { captureD3Terminal, renderD3TerminalCapture, writeD3TerminalCapture } from "./d3/terminal-capture.js"
 import { createD3TerminalBridgePlan, renderD3TerminalBridgePlan } from "./d3/terminal-plan.js"
@@ -40,7 +40,7 @@ import { createModelProofReport, renderModelProofReport } from "./providers/proo
 import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBias } from "./providers/routing.js"
 import { createReadinessReport, renderReadinessReport } from "./quality/readiness.js"
 import { renderAcceptanceReport, runMockAcceptance } from "./quality/acceptance.js"
-import { createCockpitReport, renderCockpitReport } from "./quality/cockpit.js"
+import { createIdeStatusReport, renderIdeStatusReport } from "./quality/ide-status.js"
 import { createInstallProofReport, renderInstallProofReport } from "./quality/install-proof.js"
 import { createProductCompletionAudit, renderProductCompletionAudit } from "./quality/product-audit.js"
 import { defaultSecretStore } from "./security/secrets.js"
@@ -429,14 +429,14 @@ program.command("terminal-plan").description("Plan the D3 terminal bridge for TC
   console.log(options.json ? JSON.stringify(plan, null, 2) : renderD3TerminalBridgePlan(plan))
 })
 
-program.command("cockpit-terminal").description("Show the cockpit terminal contract for D3 PTY, TCL, UOPY, PowerTerm-style screen buffers, and live proof.").option("--profile <name>").option("--json").action(async (options: { profile?: string; json?: boolean }) => {
+program.command("ide-terminal").description("Show the IDE terminal contract for D3 PTY, TCL, UOPY, PowerTerm-style screen buffers, and live proof.").option("--profile <name>").option("--json").action(async (options: { profile?: string; json?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
-  const contract = createCockpitTerminalContract(profile)
-  console.log(options.json ? JSON.stringify(contract, null, 2) : renderCockpitTerminalContract(contract))
+  const contract = createIdeTerminalContract(profile)
+  console.log(options.json ? JSON.stringify(contract, null, 2) : renderIdeTerminalContract(contract))
 })
 
-program.command("connector-strategy").description("Show the layered D3 connector strategy for cockpit terminal, typed TCL, PowerTerm-style screens, UOPY, and AI operation.").option("--profile <name>").option("--json").action(async (options: { profile?: string; json?: boolean }) => {
+program.command("connector-strategy").description("Show the layered D3 connector strategy for IDE terminal, typed TCL, PowerTerm-style screens, UOPY, and AI operation.").option("--profile <name>").option("--json").action(async (options: { profile?: string; json?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const strategy = createD3ConnectorStrategy(profile)
@@ -563,7 +563,7 @@ program.command("reference-audit").argument("[reference-dir]", "reference folder
   console.log(options.json ? JSON.stringify(report, null, 2) : renderReferenceSkillAudit(report))
 })
 
-program.command("mvbasic-reference-audit").argument("[rocket-mvbasic-dir]", "Rocket MV BASIC reference folder", defaultRocketMvBasicDir).description("Audit Rocket MV BASIC extension docs as an IDE-parity checklist for D3 Code cockpit, connection, locks, compile/catalog, and language intelligence.").option("--json").action(async (rocketMvBasicDir: string, options: { json?: boolean }) => {
+program.command("mvbasic-reference-audit").argument("[rocket-mvbasic-dir]", "Rocket MV BASIC reference folder", defaultRocketMvBasicDir).description("Audit Rocket MV BASIC extension docs as an IDE-parity checklist for D3 Code IDE, connection, locks, compile/catalog, and language intelligence.").option("--json").action(async (rocketMvBasicDir: string, options: { json?: boolean }) => {
   const report = await auditMvBasicReference(rocketMvBasicDir)
   console.log(options.json ? JSON.stringify(report, null, 2) : renderMvBasicReferenceAudit(report))
 })
@@ -579,13 +579,13 @@ program.command("status").description("Show D3 Code IDE status: mode, model, pro
   const parsedModel = options.model ?? optionValue("--model")
   const parsedSafety = options.safety ?? optionValue("--safety")
   const parsedProfile = options.profile ?? optionValue("--profile")
-  const report = await createCockpitReport(config, {
+  const report = await createIdeStatusReport(config, {
     model: parsedModel ?? config.defaultModel,
     safety: parsedSafety ? parseSafety(parsedSafety) : config.defaultSafety,
     profile: parsedProfile,
     mode: parsedMode,
   })
-  console.log(options.json ? JSON.stringify(report, null, 2) : renderCockpitReport(report))
+  console.log(options.json ? JSON.stringify(report, null, 2) : renderIdeStatusReport(report))
 })
 
 program.command("safety-guard").description("Classify planned D3/TCL commands and bundle EXECUTE/compile/catalog actions before running risky work.").option("--profile <name>").option("--safety <mode>", "ask|plan|trust").option("--bundle <bundle-json-file>").option("--command <command>", "command to classify; may be repeated", collectOption, []).option("--json").action(async (options: { profile?: string; safety?: string; bundle?: string; command: string[]; json?: boolean }) => {
@@ -1049,7 +1049,7 @@ program.command("bundle-reconciliation-plan").argument("<bundle-json-file>").des
   console.log(options.json ? JSON.stringify(plan, null, 2) : renderD3ReconciliationPlan(plan))
 })
 
-program.command("bundle-access-plan").argument("<bundle-json-file>").description("Create a D3 cockpit user/role access plan for generated resources and screens.").option("--json").action(async (jsonFile: string, options: { json?: boolean }) => {
+program.command("bundle-access-plan").argument("<bundle-json-file>").description("Create a D3 IDE user/role access plan for generated resources and screens.").option("--json").action(async (jsonFile: string, options: { json?: boolean }) => {
   const input = await import("node:fs/promises").then((fs) => fs.readFile(jsonFile, "utf8"))
   const bundle = parseBundle(JSON.parse(input))
   const plan = createD3AccessPlan(bundle, createBundleArtifacts(bundle))

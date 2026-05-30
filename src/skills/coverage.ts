@@ -67,7 +67,7 @@ const coverageItems: Array<Omit<SkillCoverageItem, "covered">> = [
   {
     source: "d3code",
     expected: "D3 database/code audit and indexing validation",
-    evidence: ["skill:d3-database-audit", "command:audit-db", "command:bundle-capture", "command:bundle-audit", "command:bundle-index-plan", "command:bundle-data-plan", "command:bundle-code-plan", "command:bundle-screen-plan", "command:bundle-backlog", "command:profile-doctor", "command:terminal-plan", "command:cockpit-terminal", "command:terminal-capture", "command:live-proof-init", "command:live-proof-check", "command:screen-parse", "command:agent-run"],
+    evidence: ["skill:d3-database-audit", "command:audit-db", "command:bundle-capture", "command:bundle-audit", "command:bundle-index-plan", "command:bundle-data-plan", "command:bundle-code-plan", "command:bundle-screen-plan", "command:bundle-backlog", "command:profile-doctor", "command:terminal-plan", "command:ide-terminal", "command:terminal-capture", "command:live-proof-init", "command:live-proof-check", "command:screen-parse", "command:agent-run"],
   },
   {
     source: "d3code",
@@ -82,7 +82,7 @@ const coverageItems: Array<Omit<SkillCoverageItem, "covered">> = [
   {
     source: "rocket-mvbasic",
     expected: "IDE parity for MV BASIC connection, online editing, locks, compile/catalog, hashed files, diagnostics, and debugger boundaries",
-    evidence: ["skill:mvbasic-ide-parity", "command:mvbasic-reference-audit", "command:cockpit-terminal", "command:bundle-screen-plan", "command:bundle-code-plan"],
+    evidence: ["skill:mvbasic-ide-parity", "command:mvbasic-reference-audit", "command:ide-terminal", "command:bundle-screen-plan", "command:bundle-code-plan"],
   },
   {
     source: "d3code",
@@ -136,7 +136,7 @@ const commandNames = new Set([
   "bundle-readiness",
   "profile-doctor",
   "terminal-plan",
-  "cockpit-terminal",
+  "ide-terminal",
   "terminal-capture",
   "live-proof-init",
   "live-proof-check",

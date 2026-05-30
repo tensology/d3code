@@ -1,17 +1,17 @@
 import type { ConnectionProfile } from "../domain/types.js"
 import { createD3TerminalBridgePlan } from "./terminal-plan.js"
 
-export type CockpitTerminalFeatureStatus = "ready" | "partial" | "blocked"
+export type IdeTerminalFeatureStatus = "ready" | "partial" | "blocked"
 
-export interface CockpitTerminalFeature {
+export interface IdeTerminalFeature {
   id: "session" | "tcl" | "terminal-definition" | "screen-buffer" | "mvbasic-ide-parity" | "uopy" | "writes" | "operator-proof"
-  status: CockpitTerminalFeatureStatus
+  status: IdeTerminalFeatureStatus
   title: string
   detail: string
   proof: string[]
 }
 
-export interface CockpitTerminalSendPolicy {
+export interface IdeTerminalSendPolicy {
   enabledByDefault: boolean
   enableEnv: string
   mutationEnv: string
@@ -20,7 +20,7 @@ export interface CockpitTerminalSendPolicy {
   blockedUntil: string[]
 }
 
-export interface CockpitTerminalCommandPlan {
+export interface IdeTerminalCommandPlan {
   id: "read-tcl" | "screen-capture" | "write-diff" | "compile-catalog"
   title: string
   example: string
@@ -28,31 +28,31 @@ export interface CockpitTerminalCommandPlan {
   requiredProof: string[]
 }
 
-export interface CockpitTerminalScreenParity {
+export interface IdeTerminalScreenParity {
   emulator: "PowerTerm-compatible D3 terminal definitions"
   model: "raw-transcript-plus-screen-buffer"
   requiredEvidence: string[]
   unsupportedUntilProven: string[]
 }
 
-export interface CockpitTerminalContract {
+export interface IdeTerminalContract {
   profile?: string
   account?: string
   attachMode: "persistent-pty" | "oneshot-command" | "unconfigured"
   terminalModel: "powerterm-aware-buffer" | "plain-transcript"
   summary: string
-  features: CockpitTerminalFeature[]
-  sendPolicy: CockpitTerminalSendPolicy
-  commandPlan: CockpitTerminalCommandPlan[]
-  screenParity: CockpitTerminalScreenParity
+  features: IdeTerminalFeature[]
+  sendPolicy: IdeTerminalSendPolicy
+  commandPlan: IdeTerminalCommandPlan[]
+  screenParity: IdeTerminalScreenParity
   requiredLiveProof: string[]
 }
 
-function feature(values: CockpitTerminalFeature): CockpitTerminalFeature {
+function feature(values: IdeTerminalFeature): IdeTerminalFeature {
   return values
 }
 
-export function createCockpitTerminalContract(profile?: ConnectionProfile): CockpitTerminalContract {
+export function createIdeTerminalContract(profile?: ConnectionProfile): IdeTerminalContract {
   const bridge = createD3TerminalBridgePlan(profile)
   const persistent = bridge.terminal.mode === "persistent-pty"
   const configured = Boolean(profile)
@@ -65,14 +65,14 @@ export function createCockpitTerminalContract(profile?: ConnectionProfile): Cock
     attachMode: !configured ? "unconfigured" : persistent ? "persistent-pty" : "oneshot-command",
     terminalModel,
     summary: persistent
-      ? "Cockpit can attach to a long-lived D3 local/SSH process; PowerTerm-style screens still require transcript and screen-buffer proof before AI rewrites the flow."
-      : "Cockpit can run read/search TCL as one-shot commands, but full D3 terminal programs need a persistent PTY profile before they are treated as interactive.",
+      ? "IDE can attach to a long-lived D3 local/SSH process; PowerTerm-style screens still require transcript and screen-buffer proof before AI rewrites the flow."
+      : "IDE can run read/search TCL as one-shot commands, but full D3 terminal programs need a persistent PTY profile before they are treated as interactive.",
     features: [
       feature({
         id: "session",
         status: persistent && promptReady ? "ready" : configured ? "partial" : "blocked",
         title: "Persistent D3 session",
-        detail: "Keeps LOGTO/account state, TERM settings, prompts, paged output, compile/catalog context, and screen program state alive across cockpit sends.",
+        detail: "Keeps LOGTO/account state, TERM settings, prompts, paged output, compile/catalog context, and screen program state alive across IDE sends.",
         proof: persistent && promptReady ? ["profile:sessionMode=persistent", "profile:promptPattern"] : ["configure sessionMode=persistent", "configure promptPattern"],
       }),
       feature({
@@ -86,14 +86,14 @@ export function createCockpitTerminalContract(profile?: ConnectionProfile): Cock
         id: "screen-buffer",
         status: persistent && promptReady ? "partial" : "blocked",
         title: "PowerTerm-style screen buffer",
-        detail: "Normalizes D3 cursor-control output, CRT/DISPLAY/INPUT flows, PROC menus, and screen utilities into inspectable cockpit state instead of assuming xterm behavior.",
+        detail: "Normalizes D3 cursor-control output, CRT/DISPLAY/INPUT flows, PROC menus, and screen utilities into inspectable IDE state instead of assuming xterm behavior.",
         proof: ["terminal-capture artifact", "screen-buffer.json", "operator-approved transcript"],
       }),
       feature({
         id: "terminal-definition",
         status: persistent && promptReady ? "partial" : "blocked",
         title: "D3 terminal definition parity",
-        detail: "Tracks TERM/define-terminal behavior, @() cursor/control codes, paging, status-line handling, protected fields, keyboard lock/unlock, and BASIC screen utilities as compatibility evidence for the cockpit terminal.",
+        detail: "Tracks TERM/define-terminal behavior, @() cursor/control codes, paging, status-line handling, protected fields, keyboard lock/unlock, and BASIC screen utilities as compatibility evidence for the IDE terminal.",
         proof: ["TERM command capture", "define-terminal evidence", "manual-scope screen/control sections", "operator parity notes"],
       }),
       feature({
@@ -101,7 +101,7 @@ export function createCockpitTerminalContract(profile?: ConnectionProfile): Cock
         status: "partial",
         title: "Rocket MV BASIC IDE parity",
         detail: "Uses Rocket MV BASIC extension behavior as a checklist for connection profiles, account folders, online editing locks, hashed-file browsing, compile/catalog flows, diagnostics, references, completion, and debugger boundaries.",
-        proof: ["mvbasic-reference-audit", "online editing lock evidence", "hashed-file cockpit parity", "compile/catalog transcript", "debugger adapter proof before live debug claims"],
+        proof: ["mvbasic-reference-audit", "online editing lock evidence", "hashed-file IDE parity", "compile/catalog transcript", "debugger adapter proof before live debug claims"],
       }),
       feature({
         id: "uopy",
@@ -114,7 +114,7 @@ export function createCockpitTerminalContract(profile?: ConnectionProfile): Cock
         id: "writes",
         status: configured ? "partial" : "blocked",
         title: "Guarded writes and catalog",
-        detail: "Write, compile, catalog, lock, and destructive TCL operations stay behind safety mode and typed confirmations from the cockpit.",
+        detail: "Write, compile, catalog, lock, and destructive TCL operations stay behind safety mode and typed confirmations from the IDE.",
         proof: ["safety-guard report", "diff before write", "compile/catalog transcript"],
       }),
       feature({
@@ -130,7 +130,7 @@ export function createCockpitTerminalContract(profile?: ConnectionProfile): Cock
       enableEnv: "D3CODE_TERMINAL_ENABLED=1",
       mutationEnv: "D3CODE_ALLOW_WRITES=1",
       transcriptEnv: "D3CODE_TERMINAL_RECORD_TRANSCRIPT=1",
-      mockMode: "D3CODE_MOCK=1 allows offline cockpit terminal smoke tests only",
+      mockMode: "D3CODE_MOCK=1 allows offline IDE terminal smoke tests only",
       blockedUntil: [
         "profile-doctor proves login, prompt detection, WHO, LIST MD, and read-only TCL",
         "terminal-capture records at least one representative menu/form transcript",
@@ -180,7 +180,7 @@ export function createCockpitTerminalContract(profile?: ConnectionProfile): Cock
       unsupportedUntilProven: [
         "claiming xterm compatibility",
         "automatic screen rewrites without live transcript evidence",
-        "production terminal sends from the generated cockpit",
+        "production terminal sends from the generated IDE",
         "using UOPY as a substitute for full-screen D3 workflows",
       ],
     },
@@ -195,9 +195,9 @@ export function createCockpitTerminalContract(profile?: ConnectionProfile): Cock
   }
 }
 
-export function renderCockpitTerminalContract(contract: CockpitTerminalContract): string {
+export function renderIdeTerminalContract(contract: IdeTerminalContract): string {
   return [
-    "# D3 Cockpit Terminal Contract",
+    "# D3 IDE Terminal Contract",
     "",
     `Profile: ${contract.profile ?? "none"}`,
     `Account: ${contract.account ?? "unknown"}`,

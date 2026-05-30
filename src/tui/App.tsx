@@ -7,7 +7,7 @@ import { defaultSecretStore } from "../security/secrets.js"
 import { handleSlashCommand } from "./commands.js"
 import { handleNaturalIntent } from "./intent.js"
 import { appendEvent, newSession, saveSession, type StoredSession } from "../sessions/store.js"
-import { createCockpitReport, renderCockpitReport } from "../quality/cockpit.js"
+import { createIdeStatusReport, renderIdeStatusReport } from "../quality/ide-status.js"
 import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 
@@ -54,8 +54,8 @@ export function App(props: AppProps) {
 
   useEffect(() => {
     let cancelled = false
-    void createCockpitReport(props.config, { model, safety, profile, mode }).then((report) => {
-      if (!cancelled) setTranscript((current) => [...current, { role: "system", content: renderCockpitReport(report) }])
+    void createIdeStatusReport(props.config, { model, safety, profile, mode }).then((report) => {
+      if (!cancelled) setTranscript((current) => [...current, { role: "system", content: renderIdeStatusReport(report) }])
     }).catch((error) => {
       if (!cancelled) setTranscript((current) => [...current, { role: "error", content: `Could not load IDE status: ${(error as Error).message}` }])
     })

@@ -17,7 +17,7 @@ export interface D3TerminalBridgePlan {
     why: string
   }
   capabilities: D3TerminalBridgeCapability[]
-  dashboardEmbedding: string[]
+  ideEmbedding: string[]
   nextCommands: string[]
 }
 
@@ -39,7 +39,7 @@ export function createD3TerminalBridgePlan(profile?: ConnectionProfile): D3Termi
       {
         id: "pty",
         status: persistent ? "implemented" : "planned",
-        purpose: "Maintain a live local/SSH D3 process for terminal-style interaction from the TUI or cockpit.",
+        purpose: "Maintain a live local/SSH D3 process for terminal-style interaction from the TUI or IDE.",
         risks: ["prompt detection must be profile-specific", "paged output and full-screen programs can block if the bridge does not send expected keys"],
         proof: ["profile has sessionMode=persistent", "profile has promptPattern", "profile-doctor passes WHO/VERSION/LIST MD"],
       },
@@ -60,12 +60,12 @@ export function createD3TerminalBridgePlan(profile?: ConnectionProfile): D3Termi
       {
         id: "screen",
         status: "partial",
-        purpose: "Build a legacy screen-buffer adapter that decodes D3 BASIC screen utilities, @() cursor addressing, INPUT/CRT/DISPLAY flows, PROC paragraphs, and terminal-control output into inspectable cockpit events.",
+        purpose: "Build a legacy screen-buffer adapter that decodes D3 BASIC screen utilities, @() cursor addressing, INPUT/CRT/DISPLAY flows, PROC paragraphs, and terminal-control output into inspectable IDE events.",
         risks: ["PowerTerm/terminal definitions are not guaranteed to behave like xterm", "cursor addressing and status-line behavior require a screen buffer model", "AI must not rewrite screen programs without compile and operator proof"],
         proof: ["manual screen topic scoped", "fixture screen transcript parser", "live screen smoke with captured terminal transcript still required"],
       },
     ],
-    dashboardEmbedding: [
+    ideEmbedding: [
       "IDE terminal pane should attach to the persistent D3 session, not shell out per command.",
       "Read/search tools can use typed TCL; full-screen legacy programs should use a screen-buffer adapter.",
       "The IDE should show raw transcript, parsed screen buffer, file/program context, and safety classification side by side.",
@@ -99,8 +99,8 @@ export function renderD3TerminalBridgePlan(plan: D3TerminalBridgePlan): string {
       `  proof: ${capability.proof.join("; ")}`,
     ]),
     "",
-    "Dashboard Embedding:",
-    ...plan.dashboardEmbedding.map((item) => `- ${item}`),
+    "IDE Embedding:",
+    ...plan.ideEmbedding.map((item) => `- ${item}`),
     "",
     "Next Commands:",
     ...plan.nextCommands.map((command) => `- \`${command}\``),

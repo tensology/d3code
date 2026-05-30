@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
-import { createCockpitReport, renderCockpitReport } from "../src/quality/cockpit.js"
+import { createIdeStatusReport, renderIdeStatusReport } from "../src/quality/ide-status.js"
 import { createModernizationGoal } from "../src/goal/goal.js"
 
 test("IDE status report combines runtime state, readiness, live proof, goals, and next commands", async () => {
@@ -15,8 +15,8 @@ test("IDE status report combines runtime state, readiness, live proof, goals, an
   }
   const goal = createModernizationGoal("Migrate customers", "Customers web slice works", "migrate")
 
-  const report = await createCockpitReport(config, { mode: "migrate", profile: "prod", model: "openai/gpt-5", safety: "ask" }, [goal])
-  const rendered = renderCockpitReport(report)
+  const report = await createIdeStatusReport(config, { mode: "migrate", profile: "prod", model: "openai/gpt-5", safety: "ask" }, [goal])
+  const rendered = renderIdeStatusReport(report)
 
   assert.equal(report.ready, false)
   assert.equal(report.profile, "prod")

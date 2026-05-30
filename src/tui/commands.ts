@@ -29,7 +29,7 @@ import { detectLocalD3 } from "../d3/detect.js"
 import { createLiveProofReport, profileDoctorGoalEvidence, renderLiveProofReport } from "../d3/live-proof.js"
 import { checkLiveProofArtifacts, renderLiveProofArtifactReport, renderLiveProofScaffold, writeLiveProofScaffold } from "../d3/live-proof-artifacts.js"
 import { diagnoseProfile, renderProfileDoctor } from "../d3/profile-doctor.js"
-import { createCockpitTerminalContract, renderCockpitTerminalContract } from "../d3/cockpit-terminal.js"
+import { createIdeTerminalContract, renderIdeTerminalContract } from "../d3/ide-terminal.js"
 import { createD3ConnectorStrategy, renderD3ConnectorStrategy } from "../d3/connector-strategy.js"
 import { parseD3ScreenTranscript, renderD3ScreenBuffer } from "../d3/screen-buffer.js"
 import { captureD3Terminal, renderD3TerminalCapture, writeD3TerminalCapture } from "../d3/terminal-capture.js"
@@ -42,7 +42,7 @@ import { createModelProofReport, renderModelProofReport } from "../providers/pro
 import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBias } from "../providers/routing.js"
 import { defaultSecretStore } from "../security/secrets.js"
 import { renderAcceptanceReport, runMockAcceptance } from "../quality/acceptance.js"
-import { createCockpitReport, renderCockpitReport } from "../quality/cockpit.js"
+import { createIdeStatusReport, renderIdeStatusReport } from "../quality/ide-status.js"
 import { createReadinessReport, renderReadinessReport } from "../quality/readiness.js"
 import { createInstallProofReport } from "../quality/install-proof.js"
 import { createProductCompletionAudit, renderProductCompletionAudit } from "../quality/product-audit.js"
@@ -132,7 +132,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /status, /ide [--port N] [--host 127.0.0.1], /terminal-plan [profile], /cockpit-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|local], /model-routing [mode] [--bias quality|balanced|speed|local], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /status, /ide [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|local], /model-routing [mode] [--bias quality|balanced|speed|local], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -146,7 +146,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
         ].join("\n"),
       }
     case "/status":
-      return { output: renderCockpitReport(await createCockpitReport(config, state)) }
+      return { output: renderIdeStatusReport(await createIdeStatusReport(config, state)) }
     case "/ide": {
       const portValue = flagValue(args, "--port") ?? args.find((arg) => /^\d+$/.test(arg))
       const port = portValue ? Number(portValue) : 3737
@@ -171,10 +171,10 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       const profile = profileName ? config.profiles.find((item) => item.name === profileName) : config.profiles[0]
       return { output: renderD3TerminalBridgePlan(createD3TerminalBridgePlan(profile)) }
     }
-    case "/cockpit-terminal": {
+    case "/ide-terminal": {
       const profileName = args[0] ?? state.profile
       const profile = profileName ? config.profiles.find((item) => item.name === profileName) : config.profiles[0]
-      return { output: renderCockpitTerminalContract(createCockpitTerminalContract(profile)) }
+      return { output: renderIdeTerminalContract(createIdeTerminalContract(profile)) }
     }
     case "/connector-strategy": {
       const profileName = args[0] ?? state.profile

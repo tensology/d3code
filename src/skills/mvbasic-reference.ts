@@ -80,10 +80,10 @@ export async function auditMvBasicReference(root: string): Promise<MvBasicRefere
       implication: "Virtual D3 item editing needs lock awareness, conflict warnings, and write journals before production mutation.",
     }),
     check({
-      id: "hashed-file-cockpit",
+      id: "hashed-file-IDE",
       status: okWhen(Boolean(hashedFile?.includes("Fetch Field Names from Dictionary") && hashedFile.includes("Update Record")), Boolean(hashedFile)),
       evidence: ["HashedFileEditing.md", "record ID", "dictionary field names", "exclusive lock", "update/delete/release"],
-      implication: "The cockpit should look like a database workbench for D3 files, dictionaries, records, locks, and relationships, not like a migration-only SQL tool.",
+      implication: "The IDE should look like a database workbench for D3 files, dictionaries, records, locks, and relationships, not like a migration-only SQL tool.",
     }),
     check({
       id: "debugger-boundaries",

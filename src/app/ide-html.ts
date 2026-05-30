@@ -1,4 +1,4 @@
-import type { BundleDashboardReport } from "./dashboard.js"
+import type { BundleIdeReport } from "./ide-report.js"
 
 function escapeHtml(input: string): string {
   return input.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
@@ -8,14 +8,14 @@ function jsonScript(id: string, value: unknown): string {
   return `<script id="${id}" type="application/json">${escapeHtml(JSON.stringify(value))}</script>`
 }
 
-export function renderDashboardHtml(report: BundleDashboardReport): string {
+export function renderIdeHtml(report: BundleIdeReport): string {
   return [
     "<!doctype html>",
     '<html lang="en">',
     "<head>",
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<title>D3 Dashboard - ${escapeHtml(report.account)}</title>`,
+    `<title>D3 IDE - ${escapeHtml(report.account)}</title>`,
     "<style>",
     "body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;background:#101418;color:#eef2f4}",
     ".shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}",
@@ -53,7 +53,7 @@ export function renderDashboardHtml(report: BundleDashboardReport): string {
     "<label>Bridge mode</label><select><option>persistent PTY / SSH session</option><option>typed TCL command bridge</option><option>PowerTerm-aware screen buffer</option><option>Rocket MV BASIC IDE parity</option><option>UOPY typed adapter spike</option></select>",
     "<label>Command / keys</label><input placeholder=\"WHO, LIST MD, menu selection, or screen keys\">",
     "<button type=\"button\">Send</button>",
-    '<p class="muted">The live cockpit should attach to a persistent D3 session. Full-screen legacy programs need raw transcript plus screen-buffer proof because PowerTerm-style cursor behavior is not ordinary xterm output. Rocket MV BASIC docs are used as an IDE checklist for connected accounts, locks, hashed files, compile/catalog, diagnostics, and debugger boundaries.</p>',
+    '<p class="muted">The live IDE should attach to a persistent D3 session. Full-screen legacy programs need raw transcript plus screen-buffer proof because PowerTerm-style cursor behavior is not ordinary xterm output. Rocket MV BASIC docs are used as an IDE checklist for connected accounts, locks, hashed files, compile/catalog, diagnostics, and debugger boundaries.</p>',
     "</section>",
     '<section class="panel"><h2>Users</h2><ul>',
     ...(report.panels.find((panel) => panel.id === "users")?.items ?? ["Import from D3/Unix auth during live profile proof."]).map((item) => `<li>${escapeHtml(item)}</li>`),
@@ -89,9 +89,9 @@ export function renderDashboardHtml(report: BundleDashboardReport): string {
     "</section>",
     "</main>",
     "</div>",
-    jsonScript("dashboard-data", report),
+    jsonScript("ide-data", report),
     "<script>",
-    "const data=JSON.parse(document.getElementById('dashboard-data').textContent);",
+    "const data=JSON.parse(document.getElementById('ide-data').textContent);",
     "const graph=document.getElementById('graph');const svg=document.getElementById('edges');",
     "const center={x:graph.clientWidth/2,y:graph.clientHeight/2};const radius=Math.max(160,Math.min(center.x,center.y)-80);",
     "const positions=new Map();data.nodes.forEach((node,i)=>{const angle=(Math.PI*2*i)/Math.max(1,data.nodes.length)-Math.PI/2;const x=center.x+Math.cos(angle)*radius;const y=center.y+Math.sin(angle)*radius;positions.set(node.id,{x,y});const el=document.createElement('div');el.className=`node ${node.risk}`;el.style.left=`${Math.max(8,Math.min(graph.clientWidth-190,x-70))}px`;el.style.top=`${Math.max(8,Math.min(graph.clientHeight-86,y-28))}px`;el.innerHTML=`<strong>${node.label}</strong><small>${node.kind}</small>`;graph.appendChild(el);});",

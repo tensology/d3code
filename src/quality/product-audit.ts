@@ -147,7 +147,7 @@ export async function createProductCompletionAudit(config: D3CodeConfig, secrets
         ...(mvBasicAudit?.checks.map((item) => `${item.id}:${item.status}`) ?? []),
       ],
       gaps: mvBasicAudit?.ready ? [] : mvBasicAudit ? mvBasicAudit.checks.filter((item) => item.status !== "ok").map((item) => `${item.id}:${item.status}`) : ["reference/rocket-mvbasic has not been audited"],
-      commands: [`d3code mvbasic-reference-audit ${defaultRocketMvBasicDir}`, "d3code cockpit-terminal", "d3code bundle-code-plan d3-app-bundle.json"],
+      commands: [`d3code mvbasic-reference-audit ${defaultRocketMvBasicDir}`, "d3code ide-terminal", "d3code bundle-code-plan d3-app-bundle.json"],
     }),
     requirement({
       id: "model-and-install-readiness",

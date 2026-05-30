@@ -7,7 +7,7 @@ import { bundleToIndex, createBundleArtifacts, parseBundle, validateBundleUris }
 import { createCodeModernizationPlan, renderCodeModernizationPlan } from "../src/app/code-plan.js"
 import { createCompletionAuditReport, renderCompletionAuditReport } from "../src/app/completion-audit.js"
 import { createBundleContextPack, renderBundleContextPack } from "../src/app/context-pack.js"
-import { createBundleDashboardReport, renderBundleDashboardReport } from "../src/app/dashboard.js"
+import { createBundleIdeReport, renderBundleIdeReport } from "../src/app/ide-report.js"
 import { createDataValidationPlan, renderDataValidationPlan } from "../src/app/data-plan.js"
 import { createBundleEvidenceReport, renderBundleEvidenceReport } from "../src/app/evidence.js"
 import { createBundleExecutionPlan, renderBundleExecutionPlan } from "../src/app/execution-plan.js"
@@ -411,7 +411,7 @@ test("bundle creates a ship and canary release report", () => {
   assert.ok(canary.canaryScope.some((scope) => scope.includes("read-only")))
 })
 
-test("bundle creates ERP migration, D3 estate dashboard, safety, and context reports", () => {
+test("bundle creates ERP migration, D3 estate IDE, safety, and context reports", () => {
   const erpBundle = parseBundle({
     account: "SALES",
     profile: "prod",
@@ -468,17 +468,17 @@ test("bundle creates ERP migration, D3 estate dashboard, safety, and context rep
   assert.ok(access.warnings.some((warning) => warning.includes("Write/admin grants")))
   assert.match(renderD3AccessPlan(access), /D3 Access Plan: SALES/)
 
-  const dashboard = createBundleDashboardReport(erpBundle, artifacts)
-  assert.ok(dashboard.nodes.some((node) => node.kind === "user"))
-  assert.ok(dashboard.nodes.some((node) => node.kind === "dictionary"))
-  assert.ok(dashboard.nodes.some((node) => node.kind === "data-model"))
-  assert.ok(dashboard.edges.some((edge) => edge.label === "logical D3 view"))
-  assert.ok(dashboard.panels.some((panel) => panel.id === "access" && panel.items.some((item) => item.includes("grants="))))
-  assert.ok(dashboard.panels.some((panel) => panel.id === "risks"))
-  assert.ok(dashboard.panels.some((panel) => panel.id === "model" && panel.title === "D3 Logical Model"))
-  assert.ok(dashboard.nextCommands.some((command) => command.includes("terminal-capture")))
-  assert.ok(!dashboard.nextCommands.some((command) => command.includes("bundle-erp-plan")))
-  assert.match(renderBundleDashboardReport(dashboard), /D3 Dashboard: SALES/)
+  const IDE = createBundleIdeReport(erpBundle, artifacts)
+  assert.ok(IDE.nodes.some((node) => node.kind === "user"))
+  assert.ok(IDE.nodes.some((node) => node.kind === "dictionary"))
+  assert.ok(IDE.nodes.some((node) => node.kind === "data-model"))
+  assert.ok(IDE.edges.some((edge) => edge.label === "logical D3 view"))
+  assert.ok(IDE.panels.some((panel) => panel.id === "access" && panel.items.some((item) => item.includes("grants="))))
+  assert.ok(IDE.panels.some((panel) => panel.id === "risks"))
+  assert.ok(IDE.panels.some((panel) => panel.id === "model" && panel.title === "D3 Logical Model"))
+  assert.ok(IDE.nextCommands.some((command) => command.includes("terminal-capture")))
+  assert.ok(!IDE.nextCommands.some((command) => command.includes("bundle-erp-plan")))
+  assert.match(renderBundleIdeReport(IDE), /D3 IDE: SALES/)
 
   const guard = createSafetyGuardReport(config, { safety: "ask", profile: "prod", bundle: erpBundle })
   assert.equal(guard.ready, false)

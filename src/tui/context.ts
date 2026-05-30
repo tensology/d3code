@@ -39,7 +39,7 @@ export function createChatSystemPrompt(config: D3CodeConfig, context: ChatRuntim
     "- For migration work, produce bundle, audit, API, UI, connector, QA, readiness, and goal evidence before claiming completion.",
     "",
     "Useful D3 Code Commands:",
-    "- /status, /readiness, /setup-proof, /connector-strategy, /terminal-plan, /cockpit-terminal",
+    "- /status, /readiness, /setup-proof, /connector-strategy, /terminal-plan, /ide-terminal",
     "- /agent-run file-audit <file>, /agent-run basic-check <file> <item>, /agent-run migration-slice <bundle.json> --out <dir>",
     "- /bundle-capture, /bundle-artifacts, /bundle-readiness, /bundle-completion-audit, /bundle-evidence",
     "- /goal, /goal-plan, /goal-next, /goal-verify, /goal-audit-bundle",

@@ -101,7 +101,7 @@ export function createLiveOperatorRunbook(bundle: D3ApplicationBundle, artifacts
           "d3code bundle-release-report d3-app-bundle.json --artifacts-dir ./migration-output",
           "npm run regression",
         ],
-        evidence: ["qa-evidence.json/md", "proof-dashboard.json", "completion-audit.md", "release-report.md", "regression output"],
+        evidence: ["qa-evidence.json/md", "proof-data.json", "completion-audit.md", "release-report.md", "regression output"],
       },
       {
         id: "goal-audit",
