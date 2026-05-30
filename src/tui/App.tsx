@@ -9,7 +9,7 @@ import { handleNaturalIntent } from "./intent.js"
 import { appendEvent, newSession, saveSession, type StoredSession } from "../sessions/store.js"
 import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
-import { renderWelcome } from "./welcome.js"
+import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 
 export interface AppProps {
   model: string
@@ -50,13 +50,14 @@ export function App(props: AppProps) {
   const [busy, setBusy] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>(messagesFromSession(props.config, props.session, initialContext))
   const [transcript, setTranscript] = useState<Array<{ role: string; content: string }>>(transcriptFromSession(props.session))
+  const [welcome, setWelcome] = useState<WelcomeSummary | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
 
   useEffect(() => {
     let cancelled = false
     if (props.session) return
-    void renderWelcome(props.config, secrets, { model, safety, profile, mode }).then((welcome) => {
-      if (!cancelled) setTranscript([{ role: "system", content: welcome }])
+    void createWelcomeSummary(props.config, secrets, { model, safety, profile, mode }).then((summary) => {
+      if (!cancelled) setWelcome(summary)
     }).catch((error) => {
       if (!cancelled) setTranscript([{ role: "error", content: `Could not load launch summary: ${(error as Error).message}` }])
     })
@@ -149,9 +150,35 @@ export function App(props: AppProps) {
   }
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Text color="cyan" bold>D3 Code</Text>
-      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety}</Text>
+    <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="row">
+        <Box width="38%" flexDirection="column" paddingRight={2}>
+          <Text color="cyan" bold>D3 Code</Text>
+          <Text dimColor>Rocket D3 agent shell</Text>
+          <Box marginTop={1} flexDirection="column">
+            <Text color={welcome?.providerStatus === "connected" ? "green" : "yellow"}>{welcome?.providerStatus === "connected" ? "●" : "○"} AI {welcome?.providerStatus ?? "checking"}</Text>
+            <Text color={welcome?.d3Status === "connected" ? "green" : "yellow"}>{welcome?.d3Status === "connected" ? "●" : "○"} D3 {welcome?.d3Status ?? "checking"}</Text>
+          </Box>
+          <Box marginTop={1} flexDirection="column">
+            <Text dimColor>{welcome?.providerName ?? "Checking provider"}</Text>
+            <Text dimColor>{welcome?.providerModel ?? model}</Text>
+            <Text dimColor>{welcome?.d3Detail ?? "Checking D3 profile"}</Text>
+          </Box>
+        </Box>
+        <Box width="62%" borderStyle="single" borderColor="gray" borderTop={false} borderBottom={false} borderRight={false} paddingLeft={2} flexDirection="column">
+          <Text color="cyan" bold>Getting Started</Text>
+          <Text>{welcome?.primaryAction ?? "Loading connection state..."}</Text>
+          <Box marginTop={1} flexDirection="column">
+            <Text color="cyan">/help <Text dimColor>controls and slash commands</Text></Text>
+            <Text color="cyan">/status <Text dimColor>full readiness report</Text></Text>
+            <Text color="cyan">/ide <Text dimColor>open the browser workbench</Text></Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>{welcome?.tokenLine ?? "Token usage appears after the first model response"}</Text>
+          </Box>
+        </Box>
+      </Box>
+      <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box flexDirection="column" marginTop={1}>
         {transcript.slice(-18).map((entry, index) => (
           <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : "gray"}>
@@ -160,10 +187,12 @@ export function App(props: AppProps) {
           </Text>
         ))}
       </Box>
-      <Box marginTop={1}>
-        <Text color="cyan">{busy ? "..." : "d3code"} </Text>
+      <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
+      <Box marginTop={1} flexDirection="row">
+        <Text color="cyan" bold>{busy ? "..." : "›"} </Text>
         <Text>{input}</Text>
       </Box>
+      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety}</Text>
     </Box>
   )
 }

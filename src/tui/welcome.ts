@@ -11,39 +11,71 @@ export interface WelcomeState {
   mode: string
 }
 
-export async function renderWelcome(config: D3CodeConfig, secrets: SecretStore, state: WelcomeState): Promise<string> {
+export interface WelcomeSummary {
+  providerStatus: "connected" | "not connected" | "check setup"
+  providerName: string
+  providerModel: string
+  modelRef: string
+  d3Status: "connected" | "not connected"
+  d3Detail: string
+  mode: string
+  safety: SafetyMode
+  tokenLine: string
+  primaryAction: string
+}
+
+export async function createWelcomeSummary(config: D3CodeConfig, secrets: SecretStore, state: WelcomeState): Promise<WelcomeSummary> {
   const profile = selectProfile(config, state.profile)
   const modelRef = state.model || config.defaultModel
-  let providerLine = `AI provider: ${modelRef}`
+  let providerStatus: WelcomeSummary["providerStatus"] = "check setup"
+  let providerName = "unknown provider"
+  let providerModel = modelRef
   try {
     const { provider, model } = resolveModel(modelRef)
     const secretRef = config.modelSecrets[provider.id] ?? (provider.id === "ollama" ? config.modelSecrets.local : undefined)
     const envReady = provider.env.some((name) => Boolean(process.env[name]))
     const secretReady = secretRef ? Boolean(await secrets.get(secretRef)) : false
     const ready = provider.id === "ollama" || envReady || secretReady
-    providerLine = `AI provider: ${ready ? "connected" : "not connected"} (${provider.name}, ${model})`
+    providerStatus = ready ? "connected" : "not connected"
+    providerName = provider.name
+    providerModel = model
   } catch {
-    providerLine = `AI provider: check setup (${modelRef})`
+    providerStatus = "check setup"
   }
 
-  const d3Line = profile
-    ? `D3 profile: ${profile.name} (${profile.type}${profile.account ? `, account ${profile.account}` : ""}${profile.sessionMode === "persistent" ? ", persistent session" : ""})`
-    : "D3 profile: not connected"
+  const d3Status = profile ? "connected" : "not connected"
+  const d3Detail = profile
+    ? `${profile.name} (${profile.type}${profile.account ? `, account ${profile.account}` : ""}${profile.sessionMode === "persistent" ? ", persistent session" : ""})`
+    : "No D3 profile selected"
 
-  const tokenLine = "Context: token usage appears after the first model response"
+  return {
+    providerStatus,
+    providerName,
+    providerModel,
+    modelRef,
+    d3Status,
+    d3Detail,
+    mode: state.mode,
+    safety: state.safety,
+    tokenLine: "Token usage appears after the first model response",
+    primaryAction: profile
+      ? "Ask me to inspect files, dictionaries, BASIC, subroutines, or runtime output."
+      : "Add a D3 profile when you are ready. /status shows exact setup commands.",
+  }
+}
 
+export async function renderWelcome(config: D3CodeConfig, secrets: SecretStore, state: WelcomeState): Promise<string> {
+  const summary = await createWelcomeSummary(config, secrets, state)
   return [
     "D3 Code",
     "",
-    providerLine,
-    `Model: ${modelRef}`,
-    d3Line,
-    `Mode: ${state.mode}  Safety: ${state.safety}`,
-    tokenLine,
+    `AI provider: ${summary.providerStatus} (${summary.providerName}, ${summary.providerModel})`,
+    `Model: ${summary.modelRef}`,
+    `D3 profile: ${summary.d3Status === "connected" ? summary.d3Detail : "not connected"}`,
+    `Mode: ${summary.mode}  Safety: ${summary.safety}`,
+    `Context: ${summary.tokenLine}`,
     "",
-    profile
-      ? "Ask me to inspect files, dictionaries, BASIC, subroutines, or runtime output."
-      : "Add a D3 profile when you are ready: /status shows exact setup commands.",
+    summary.primaryAction,
     "Use /help for controls, /status for the full readiness report, /ide for the browser IDE.",
   ].join("\n")
 }
