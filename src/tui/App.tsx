@@ -17,6 +17,14 @@ import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
+const logoLines = [
+  "██████╗ ██████╗   ██████╗ ██████╗ ██████╗ ███████╗",
+  "██╔══██╗╚════██╗ ██╔════╝██╔═══██╗██╔══██╗██╔════╝",
+  "██║  ██║ █████╔╝ ██║     ██║   ██║██║  ██║█████╗  ",
+  "██║  ██║ ╚═══██╗ ██║     ██║   ██║██║  ██║██╔══╝  ",
+  "██████╔╝██████╔╝ ╚██████╗╚██████╔╝██████╔╝███████╗",
+  "╚═════╝ ╚═════╝   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
+]
 
 function renderTuiD3Screen(buffer: D3ScreenBuffer): string {
   const visibleEnd = Math.max(1, ...buffer.lines.map((line, index) => line.trim().length ? index + 1 : 0))
@@ -66,6 +74,7 @@ export function App(props: AppProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(messagesFromSession(props.config, props.session, initialContext))
   const [transcript, setTranscript] = useState<Array<{ role: string; content: string }>>(transcriptFromSession(props.session))
   const [welcome, setWelcome] = useState<WelcomeSummary | undefined>()
+  const [streamingAssistant, setStreamingAssistant] = useState("")
   const d3Session = useRef<D3Session | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
 
@@ -171,7 +180,9 @@ export function App(props: AppProps) {
         safety,
         profile,
         mode,
+        onToken: (token) => setStreamingAssistant((current) => current + token),
       })
+      setStreamingAssistant("")
       setMessages(response.messages)
       for (const event of response.toolEvents) {
         const content = `${event.name}\n${event.result.compact}`
@@ -181,6 +192,7 @@ export function App(props: AppProps) {
       setTranscript((current) => [...current, { role: "assistant", content: response.output || "(empty response)" }])
       await record({ type: "assistant", content: response.output || "", metadata: { model, toolEvents: response.toolEvents.map((event) => event.name) } })
     } catch (error) {
+      setStreamingAssistant("")
       setTranscript((current) => [...current, { role: "error", content: (error as Error).message }])
     } finally {
       setBusy(false)
@@ -231,9 +243,15 @@ export function App(props: AppProps) {
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
-      <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="row">
+      <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="column">
+        <Box flexDirection="column" marginBottom={1}>
+          {logoLines.map((line) => <Text key={line} color="cyan" bold>{line}</Text>)}
+        </Box>
+        <Box flexDirection="row">
         <Box width="38%" flexDirection="column" paddingRight={2}>
-          <Text color="cyan" bold>D3 Code</Text>
+          <Box flexDirection="column">
+            <Text color="cyan" bold>D3 Code</Text>
+          </Box>
           <Text dimColor>Rocket D3 agent shell</Text>
           <Box marginTop={1} flexDirection="column">
             <Text color={welcome?.providerStatus === "connected" ? "green" : "yellow"}>{welcome?.providerStatus === "connected" ? "●" : "○"} AI {welcome?.providerStatus ?? "checking"}</Text>
@@ -261,6 +279,7 @@ export function App(props: AppProps) {
             </Text>
           </Box>
         </Box>
+        </Box>
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box flexDirection="column" marginTop={1}>
@@ -270,6 +289,7 @@ export function App(props: AppProps) {
             {entry.content}
           </Text>
         ))}
+        {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
       </Box>
       <Box marginTop={1} flexDirection="row">
         <Text color="cyan" bold>{busy ? "..." : "›"} </Text>

@@ -18,6 +18,7 @@ export interface D3AgentTurnRequest extends D3AgentState {
   history?: ChatMessage[]
   maxToolIterations?: number
   chatFn?: AgentChatFunction
+  onToken?: (token: string) => void
 }
 
 export interface D3AgentToolRequest {
@@ -71,7 +72,12 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
 export function parseD3ToolRequest(content: string): D3AgentToolRequest | undefined {
   const match = content.match(/<d3_tool>\s*([\s\S]*?)\s*<\/d3_tool>/i)
   if (!match) return undefined
-  const parsed = JSON.parse(match[1] ?? "{}") as Partial<D3AgentToolRequest>
+  let parsed: Partial<D3AgentToolRequest>
+  try {
+    parsed = JSON.parse(match[1] ?? "{}") as Partial<D3AgentToolRequest>
+  } catch (error) {
+    throw new Error(`Malformed D3 tool request JSON. The model must emit a complete JSON object inside <d3_tool>...</d3_tool>. ${(error as Error).message}`)
+  }
   if (!parsed.name || typeof parsed.name !== "string") throw new Error("D3 tool request must include a string name.")
   return { name: parsed.name, input: parsed.input, reason: typeof parsed.reason === "string" ? parsed.reason : undefined }
 }
@@ -108,7 +114,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
   const maxToolIterations = request.maxToolIterations ?? 4
 
   for (let iteration = 0; iteration <= maxToolIterations; iteration += 1) {
-    const response = await chatFn(config, secrets, { modelRef: request.model, messages })
+    const response = await chatFn(config, secrets, { modelRef: request.model, messages, onToken: iteration === 0 ? request.onToken : undefined })
     const assistant: ChatMessage = { role: "assistant", content: response.content }
     messages.push(assistant)
 

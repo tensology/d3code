@@ -69,6 +69,29 @@ test("agent loop blocks non-D3 tool requests", async () => {
   assert.equal(result.toolEvents.length, 0)
 })
 
+test("agent loop forwards streaming tokens from the first model response", async () => {
+  let streamed = ""
+  const chatFn: AgentChatFunction = async (_config, _secrets, request) => {
+    request.onToken?.("Hello")
+    request.onToken?.(" D3")
+    return { provider: "test", model: "test", content: "Hello D3" }
+  }
+
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "hello",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn,
+    onToken: (token) => {
+      streamed += token
+    },
+  })
+
+  assert.equal(streamed, "Hello D3")
+  assert.equal(result.output, "Hello D3")
+})
+
 test("agent system prompt is D3-only and names reference-manual grounding", () => {
   const prompt = createD3AgentSystemPrompt(config, { model: "openai/gpt-5", safety: "plan", mode: "audit" })
 
@@ -83,4 +106,11 @@ test("parser extracts one D3 tool request from assistant text", () => {
 
   assert.equal(request?.name, "d3_read_item")
   assert.deepEqual(request?.input, { file: "CUSTOMERS", item: "100" })
+})
+
+test("parser reports malformed D3 tool JSON clearly", () => {
+  assert.throws(
+    () => parseD3ToolRequest("<d3_tool>{\"name\":\"d3_list_files\"</d3_tool>"),
+    /Malformed D3 tool request JSON/,
+  )
 })
