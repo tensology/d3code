@@ -212,7 +212,7 @@ export function App(props: AppProps) {
   }
 
   useInput((value, key) => {
-    if (key.ctrl && value === "c") {
+    if ((key.ctrl && value === "c") || value === "\u0003") {
       if (busy) {
         abortRef.current?.abort()
         setAbortMessage("Interrupted. Finishing any already-returned cleanup.")
@@ -220,6 +220,11 @@ export function App(props: AppProps) {
         setStreamingAssistant("")
         setStreamingShellOutput("")
         setStreamingD3Output("")
+        return
+      }
+      if (draft.text) {
+        setDraft({ text: "", cursor: 0 })
+        setHistoryIndex(undefined)
         return
       }
       app.exit()
@@ -288,6 +293,11 @@ export function App(props: AppProps) {
       return
     }
     if (value) {
+      if (value.includes("\u0003")) {
+        setDraft({ text: "", cursor: 0 })
+        setHistoryIndex(undefined)
+        return
+      }
       if (value.includes("\t")) {
         const tabIndex = value.indexOf("\t")
         const beforeTab = value.slice(0, tabIndex)
