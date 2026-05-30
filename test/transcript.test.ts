@@ -6,6 +6,7 @@ test("transcript prefixes make tool and file events first-class message blocks",
   assert.equal(transcriptPrefix("user"), "› ")
   assert.equal(transcriptPrefix("assistant"), "d3code: ")
   assert.equal(transcriptPrefix("assistant-stream"), "  ⎿ ")
+  assert.equal(transcriptPrefix("pending"), "  ⎿ ")
   assert.equal(transcriptPrefix("shell-input"), "! ")
   assert.equal(transcriptPrefix("system"), "  ⎿ ")
   assert.equal(transcriptPrefix("tool"), "  ⎿ ")
@@ -14,6 +15,7 @@ test("transcript prefixes make tool and file events first-class message blocks",
   assert.equal(transcriptColor("tool-start"), "cyan")
   assert.equal(transcriptColor("shell-input"), "yellow")
   assert.equal(transcriptColor("assistant-stream"), "green")
+  assert.equal(transcriptColor("pending"), "yellow")
 })
 
 test("transcript compacts noisy tool output", () => {

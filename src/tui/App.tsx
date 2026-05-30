@@ -361,6 +361,19 @@ export function App(props: AppProps) {
   }
 
   async function submit(line: string) {
+    if (line === "/exit" || line === "/quit") {
+      setAbortMessage("")
+      setActiveTask("")
+      setBusy(false)
+      setStreamingAssistant("")
+      setStreamingShellOutput("")
+      setStreamingD3Output("")
+      setTranscript((current) => [...current, { role: "user", content: line }, { role: "system", content: "Goodbye." }])
+      await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
+      await record({ type: "system", content: "Goodbye.", metadata: { command: line } })
+      app.exit()
+      return
+    }
     setAbortMessage("")
     setActiveTask(initialTaskForLine(line, mode))
     setBusy(true)
@@ -568,6 +581,8 @@ export function App(props: AppProps) {
 
   const renderedDraft = renderPromptDraft(draft, caretOn)
   const promptMeta = formatPromptMeta({ model, profile, mode, safety, usage, workspaceChanges, project })
+  const hasStreamingBlock = Boolean(streamingAssistant || streamingShellOutput || streamingD3Output)
+  const pendingTurn = busy && !hasStreamingBlock ? `${spinnerFrames[busyFrame % spinnerFrames.length]} ${activeTask || "thinking"}` : ""
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -615,6 +630,7 @@ export function App(props: AppProps) {
         {transcript.slice(-18).map((entry, index) => (
           <TranscriptEntryView key={`${entry.role}-${index}`} entry={entry} />
         ))}
+        {pendingTurn ? <TranscriptEntryView entry={{ role: "pending", content: pendingTurn }} /> : null}
         {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: pacedAssistant }} /> : null}
         {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `running\n${pacedShellOutput.trimEnd()}` }} /> : null}
         {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `D3 running\n${pacedD3Output.trimEnd()}` }} /> : null}
