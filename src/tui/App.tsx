@@ -17,6 +17,7 @@ import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
+import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -119,6 +120,18 @@ export function App(props: AppProps) {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    void loadPromptHistory().then((entries) => {
+      if (!cancelled) setHistory(entries.map((entry) => entry.input))
+    }).catch((error) => {
+      if (!cancelled) setTranscript((current) => [...current, { role: "error", content: `Could not load prompt history: ${(error as Error).message}` }])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     return () => {
       void d3Session.current?.close()
       d3Session.current = undefined
@@ -168,6 +181,9 @@ export function App(props: AppProps) {
       setHistoryIndex(undefined)
       if (!line) return
       setHistory((current) => [...current.filter((entry) => entry !== line), line].slice(-80))
+      void appendPromptHistory(line, { mode, profile }).catch((error) => {
+        setTranscript((current) => [...current, { role: "error", content: `Could not save prompt history: ${(error as Error).message}` }])
+      })
       void submit(line)
       return
     }

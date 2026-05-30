@@ -7,6 +7,7 @@ export const sessionsDir = join(configHome, "sessions")
 export const cacheDir = join(configHome, "cache")
 export const memoryPath = join(configHome, "MEMORY.md")
 export const goalsDir = join(configHome, "goals")
+export const promptHistoryPath = join(configHome, "prompt-history.jsonl")
 
 export const defaultReferenceDir = "reference"
 export const defaultD3ReferenceManual = join(defaultReferenceDir, "d3_reference_manual_10.3.4_5-28-2026.pdf")
