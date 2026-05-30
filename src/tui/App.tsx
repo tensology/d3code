@@ -100,6 +100,16 @@ function initialTaskForLine(line: string, mode: string): string {
   return "asking model"
 }
 
+function standaloneEscapeCount(value: string): number {
+  let count = 0
+  for (let index = 0; index < value.length; index++) {
+    if (value[index] !== "\u001B") continue
+    if (value[index + 1] === "[") continue
+    count += 1
+  }
+  return count
+}
+
 export function App(props: AppProps) {
   const app = useApp()
   const [draft, setDraft] = useState<PromptDraft>({ text: "", cursor: 0 })
@@ -131,6 +141,11 @@ export function App(props: AppProps) {
   const [workspaceChanges, setWorkspaceChanges] = useState<WorkspaceChangeSummary | undefined>()
   const d3Session = useRef<D3Session | undefined>()
   const abortRef = useRef<AbortController | undefined>()
+  const busyRef = useRef(false)
+  const draftRef = useRef<PromptDraft>({ text: "", cursor: 0 })
+  const interruptArmedRef = useRef(false)
+  const interruptTimerRef = useRef<NodeJS.Timeout | undefined>()
+  const rawEscapeSuppressUntilRef = useRef(0)
   const queuedLineRef = useRef("")
   const streamSuppressRef = useRef(false)
   const streamIterationRef = useRef<number | undefined>()
@@ -139,6 +154,8 @@ export function App(props: AppProps) {
   const pacedAssistant = usePacedText(streamingAssistant, busy && Boolean(streamingAssistant))
   const pacedShellOutput = usePacedText(streamingShellOutput, busy && Boolean(streamingShellOutput), 16)
   const pacedD3Output = usePacedText(streamingD3Output, busy && Boolean(streamingD3Output), 16)
+  busyRef.current = busy
+  draftRef.current = draft
 
   useEffect(() => {
     let cancelled = false
@@ -181,6 +198,7 @@ export function App(props: AppProps) {
 
   useEffect(() => {
     return () => {
+      if (interruptTimerRef.current) clearTimeout(interruptTimerRef.current)
       void d3Session.current?.close()
       d3Session.current = undefined
     }
@@ -205,21 +223,86 @@ export function App(props: AppProps) {
     return () => clearInterval(timer)
   }, [busy])
 
+  useEffect(() => {
+    if (busy) return
+    interruptArmedRef.current = false
+    if (interruptTimerRef.current) {
+      clearTimeout(interruptTimerRef.current)
+      interruptTimerRef.current = undefined
+    }
+    if (abortMessage === "Esc again to interrupt.") setAbortMessage("")
+  }, [busy])
+
+  useEffect(() => {
+    const input = process.stdin
+    if (!input.isTTY) return
+    const onData = (chunk: Buffer | string) => {
+      if (!busyRef.current) return
+      const value = typeof chunk === "string" ? chunk : chunk.toString("utf8")
+      const count = standaloneEscapeCount(value)
+      if (count <= 0) return
+      rawEscapeSuppressUntilRef.current = Date.now() + 1500
+      handleBusyEscape(count)
+    }
+    input.on("data", onData)
+    return () => {
+      input.off("data", onData)
+    }
+  }, [])
+
   async function record(event: Parameters<typeof appendEvent>[1]) {
     const next = appendEvent(session, event)
     setSession({ ...next, events: [...next.events] })
     await saveSession(next)
   }
 
+  function armInterrupt(): void {
+    interruptArmedRef.current = true
+    setAbortMessage("Esc again to interrupt.")
+    if (interruptTimerRef.current) clearTimeout(interruptTimerRef.current)
+    interruptTimerRef.current = setTimeout(() => {
+      interruptArmedRef.current = false
+      interruptTimerRef.current = undefined
+      setAbortMessage("")
+    }, 5000)
+  }
+
+  function interruptActiveTurn(message: string): void {
+    interruptArmedRef.current = false
+    if (interruptTimerRef.current) {
+      clearTimeout(interruptTimerRef.current)
+      interruptTimerRef.current = undefined
+    }
+    abortRef.current?.abort()
+    setAbortMessage(message)
+    setBusy(false)
+    setStreamingAssistant("")
+    setStreamingShellOutput("")
+    setStreamingD3Output("")
+  }
+
+  function handleBusyEscape(count = 1): void {
+    if (draftRef.current.text) {
+      setDraft({ text: "", cursor: 0 })
+      setHistoryIndex(undefined)
+      return
+    }
+    if (queuedLineRef.current) {
+      queuedLineRef.current = ""
+      setQueuedLine("")
+      return
+    }
+    if (interruptArmedRef.current || count > 1) {
+      interruptActiveTurn("Interrupted. Press Enter for the next instruction.")
+      return
+    }
+    armInterrupt()
+  }
+
   useInput((value, key) => {
     if ((key.ctrl && value === "c") || value === "\u0003") {
       if (busy) {
-        abortRef.current?.abort()
-        setAbortMessage("Interrupted. Finishing any already-returned cleanup.")
-        setBusy(false)
-        setStreamingAssistant("")
-        setStreamingShellOutput("")
-        setStreamingD3Output("")
+        interruptActiveTurn("Interrupted. Finishing any already-returned cleanup.")
         return
       }
       if (draft.text) {
@@ -230,23 +313,17 @@ export function App(props: AppProps) {
       app.exit()
       return
     }
+    if (busy && value.includes("\u001B")) {
+      if (Date.now() < rawEscapeSuppressUntilRef.current) return
+      const count = standaloneEscapeCount(value)
+      if (count > 0) {
+        handleBusyEscape(count)
+        return
+      }
+    }
     if (key.escape && busy) {
-      if (draft.text) {
-        setDraft({ text: "", cursor: 0 })
-        setHistoryIndex(undefined)
-        return
-      }
-      if (queuedLineRef.current) {
-        queuedLineRef.current = ""
-        setQueuedLine("")
-        return
-      }
-      abortRef.current?.abort()
-      setAbortMessage("Interrupted. Press Enter for the next instruction.")
-      setBusy(false)
-      setStreamingAssistant("")
-      setStreamingShellOutput("")
-      setStreamingD3Output("")
+      if (Date.now() < rawEscapeSuppressUntilRef.current) return
+      handleBusyEscape()
       return
     }
     if (key.tab || value === "\t") {

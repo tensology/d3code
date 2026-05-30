@@ -46,9 +46,11 @@ export async function runLocalShellCommand(command: string, options: LocalShellO
   const maxOutputChars = options.maxOutputChars ?? 20_000
   return await new Promise((resolve, reject) => {
     const started = Date.now()
+    const detached = process.platform !== "win32"
     const child = spawn(shell, ["-lc", command], {
       cwd,
       env: process.env,
+      detached,
       stdio: ["ignore", "pipe", "pipe"],
     })
     let stdout = ""
@@ -56,9 +58,20 @@ export async function runLocalShellCommand(command: string, options: LocalShellO
     let truncated = false
     const timer = setTimeout(() => {
       truncated = true
-      child.kill("SIGTERM")
+      terminateChild()
     }, timeoutMs)
     const abort = () => {
+      terminateChild()
+    }
+    const terminateChild = () => {
+      if (detached && child.pid) {
+        try {
+          process.kill(-child.pid, "SIGTERM")
+          return
+        } catch {
+          // Fall back to killing the shell process below.
+        }
+      }
       child.kill("SIGTERM")
     }
     options.signal?.addEventListener("abort", abort, { once: true })
