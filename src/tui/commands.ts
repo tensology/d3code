@@ -7,8 +7,6 @@ import { createD3AccessPlan, renderD3AccessPlan } from "../app/access-plan.js"
 import { createBundleArtifacts, parseBundle } from "../app/bundle.js"
 import { createCompletionAuditReport, renderCompletionAuditReport } from "../app/completion-audit.js"
 import { createBundleContextPack, renderBundleContextPack } from "../app/context-pack.js"
-import { createBundleDashboardReport, renderBundleDashboardReport } from "../app/dashboard.js"
-import { renderDashboardHtml } from "../app/dashboard-html.js"
 import { createBundleEvidenceReport, renderBundleEvidenceReport } from "../app/evidence.js"
 import { createBundleExecutionPlan, renderBundleExecutionPlan } from "../app/execution-plan.js"
 import { createErpMigrationBlueprint, renderErpMigrationBlueprint } from "../app/erp-migration.js"
@@ -63,6 +61,7 @@ import { renderRecipe } from "../skills/recipes.js"
 import { createSetupProofReport, renderSetupProofReport } from "../setup/proof.js"
 import { listSessions, loadSession } from "../sessions/store.js"
 import { checkGeneratedWebApp } from "../migration/webapp-check.js"
+import { startIdeServer } from "../ide/server.js"
 
 export interface RuntimeState {
   model: string
@@ -80,6 +79,13 @@ export interface CommandResult {
 
 function decodeInlineBody(parts: string[]): string {
   return parts.join(" ").replace(/\\n/g, "\n")
+}
+
+function flagValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag)
+  if (index !== -1) return args[index + 1]
+  const inline = args.find((arg) => arg.startsWith(`${flag}=`))
+  return inline?.slice(flag.length + 1)
 }
 
 function commandStdout(raw: unknown): string {
@@ -126,7 +132,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /status, /dashboard [bundle.json], /dashboard-write <bundle.json> <html-file>, /terminal-plan [profile], /cockpit-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|local], /model-routing [mode] [--bias quality|balanced|speed|local], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /status, /ide [--port N] [--host 127.0.0.1], /terminal-plan [profile], /cockpit-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|local], /model-routing [mode] [--bias quality|balanced|speed|local], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -141,22 +147,24 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       }
     case "/status":
       return { output: renderCockpitReport(await createCockpitReport(config, state)) }
-    case "/dashboard": {
-      const jsonFile = args[0]
-      if (!jsonFile) return { output: renderCockpitReport(await createCockpitReport(config, state)) }
-      const { bundle, artifacts } = await loadBundleReport(jsonFile)
-      return { output: renderBundleDashboardReport(createBundleDashboardReport(bundle, artifacts)) }
-    }
-    case "/dashboard-write": {
-      const jsonFile = args[0]
-      const out = args[1]
-      if (!jsonFile || !out) return { output: "Usage: /dashboard-write <bundle.json> <html-file>" }
-      const { writeFile, mkdir } = await import("node:fs/promises")
-      const { dirname } = await import("node:path")
-      const { bundle, artifacts } = await loadBundleReport(jsonFile)
-      await mkdir(dirname(out), { recursive: true })
-      await writeFile(out, renderDashboardHtml(createBundleDashboardReport(bundle, artifacts)))
-      return { output: `Wrote ${out}` }
+    case "/ide": {
+      const portValue = flagValue(args, "--port") ?? args.find((arg) => /^\d+$/.test(arg))
+      const port = portValue ? Number(portValue) : 3737
+      if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [--port 3737] [--host 127.0.0.1]" }
+      const host = flagValue(args, "--host") ?? "127.0.0.1"
+      const server = await startIdeServer(config, state, { host, port })
+      return {
+        output: [
+          `D3 Code IDE running: ${server.url}`,
+          `Profile: ${state.profile ?? config.defaultProfile ?? "default"}`,
+          `Safety: ${state.safety}`,
+          "",
+          "Browser surfaces:",
+          "- D3 terminal: POST /api/terminal/send",
+          "- file/database manager: /api/files, /api/item, /api/dict",
+          "- profile/tool context: /api/status, /api/profiles, /api/tools",
+        ].join("\n"),
+      }
     }
     case "/terminal-plan": {
       const profileName = args[0] ?? state.profile

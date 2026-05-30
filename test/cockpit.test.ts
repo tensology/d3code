@@ -4,7 +4,7 @@ import type { D3CodeConfig } from "../src/config/config.js"
 import { createCockpitReport, renderCockpitReport } from "../src/quality/cockpit.js"
 import { createModernizationGoal } from "../src/goal/goal.js"
 
-test("cockpit report combines runtime state, readiness, live proof, goals, and next commands", async () => {
+test("IDE status report combines runtime state, readiness, live proof, goals, and next commands", async () => {
   const config: D3CodeConfig = {
     version: 1,
     defaultModel: "openai/gpt-5",
@@ -25,7 +25,7 @@ test("cockpit report combines runtime state, readiness, live proof, goals, and n
   assert.ok(report.readiness.some((entry) => entry.id === "live-d3-proof"))
   assert.ok(report.liveProof.some((entry) => entry.id === "read-only-smoke"))
   assert.ok(report.nextCommands.some((command) => command.includes("bundle-capture") || command.includes("live-proof")))
-  assert.match(rendered, /D3 Code Cockpit/)
+  assert.match(rendered, /D3 Code IDE Status/)
   assert.match(rendered, /Active Goals/)
   assert.doesNotMatch(rendered, /- `Run `d3code/)
 })

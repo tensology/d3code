@@ -227,6 +227,7 @@ d3code> show me what account I am in
 d3code> list the files
 d3code> read dictionary NAME from CUSTOMERS
 d3code> inspect the BASIC around VALUECARD.SYNC
+d3code> /ide --port 3737
 d3code> build an application from files CUSTOMERS,ORDERS programs BP to ./app-output
 ```
 
@@ -237,10 +238,11 @@ What happens behind the scenes:
 | Account/file discovery | Use the active local/SSH D3 profile to inspect the account, files, dictionaries, and indexed context. |
 | Reads | Pull items, dictionary entries, locks, indexes, selected records, BASIC source, and cached search hits. |
 | Application work | Capture D3 evidence, derive resources/screens/actions/access/data shape, then generate or update a runnable app/API slice. |
+| Browser IDE | Start `/ide --port 3737` to run a local web IDE with profile context, D3 terminal sends, hashed-file reads/writes, dictionary reads, file listing, and indexed evidence search. |
 | Risky operations | Stop before writes, compile/catalog, subroutine calls, account changes, or destructive TCL unless confirmation is explicit. |
 | Follow-up work | Keep the session history, profile, model, mode, safety setting, and generated evidence available as context. |
 
-Slash commands such as `/read`, `/manual-search`, `/bundle-ui-plan`, or `/webapp-smoke` are still available for exact repeatability. They are not meant to be how you think about the product day to day.
+Slash commands such as `/ide`, `/read`, `/manual-search`, `/bundle-ui-plan`, or `/webapp-smoke` are still available for exact repeatability. They are not meant to be how you think about the product day to day.
 
 Today, D3 Code has the terminal session, profile/config memory, guarded D3 tools, persisted session history, slash-command escape hatches, natural intents for common reads and application build requests, and a model-driven D3 tool loop. That loop lets the assistant request registered D3 tools, receive compact tool results, and continue the answer without the user translating everything into command names.
 
@@ -258,7 +260,7 @@ The interactive workflow should be:
 2. **Type what you want** - for example, "build an application from files CUSTOMERS,ORDERS programs BP to ./app-output".
 3. **D3 Code captures the D3 truth** - files, dictionaries, records, indexes, BASIC programs, subroutine relationships, screen hints, access clues, and terminal evidence.
 4. **D3 Code turns that into an application model** - resources, fields, multivalue child structures, validations, relationships, screen plans, access plans, and service boundaries.
-5. **D3 Code generates a runnable app/API slice** - OpenAPI contract, D3 adapter seam, routes, mock data, browser UI shell, dashboard/proof data, terminal bridge contract, and smoke tests.
+5. **D3 Code generates a runnable app/API slice** - OpenAPI contract, D3 adapter seam, routes, mock data, browser UI shell, IDE/proof data, terminal bridge contract, and smoke tests.
 6. **Keep extending with proof** - each generated slice carries readiness checks, QA evidence, completion audit gaps, and rollback notes so the application can grow without losing track of what is proven.
 
 This is different from a normal CRUD generator. A D3 application often hides its shape across dictionaries, BASIC, PROC/screen flows, multivalue records, account conventions, and years of operator practice. D3 Code's job is to extract that shape and turn it into buildable application structure.
@@ -305,6 +307,7 @@ D3 Code is session-first, but the underlying commands remain available for autom
 
 | Need | Session request | Exact command shape |
 |---|---|---|
+| Open browser IDE | `/ide --port 3737` | `d3code ide --port 3737 --profile prod` |
 | Read an item | `read item 100 from CUSTOMERS` | `d3code read-item CUSTOMERS 100 --profile prod` |
 | Capture an app slice | `build an application from files CUSTOMERS,ORDERS programs BP to ./app-output` | `d3code bundle-capture ...` then `d3code bundle-artifacts ...` |
 | Check generated app | `check the generated app in ./app-output` | `d3code webapp-check ./app-output` |

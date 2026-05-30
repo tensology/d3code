@@ -42,7 +42,7 @@ const coverageItems: Array<Omit<SkillCoverageItem, "covered">> = [
   {
     source: "gstack",
     expected: "spec, review, QA, ship, health, docs, context, investigation, and design-review workflows adapted to D3",
-    evidence: ["skill:gstack-spec", "skill:gstack-review", "skill:gstack-ship", "skill:gstack-health-guard", "skill:gstack-investigate", "skill:gstack-context", "skill:gstack-docs", "skill:gstack-design-review", "command:dashboard", "command:setup-proof", "command:bundle-ui-plan", "command:safety-guard", "command:bundle-context-pack", "command:bundle-prd", "command:bundle-adr", "command:bundle-release-report", "command:bundle-readiness", "command:reference-skills"],
+    evidence: ["skill:gstack-spec", "skill:gstack-review", "skill:gstack-ship", "skill:gstack-health-guard", "skill:gstack-investigate", "skill:gstack-context", "skill:gstack-docs", "skill:gstack-design-review", "command:ide", "command:setup-proof", "command:bundle-ui-plan", "command:safety-guard", "command:bundle-context-pack", "command:bundle-prd", "command:bundle-adr", "command:bundle-release-report", "command:bundle-readiness", "command:reference-skills"],
   },
   {
     source: "gstack",
@@ -72,7 +72,7 @@ const coverageItems: Array<Omit<SkillCoverageItem, "covered">> = [
   {
     source: "d3code",
     expected: "D3 migration and REST API generation",
-    evidence: ["skill:d3-migration-map", "skill:rest-api-generation", "mode:migrate", "mode:api", "command:bundle-execution-plan", "command:bundle-erp-plan", "command:bundle-ui-plan", "command:bundle-reconciliation-plan", "command:bundle-access-plan", "command:dashboard", "command:bundle-prd", "command:bundle-adr", "command:bundle-artifacts", "command:bundle-brief", "command:bundle-readiness", "command:bundle-skill-pack", "command:acceptance", "command:webapp-skeleton", "command:webapp-check", "command:webapp-smoke", "command:agent-run"],
+    evidence: ["skill:d3-migration-map", "skill:rest-api-generation", "mode:migrate", "mode:api", "command:bundle-execution-plan", "command:bundle-erp-plan", "command:bundle-ui-plan", "command:bundle-reconciliation-plan", "command:bundle-access-plan", "command:ide", "command:bundle-prd", "command:bundle-adr", "command:bundle-artifacts", "command:bundle-brief", "command:bundle-readiness", "command:bundle-skill-pack", "command:acceptance", "command:webapp-skeleton", "command:webapp-check", "command:webapp-smoke", "command:agent-run"],
   },
   {
     source: "d3code",
@@ -106,7 +106,7 @@ const commandNames = new Set([
   "bundle-adr",
   "bundle-release-report",
   "bundle-context-pack",
-  "dashboard",
+  "ide",
   "setup-proof",
   "safety-guard",
   "bundle-refresh-evidence",

@@ -11,7 +11,7 @@ test("reference skill families are mapped to baked product surfaces or explicit 
   assert.ok(referenceSkillFamilies.some((family) => family.reference.includes("ship") && family.productSurfaces.includes("bundle-release-report")))
   assert.ok(referenceSkillFamilies.some((family) => family.reference.includes("health") && family.productSurfaces.includes("safety-guard")))
   assert.ok(referenceSkillFamilies.some((family) => family.reference.includes("context-save") && family.productSurfaces.includes("bundle-context-pack")))
-  assert.ok(referenceSkillFamilies.some((family) => family.source === "opencode" && family.productSurfaces.includes("dashboard")))
+  assert.ok(referenceSkillFamilies.some((family) => family.source === "opencode" && family.productSurfaces.includes("ide")))
   assert.ok(referenceSkillFamilies.some((family) => family.source === "opencode" && family.productSkills.includes("architecture-deepening")))
   assert.ok(referenceSkillFamilies.some((family) => family.reference.includes("benchmark") && family.productSurfaces.includes("model-routing")))
   assert.ok(referenceSkillFamilies.some((family) => family.status === "out-of-scope" && family.reference.includes("ios")))

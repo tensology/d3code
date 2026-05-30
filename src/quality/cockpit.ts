@@ -84,7 +84,7 @@ export async function createCockpitReport(config: D3CodeConfig, state: CockpitSt
 
 export function renderCockpitReport(report: CockpitReport): string {
   return [
-    "# D3 Code Cockpit",
+    "# D3 Code IDE Status",
     "",
     `Ready: ${report.ready ? "yes" : "no"}`,
     `Model: ${report.model}`,
@@ -102,7 +102,7 @@ export function renderCockpitReport(report: CockpitReport): string {
     "## Live D3 Proof",
     ...report.liveProof.map((step) => `- [${step.status}] ${step.id}: ${step.command}`),
     "",
-    "## Cockpit Terminal",
+    "## IDE Terminal",
     `- attach: ${report.terminal.attachMode}`,
     `- model: ${report.terminal.terminalModel}`,
     ...report.terminal.features.map((feature) => `- [${feature.status}] ${feature.id}: ${feature.title}`),

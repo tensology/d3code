@@ -66,14 +66,14 @@ export function createD3AccessPlan(bundle: D3ApplicationBundle, artifacts: Bundl
     users,
     grants,
     warnings: [
-      ...(bundle.users.length ? [] : ["No users were captured; import D3/Unix users during live profile proof before enabling cockpit access controls."]),
+      ...(bundle.users.length ? [] : ["No users were captured; import D3/Unix users during live profile proof before enabling IDE access controls."]),
       ...(bundle.users.some((user) => user.roles.length === 0) ? ["Some users have no captured roles; keep them read-only or disabled until roles are mapped."] : []),
       ...(grants.some((grant) => grant.access !== "read") ? ["Write/admin grants are review-only until D3 safety, lock, and rollback proof is recorded."] : []),
-      ...(uiPlan.screens.length ? [] : ["No generated screens exist yet; access grants cannot be mapped to cockpit screens."]),
+      ...(uiPlan.screens.length ? [] : ["No generated screens exist yet; access grants cannot be mapped to IDE screens."]),
     ],
     commands: [
       "d3code bundle-access-plan d3-app-bundle.json",
-      "d3code dashboard --bundle d3-app-bundle.json",
+      "d3code ide --profile <profile> --port 3737",
       "d3code setup-proof",
       "d3code live-proof --profile <profile> --run",
       "d3code safety-guard --bundle d3-app-bundle.json",

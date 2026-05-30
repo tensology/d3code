@@ -66,9 +66,9 @@ export function createD3TerminalBridgePlan(profile?: ConnectionProfile): D3Termi
       },
     ],
     dashboardEmbedding: [
-      "Cockpit terminal pane should attach to the persistent D3 session, not shell out per command.",
+      "IDE terminal pane should attach to the persistent D3 session, not shell out per command.",
       "Read/search tools can use typed TCL; full-screen legacy programs should use a screen-buffer adapter.",
-      "The dashboard should show raw transcript, parsed screen buffer, file/program context, and safety classification side by side.",
+      "The IDE should show raw transcript, parsed screen buffer, file/program context, and safety classification side by side.",
       "Writes, catalog, lock breaks, account changes, and destructive TCL remain blocked or confirmed by the D3 safety policy.",
     ],
     nextCommands: [

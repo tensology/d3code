@@ -70,8 +70,6 @@ import { createD3AccessPlan, renderD3AccessPlan } from "./app/access-plan.js"
 import { createCodeModernizationPlan, renderCodeModernizationPlan } from "./app/code-plan.js"
 import { createCompletionAuditReport, renderCompletionAuditReport } from "./app/completion-audit.js"
 import { createBundleContextPack, renderBundleContextPack } from "./app/context-pack.js"
-import { createBundleDashboardReport, renderBundleDashboardReport } from "./app/dashboard.js"
-import { renderDashboardHtml } from "./app/dashboard-html.js"
 import { createDataValidationPlan, renderDataValidationPlan } from "./app/data-plan.js"
 import { createBundleEvidenceReport, renderBundleEvidenceReport } from "./app/evidence.js"
 import { createErpMigrationBlueprint, renderErpMigrationBlueprint } from "./app/erp-migration.js"
@@ -91,6 +89,7 @@ import { createWebUiPlan, renderWebUiPlan } from "./app/ui-plan.js"
 import { createModernizationProof, renderModernizationProof } from "./app/modernization-proof.js"
 import { captureBundleFromSession } from "./capture/capture.js"
 import { listSessions, loadSession } from "./sessions/store.js"
+import { startIdeServer } from "./ide/server.js"
 
 const safetyValues = ["ask", "plan", "trust"] as const
 
@@ -574,7 +573,7 @@ program.command("readiness").description("Audit static and proof-gated product r
   console.log(options.json ? JSON.stringify(report, null, 2) : renderReadinessReport(report))
 })
 
-program.command("status").description("Show the D3 Code cockpit: mode, model, profile, readiness, goals, and next commands.").option("--model <provider/model>").option("--safety <mode>").option("--profile <name>").option("--mode <mode>").option("--json").action(async (options: { model?: string; safety?: string; profile?: string; mode?: string; json?: boolean }) => {
+program.command("status").description("Show D3 Code IDE status: mode, model, profile, readiness, goals, and next commands.").option("--model <provider/model>").option("--safety <mode>").option("--profile <name>").option("--mode <mode>").option("--json").action(async (options: { model?: string; safety?: string; profile?: string; mode?: string; json?: boolean }) => {
   const config = await loadConfig()
   const parsedMode = options.mode ?? optionValue("--mode")
   const parsedModel = options.model ?? optionValue("--model")
@@ -587,35 +586,6 @@ program.command("status").description("Show the D3 Code cockpit: mode, model, pr
     mode: parsedMode,
   })
   console.log(options.json ? JSON.stringify(report, null, 2) : renderCockpitReport(report))
-})
-
-program.command("dashboard").description("Show the D3 cockpit, or a bundle-backed ERP infrastructure dashboard when --bundle is provided.").option("--bundle <bundle-json-file>").option("--model <provider/model>").option("--safety <mode>").option("--profile <name>").option("--mode <mode>").option("--json").action(async (options: { bundle?: string; model?: string; safety?: string; profile?: string; mode?: string; json?: boolean }) => {
-  const config = await loadConfig()
-  if (options.bundle) {
-    const input = await import("node:fs/promises").then((fs) => fs.readFile(options.bundle!, "utf8"))
-    const bundle = parseBundle(JSON.parse(input))
-    const report = createBundleDashboardReport(bundle, createBundleArtifacts(bundle))
-    console.log(options.json ? JSON.stringify(report, null, 2) : renderBundleDashboardReport(report))
-    return
-  }
-  const report = await createCockpitReport(config, {
-    model: options.model ?? config.defaultModel,
-    safety: options.safety ? parseSafety(options.safety) : config.defaultSafety,
-    profile: options.profile,
-    mode: options.mode,
-  })
-  console.log(options.json ? JSON.stringify(report, null, 2) : renderCockpitReport(report))
-})
-
-program.command("dashboard-write").requiredOption("--bundle <bundle-json-file>").requiredOption("--out <html-file>").description("Write a standalone graphical D3 infrastructure dashboard HTML file.").action(async (options: { bundle: string; out: string }) => {
-  const { writeFile, mkdir } = await import("node:fs/promises")
-  const { dirname } = await import("node:path")
-  const input = await import("node:fs/promises").then((fs) => fs.readFile(options.bundle, "utf8"))
-  const bundle = parseBundle(JSON.parse(input))
-  const report = createBundleDashboardReport(bundle, createBundleArtifacts(bundle))
-  await mkdir(dirname(options.out), { recursive: true })
-  await writeFile(options.out, renderDashboardHtml(report))
-  console.log(options.out)
 })
 
 program.command("safety-guard").description("Classify planned D3/TCL commands and bundle EXECUTE/compile/catalog actions before running risky work.").option("--profile <name>").option("--safety <mode>", "ask|plan|trust").option("--bundle <bundle-json-file>").option("--command <command>", "command to classify; may be repeated", collectOption, []).option("--json").action(async (options: { profile?: string; safety?: string; bundle?: string; command: string[]; json?: boolean }) => {
@@ -1215,6 +1185,26 @@ program.command("bundle-artifacts").argument("<bundle-json-file>").requiredOptio
   const input = await import("node:fs/promises").then((fs) => fs.readFile(jsonFile, "utf8"))
   const bundle = parseBundle(JSON.parse(input))
   console.log(JSON.stringify(await writeBundleArtifacts(options.out, createBundleArtifacts(bundle), bundle), null, 2))
+})
+
+program.command("ide").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host", "127.0.0.1").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (options: { port: number; host: string; profile?: string; model?: string; safety?: string; mode: string }) => {
+  const config = await loadConfig()
+  const profile = selectProfile(config, options.profile)
+  const mode = getMode(options.mode) ?? getMode("chat")!
+  const safety = options.safety ? parseSafety(options.safety) : mode.safetyBias ?? effectiveSafety(config, undefined, profile)
+  const server = await startIdeServer(config, {
+    model: options.model ?? config.defaultModel,
+    safety,
+    profile: options.profile ?? profile?.name,
+    mode: mode.id,
+  }, { host: options.host, port: options.port })
+  console.log(`D3 Code IDE running: ${server.url}`)
+  console.log(`Profile: ${options.profile ?? profile?.name ?? "none"}`)
+  console.log("Press Ctrl+C to stop.")
+  await new Promise<void>((resolve) => {
+    process.once("SIGINT", () => resolve())
+    process.once("SIGTERM", () => resolve())
+  })
 })
 
 program

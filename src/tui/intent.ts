@@ -49,7 +49,7 @@ async function buildFromBundle(tokens: string[], config: D3CodeConfig): Promise<
       "- runnable Node/TypeScript app/API scaffold",
       "- OpenAPI contract and D3 adapter boundary",
       "- mock D3 data from the bundle",
-      "- generated UI plan, access plan, dashboard/proof data, and smoke tests",
+      "- generated UI plan, access plan, IDE/proof data, and smoke tests",
       "",
       "Next proof:",
       `- d3code webapp-check ${outDir}`,

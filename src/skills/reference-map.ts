@@ -113,8 +113,8 @@ export const referenceSkillFamilies: ReferenceSkillFamily[] = [
     reference: "design-review, design-consultation, design-html, design-shotgun",
     status: "adapted",
     productSkills: ["gstack-design-review", "web-app-dogfooding"],
-    productSurfaces: ["migrate mode", "qa mode", "bundle-ui-plan", "bundle-access-plan", "bundle-screen-plan", "cockpit-terminal", "terminal-capture", "screen-parse", "dashboard", "bundle-brief"],
-    rationale: "Design skills are adapted for migrated web UX parity, generated UI and access plans, and D3 legacy screen understanding, including terminal transcript capture and cockpit inspection.",
+    productSurfaces: ["migrate mode", "qa mode", "ide", "bundle-ui-plan", "bundle-access-plan", "bundle-screen-plan", "cockpit-terminal", "terminal-capture", "screen-parse", "bundle-brief"],
+    rationale: "Design skills are adapted for migrated web UX parity, generated UI and access plans, and D3 legacy screen understanding, including terminal transcript capture and IDE inspection.",
   },
   {
     source: "gstack",
@@ -161,7 +161,7 @@ export const referenceSkillFamilies: ReferenceSkillFamily[] = [
     reference: ".opencode/skills/effect, packages/opencode/test/fixture/skills/*",
     status: "adapted",
     productSkills: ["effect-service-patterns", "edge-agent-platform", "rest-api-generation"],
-    productSurfaces: ["migrate mode", "api mode", "dashboard", "bundle-erp-plan", "bundle-ui-plan", "bundle-access-plan", "bundle-reconciliation-plan", "bundle-execution-plan", "webapp-skeleton", "adapter-write", "webapp-check", "webapp-smoke"],
+    productSurfaces: ["migrate mode", "api mode", "ide", "bundle-erp-plan", "bundle-ui-plan", "bundle-access-plan", "bundle-reconciliation-plan", "bundle-execution-plan", "webapp-skeleton", "adapter-write", "webapp-check", "webapp-smoke"],
     rationale: "OpenCode implementation skills are adapted into generated TypeScript service discipline and optional edge-agent migration targets.",
   },
   {
@@ -177,7 +177,7 @@ export const referenceSkillFamilies: ReferenceSkillFamily[] = [
     reference: "docs/usage/Connection.md, OnlineEditing.md, HashedFileEditing.md, Compile.md, Debugging.md, Diagnostics.md, References.md, Completion.md",
     status: "adapted",
     productSkills: ["mvbasic-ide-parity", "d3-database-audit", "d3-migration-map"],
-    productSurfaces: ["mvbasic-reference-audit", "cockpit-terminal", "dashboard", "bundle-code-plan", "bundle-screen-plan", "bundle-access-plan", "live-proof"],
+    productSurfaces: ["mvbasic-reference-audit", "ide", "cockpit-terminal", "bundle-code-plan", "bundle-screen-plan", "bundle-access-plan", "live-proof"],
     rationale: "Rocket MV BASIC extension docs become an IDE-parity checklist for D3 Code: profile/account connection, online editing locks, hashed-file workbench behavior, compile/catalog loops, diagnostics, references, completion, and explicit debugger-proof boundaries.",
   },
 ]

@@ -55,7 +55,7 @@ test("CLI lists baked-in modes and skills", async () => {
   assert.match(readiness.stdout, /D3 Profile/)
 
   const status = await cli(["status", "--mode", "migrate"])
-  assert.match(status.stdout, /D3 Code Cockpit/)
+  assert.match(status.stdout, /D3 Code IDE Status/)
   assert.match(status.stdout, /Mode: migrate/)
   assert.match(status.stdout, /Next Commands/)
 
@@ -449,15 +449,6 @@ test("CLI generates bundle artifacts and bundle index", async () => {
   const accessPlanJson = await cli(["bundle-access-plan", fixture, "--json"])
   const parsedAccessPlan = JSON.parse(accessPlanJson.stdout) as { warnings: string[] }
   assert.ok(parsedAccessPlan.warnings.some((warning) => warning.includes("No users were captured")))
-
-  const dashboard = await cli(["dashboard", "--bundle", fixture])
-  assert.match(dashboard.stdout, /D3 Dashboard: SALES/)
-  assert.match(dashboard.stdout, /Graph/)
-
-  const dashboardHtml = join(dir, "dashboard.html")
-  const dashboardWritten = await cli(["dashboard-write", "--bundle", fixture, "--out", dashboardHtml])
-  assert.match(dashboardWritten.stdout, /dashboard\.html/)
-  assert.match(await readFile(dashboardHtml, "utf8"), /D3 Login/)
 
   const prd = await cli(["bundle-prd", fixture])
   assert.match(prd.stdout, /PRD: D3 SALES Web Migration/)

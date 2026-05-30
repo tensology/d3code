@@ -148,9 +148,9 @@ test("slash command renders setup proof", async () => {
   assert.match(result.output, /Provider secret reference/)
 })
 
-test("slash command renders cockpit status", async () => {
+test("slash command renders IDE status", async () => {
   const result = await handleSlashCommand("/status", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
-  assert.match(result.output, /D3 Code Cockpit/)
+  assert.match(result.output, /D3 Code IDE Status/)
   assert.match(result.output, /Mode: migrate/)
   assert.match(result.output, /Next Commands/)
 })
@@ -414,9 +414,6 @@ test("slash command renders bundle proof reports", async () => {
   const skillPack = await handleSlashCommand(`/bundle-skill-pack ${fixture}`, config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
   assert.match(skillPack.output, /D3 Code Skill Pack: SALES/)
   assert.match(skillPack.output, /Migration Mode/)
-
-  const dashboard = await handleSlashCommand(`/dashboard ${fixture}`, config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
-  assert.match(dashboard.output, /D3 Dashboard: SALES/)
 
   const prd = await handleSlashCommand(`/bundle-prd ${fixture}`, config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
   assert.match(prd.output, /PRD: D3 SALES Web Migration/)

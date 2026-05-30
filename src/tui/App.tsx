@@ -57,7 +57,7 @@ export function App(props: AppProps) {
     void createCockpitReport(props.config, { model, safety, profile, mode }).then((report) => {
       if (!cancelled) setTranscript((current) => [...current, { role: "system", content: renderCockpitReport(report) }])
     }).catch((error) => {
-      if (!cancelled) setTranscript((current) => [...current, { role: "error", content: `Could not load cockpit: ${(error as Error).message}` }])
+      if (!cancelled) setTranscript((current) => [...current, { role: "error", content: `Could not load IDE status: ${(error as Error).message}` }])
     })
     return () => {
       cancelled = true
