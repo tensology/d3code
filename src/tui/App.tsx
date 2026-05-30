@@ -557,10 +557,15 @@ export function App(props: AppProps) {
       setTranscript((current) => [...current, { role: "assistant", content: response.output || "(empty response)" }])
       await record({ type: "assistant", content: response.output || "", metadata: { model, usage: response.usage, toolEvents: response.toolEvents.map((event) => event.name) } })
     } catch (error) {
+      const interruptedAssistant = streamingAssistant.trim()
       setStreamingAssistant("")
       setStreamingShellOutput("")
       setStreamingD3Output("")
-      setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
+      setTranscript((current) => [
+        ...current,
+        ...(abortController.signal.aborted && interruptedAssistant ? [{ role: "assistant-interrupted", content: interruptedAssistant }] : []),
+        { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message },
+      ])
     } finally {
       setActiveTask("checking files")
       const afterWorkspace = await snapshotWorkspace()
