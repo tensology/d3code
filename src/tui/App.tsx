@@ -125,10 +125,12 @@ export function App(props: AppProps) {
   const [historyIndex, setHistoryIndex] = useState<number | undefined>()
   const [abortMessage, setAbortMessage] = useState("")
   const [activeTask, setActiveTask] = useState("")
+  const [queuedLine, setQueuedLine] = useState("")
   const [usage, setUsage] = useState<ChatUsage | undefined>()
   const [workspaceChanges, setWorkspaceChanges] = useState<WorkspaceChangeSummary | undefined>()
   const d3Session = useRef<D3Session | undefined>()
   const abortRef = useRef<AbortController | undefined>()
+  const queuedLineRef = useRef("")
   const streamSuppressRef = useRef(false)
   const streamIterationRef = useRef<number | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
@@ -223,6 +225,16 @@ export function App(props: AppProps) {
       return
     }
     if (key.escape && busy) {
+      if (draft.text) {
+        setDraft({ text: "", cursor: 0 })
+        setHistoryIndex(undefined)
+        return
+      }
+      if (queuedLineRef.current) {
+        queuedLineRef.current = ""
+        setQueuedLine("")
+        return
+      }
       abortRef.current?.abort()
       setAbortMessage("Interrupted. Press Enter for the next instruction.")
       setBusy(false)
@@ -231,7 +243,6 @@ export function App(props: AppProps) {
       setStreamingD3Output("")
       return
     }
-    if (busy) return
     if (key.return || value === "\r" || value === "\n") {
       submitDraft()
       return
@@ -297,8 +308,15 @@ export function App(props: AppProps) {
     submitLine(line)
   }
 
-  function submitLine(line: string) {
+  function submitLine(line: string, force = false) {
     if (!line) return
+    if (busy && !force) {
+      queuedLineRef.current = line
+      setQueuedLine(line)
+      setDraft({ text: "", cursor: 0 })
+      setHistoryIndex(undefined)
+      return
+    }
     setHistory((current) => [...current.filter((entry) => entry !== line), line].slice(-80))
     void appendPromptHistory(line, { mode, profile }).catch((error) => {
       setTranscript((current) => [...current, { role: "error", content: `Could not save prompt history: ${(error as Error).message}` }])
@@ -513,6 +531,12 @@ export function App(props: AppProps) {
       if (abortRef.current === abortController) abortRef.current = undefined
       setActiveTask("")
       setBusy(false)
+      const nextQueuedLine = queuedLineRef.current
+      if (nextQueuedLine) {
+        queuedLineRef.current = ""
+        setQueuedLine("")
+        setTimeout(() => submitLine(nextQueuedLine, true), 0)
+      }
     }
   }
 
@@ -654,6 +678,23 @@ export function App(props: AppProps) {
             </>
           )}
         </Box>
+        {busy ? (
+          <Box flexDirection="row">
+            {queuedLine ? (
+              <>
+                <Text color="cyan">queued › </Text>
+                <Text>{queuedLine}</Text>
+              </>
+            ) : (
+              <>
+                <Text color="gray">next   › </Text>
+                <Text>{renderedDraft.before}</Text>
+                <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
+                <Text>{renderedDraft.after}</Text>
+              </>
+            )}
+          </Box>
+        ) : null}
         <Box flexDirection="row">
           <Text dimColor>{promptMeta}</Text>
         </Box>
