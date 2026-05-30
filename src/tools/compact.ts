@@ -18,6 +18,7 @@ export function compactText(text: string, options: CompactOptions = {}): string 
 }
 
 export function compactToolOutput(output: unknown): string {
+  if (hasCompact(output)) return compactText(output.compact)
   if (isD3CommandResult(output)) {
     const body = output.stdout || output.stderr || ""
     return [
@@ -28,6 +29,10 @@ export function compactToolOutput(output: unknown): string {
   }
   if (typeof output === "string") return compactText(output)
   return compactText(JSON.stringify(output, null, 2))
+}
+
+function hasCompact(value: unknown): value is { compact: string } {
+  return Boolean(value && typeof value === "object" && "compact" in value && typeof (value as { compact?: unknown }).compact === "string")
 }
 
 function isD3CommandResult(value: unknown): value is D3CommandResult {

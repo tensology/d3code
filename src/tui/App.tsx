@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Box, Text, useApp, useInput } from "ink"
 import type { D3CodeConfig } from "../config/config.js"
 import type { SafetyMode } from "../domain/types.js"
-import { chat, type ChatMessage } from "../llm/client.js"
+import type { ChatMessage } from "../llm/client.js"
 import { defaultSecretStore } from "../security/secrets.js"
 import { handleSlashCommand } from "./commands.js"
 import { handleNaturalIntent } from "./intent.js"
 import { appendEvent, newSession, saveSession, type StoredSession } from "../sessions/store.js"
 import { createCockpitReport, renderCockpitReport } from "../quality/cockpit.js"
-import { createChatSystemPrompt, type ChatRuntimeContext } from "./context.js"
+import type { ChatRuntimeContext } from "./context.js"
+import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 
 export interface AppProps {
   model: string
@@ -20,9 +21,9 @@ export interface AppProps {
 }
 
 function messagesFromSession(config: D3CodeConfig, session: StoredSession | undefined, context: ChatRuntimeContext): ChatMessage[] {
-  const messages: ChatMessage[] = [{ role: "system", content: createChatSystemPrompt(config, context) }]
+  const messages: ChatMessage[] = [{ role: "system", content: createD3AgentSystemPrompt(config, context) }]
   for (const event of session?.events ?? []) {
-    if (event.type === "user" || event.type === "assistant") messages.push({ role: event.type, content: event.content })
+    if (event.type === "user" || event.type === "assistant" || event.type === "tool") messages.push({ role: event.type, content: event.content })
   }
   return messages
 }
@@ -107,7 +108,7 @@ export function App(props: AppProps) {
           setMode(result.state.mode)
         }
         if ("profile" in (result.state ?? {})) setProfile(result.state?.profile)
-        if (result.state) setMessages([{ role: "system", content: createChatSystemPrompt(props.config, { model: nextModel, safety: nextSafety, profile: nextProfile, mode: nextMode }) }])
+        if (result.state) setMessages([{ role: "system", content: createD3AgentSystemPrompt(props.config, { model: nextModel, safety: nextSafety, profile: nextProfile, mode: nextMode }) }])
         if (result.output) {
           setTranscript((current) => [...current, { role: "system", content: result.output }])
           await record({ type: "system", content: result.output, metadata: { command: line } })
@@ -123,12 +124,22 @@ export function App(props: AppProps) {
         }
         return
       }
-      const nextMessages = [...messages, { role: "user" as const, content: line }]
-      setMessages(nextMessages)
-      const response = await chat(props.config, secrets, { modelRef: model, messages: nextMessages })
-      setMessages((current) => [...current, { role: "assistant", content: response.content }])
-      setTranscript((current) => [...current, { role: "assistant", content: response.content || "(empty response)" }])
-      await record({ type: "assistant", content: response.content || "", metadata: { model, provider: response.provider } })
+      const response = await runD3AgentTurn(props.config, secrets, {
+        input: line,
+        history: messages,
+        model,
+        safety,
+        profile,
+        mode,
+      })
+      setMessages(response.messages)
+      for (const event of response.toolEvents) {
+        const content = `${event.name}\n${event.result.compact}`
+        setTranscript((current) => [...current, { role: "tool", content }])
+        await record({ type: "tool", content, metadata: { tool: event.name, input: event.input, reason: event.reason } })
+      }
+      setTranscript((current) => [...current, { role: "assistant", content: response.output || "(empty response)" }])
+      await record({ type: "assistant", content: response.output || "", metadata: { model, toolEvents: response.toolEvents.map((event) => event.name) } })
     } catch (error) {
       setTranscript((current) => [...current, { role: "error", content: (error as Error).message }])
     } finally {

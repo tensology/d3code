@@ -240,9 +240,11 @@ What happens behind the scenes:
 | Risky operations | Stop before writes, compile/catalog, subroutine calls, account changes, or destructive TCL unless confirmation is explicit. |
 | Follow-up work | Keep the session history, profile, model, mode, safety setting, and generated evidence available as context. |
 
-Slash commands such as `/read`, `/bundle-ui-plan`, or `/webapp-smoke` are still available for exact repeatability. They are not meant to be how you think about the product day to day.
+Slash commands such as `/read`, `/manual-search`, `/bundle-ui-plan`, or `/webapp-smoke` are still available for exact repeatability. They are not meant to be how you think about the product day to day.
 
-Today, D3 Code already has the terminal session, profile/config memory, guarded D3 tools, persisted session history, slash-command escape hatches, and natural intents for common reads and application build requests. The next major product gap is deeper model-driven tool use: the assistant should be able to decide which D3 tools to call over several steps, explain what it found, ask before mutation, and keep building without the user translating everything into command names.
+Today, D3 Code has the terminal session, profile/config memory, guarded D3 tools, persisted session history, slash-command escape hatches, natural intents for common reads and application build requests, and a model-driven D3 tool loop. That loop lets the assistant request registered D3 tools, receive compact tool results, and continue the answer without the user translating everything into command names.
+
+The model is deliberately fenced into D3 work. It can inspect a current D3 profile, search indexed D3 evidence, search the repo-local Rocket D3 manuals/reference material, and build D3-backed application slices. It should not wander off and start a generic app in unrelated languages unless that app is grounded in captured D3 files, dictionaries, BASIC, records, screens, or bundle evidence.
 
 ---
 

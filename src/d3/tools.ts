@@ -2,6 +2,7 @@ import { assertD3Allowed } from "../core/permissions.js"
 import type { D3CommandResult, ToolContext, ToolDefinition } from "../domain/types.js"
 import { indexD3Account, loadIndex, saveIndex, searchDocuments } from "../indexing/indexer.js"
 import { detectLocalD3 } from "./detect.js"
+import { formatManualSearchResult, searchDefaultManuals } from "./manual-search.js"
 
 function requireSession(context: ToolContext) {
   if (!context.session) throw new Error("No active D3 session. Run /login or configure a profile.")
@@ -153,6 +154,16 @@ export const d3Tools: ToolDefinition[] = [
       const indexName = args.index ?? (context.profile ? `profile-${context.profile.name}` : "manual")
       const hits = searchDocuments(await loadIndex(indexName), args.query).slice(0, args.limit ?? 20)
       return { index: indexName, query: args.query, hits }
+    },
+  },
+  {
+    name: "d3_manual_search",
+    description: "Search repo-local Rocket D3 manuals and reference notes for D3 behavior grounding.",
+    mutates: false,
+    execute: async (input: unknown) => {
+      const args = input as { query: string; limit?: number; paths?: string[] }
+      const result = await searchDefaultManuals(args.query, args.limit, args.paths)
+      return { ...result, compact: formatManualSearchResult(result) }
     },
   },
 ]
