@@ -3,8 +3,8 @@
 <p align="center">
   An OpenCode-style coding-agent harness for Rocket D3 servers: connect to an
   existing D3 environment, inspect accounts safely, understand BASIC and
-  multivalue data, and produce migration/API/QA proof without pretending legacy
-  systems are simple.
+  multivalue data, and build out full modern application slices with API,
+  UI, mock data, tests, and proof.
 </p>
 
 <p align="center">
@@ -43,14 +43,14 @@ In practical terms, D3 Code is made of five pieces:
 | **D3 connection profiles** | Profiles describe how to reach D3: local shell or SSH, entry command, account, prompt pattern, allowed accounts, and whether to keep a persistent session alive. |
 | **D3 tool layer** | Instead of treating D3 as plain text in a terminal, D3 Code has tools for items, dictionaries, locks, AQL/TCL, BASIC compile/catalog, subroutine calls, account indexing, and terminal captures. |
 | **Safety and proof layer** | Risky operations are classified before they run. Writes, compile/catalog, and subroutine calls require explicit confirmation, and proof commands record what was actually checked. |
-| **Migration workbench** | Captured D3 evidence can become bundles, audits, OpenAPI plans, adapter skeletons, mock web APIs, QA evidence, readiness reports, and release handoffs. |
+| **Application workbench** | Captured D3 evidence can become bundles, audits, resource models, screen plans, OpenAPI contracts, adapter code, mock data, runnable web/API scaffolds, QA evidence, readiness reports, and release handoffs. |
 
 So the short version is:
 
 ```text
 Rocket D3 is the database/application platform.
 D3 Code is the AI coding-agent harness that knows how to inspect, reason about,
-guard, document, and modernize work around that platform.
+guard, document, and build modern applications around that platform.
 ```
 
 D3 Code sits beside an existing D3 server. It gives an operator or developer a D3-aware assistant that can:
@@ -62,10 +62,10 @@ D3 Code sits beside an existing D3 server. It gives an operator or developer a D
 | **Account inspection** | Read items, dictionaries, locks, indexes, account file lists, BASIC source, and selected records. |
 | **BASIC understanding** | Extract symbols, CALL targets, file usage, EXECUTE/TCL hazards, compiler output, and modernization risks. |
 | **Multivalue mapping** | Preserve D3 dictionaries, attributes, multivalues, subvalues, indexes, and sampled record shapes. |
-| **Migration planning** | Turn a D3 estate slice into an audit, API plan, OpenAPI schema, adapter skeleton, web/API mock scaffold, QA plan, readiness report, and release handoff. |
+| **Application buildout** | Turn a D3 estate slice into resource models, screen plans, access plans, API routes, OpenAPI schemas, adapter code, mock data, smoke tests, QA evidence, and a runnable web/API scaffold. |
 | **Evidence** | Keep proof gates explicit: setup proof, profile doctor, live-proof folders, QA evidence, completion audit, and rollback notes. |
 
-The point is not "AI magic." The point is to make D3 work observable, reviewable, and safer while you modernize or maintain it.
+The point is not "AI magic." The point is to give the agent enough real D3 evidence to help build the application, not just guess at tables and endpoints from a vague description.
 
 ---
 
@@ -216,6 +216,22 @@ d3code cockpit-terminal --profile prod
 
 ## What D3 Code Adds
 
+### From D3 account to application
+
+D3 Code is meant to help build complete application slices from a D3 estate.
+
+The workflow is:
+
+1. **Connect to a real account** - local or SSH profile, pinned account, prompt pattern, and safety mode.
+2. **Capture the D3 truth** - files, dictionaries, records, indexes, BASIC programs, subroutine relationships, screen hints, access clues, and terminal evidence.
+3. **Turn that into an application model** - resources, fields, multivalue child structures, validations, relationships, screen plans, access plans, and service boundaries.
+4. **Generate a runnable app/API slice** - OpenAPI contract, D3 adapter seam, routes, mock data, browser UI shell, dashboard/proof data, terminal bridge contract, and smoke tests.
+5. **Keep extending with proof** - each generated slice carries readiness checks, QA evidence, completion audit gaps, and rollback notes so the application can grow without losing track of what is proven.
+
+This is different from a normal CRUD generator. A D3 application often hides its shape across dictionaries, BASIC, PROC/screen flows, multivalue records, account conventions, and years of operator practice. D3 Code's job is to extract that shape and turn it into buildable application structure.
+
+The generated app slice is not the final product by itself. It is the starting point a developer or coding agent can keep building: replace mock adapters with live D3 calls, refine screens, add workflows, add authorization, wire front-end components, and use the proof commands to check that the modern app still matches the legacy behavior.
+
 ### D3-aware commands
 
 | Command | Purpose |
@@ -275,6 +291,7 @@ d3code bundle-code-map d3-app-bundle.json
 d3code bundle-index-plan d3-app-bundle.json
 d3code bundle-data-plan d3-app-bundle.json
 d3code bundle-ui-plan d3-app-bundle.json
+d3code bundle-access-plan d3-app-bundle.json
 d3code bundle-brief d3-app-bundle.json
 d3code bundle-backlog d3-app-bundle.json
 d3code bundle-artifacts d3-app-bundle.json --out ./migration-output
@@ -283,7 +300,7 @@ d3code webapp-smoke ./migration-output --record
 d3code bundle-readiness d3-app-bundle.json --artifacts-dir ./migration-output
 ```
 
-This is how D3 Code moves from "we inspected a legacy account" to "we have an API/web migration slice with mock data, generated contracts, smoke tests, and explicit proof gaps."
+This is how D3 Code moves from "we inspected a legacy account" to "we have a runnable application slice with a UI shell, API routes, D3 adapter boundary, mock data, generated contracts, smoke tests, and explicit proof gaps."
 
 ---
 
