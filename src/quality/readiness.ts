@@ -84,7 +84,7 @@ export async function createReadinessReport(config: D3CodeConfig, secrets?: Secr
       ],
       next: modelProof.ready
         ? "Run `d3code model-proof` before launch handoff and keep the provider evidence."
-        : "Run `d3code model-proof` and configure the missing provider env/keychain reference, or switch to a proven local model.",
+        : "Run `d3code model-proof` and configure the missing provider env/keychain reference, or switch to a proven Ollama model.",
     },
     {
       id: "d3-profile",

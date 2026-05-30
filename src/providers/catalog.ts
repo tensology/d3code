@@ -33,7 +33,7 @@ export const providers: ProviderInfo[] = [
   {
     id: "ollama",
     name: "Ollama",
-    env: ["D3CODE_LOCAL_BASE_URL"],
+    env: ["D3CODE_OLLAMA_BASE_URL", "D3CODE_LOCAL_BASE_URL"],
     defaultModel: "llama3.1",
     models: ["llama3.1", "qwen2.5-coder:7b", "codellama"],
     openAICompatible: true,

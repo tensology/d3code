@@ -37,6 +37,20 @@ test("model routing can bias toward Ollama", () => {
   }, "audit", "local")
 
   assert.equal(plan.ready, true)
+  assert.equal(plan.bias, "ollama")
+  assert.ok(plan.routes.every((route) => route.recommended === "ollama/llama3.1"))
+})
+
+test("legacy local model bias resolves to Ollama", () => {
+  const plan = createModelRoutingPlan({
+    version: 1,
+    defaultModel: "ollama/llama3.1",
+    defaultSafety: "plan",
+    profiles: [],
+    modelSecrets: {},
+  }, "audit", "local")
+
+  assert.equal(plan.bias, "ollama")
   assert.ok(plan.routes.every((route) => route.recommended === "ollama/llama3.1"))
 })
 

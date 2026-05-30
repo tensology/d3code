@@ -37,7 +37,7 @@ import { renderGoalNext } from "./goal/next.js"
 import { listGoals, loadGoal, saveGoal } from "./goal/store.js"
 import { normalizeProviderID, providers, resolveModel } from "./providers/catalog.js"
 import { createModelProofReport, renderModelProofReport } from "./providers/proof.js"
-import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBias } from "./providers/routing.js"
+import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBiasInput } from "./providers/routing.js"
 import { createReadinessReport, renderReadinessReport } from "./quality/readiness.js"
 import { renderAcceptanceReport, runMockAcceptance } from "./quality/acceptance.js"
 import { createIdeStatusReport, renderIdeStatusReport } from "./quality/ide-status.js"
@@ -473,14 +473,14 @@ program.command("models").description("List configured model providers.").action
   }
 })
 
-program.command("model-proof").description("Verify default model, provider secret references, environment keys, local endpoint config, and routing readiness.").option("--mode <mode>", "mode for routing readiness", "migrate").option("--bias <bias>", "quality|balanced|speed|local", "balanced").option("--json").action(async (options: { mode: string; bias: ModelBias; json?: boolean }) => {
+program.command("model-proof").description("Verify default model, provider secret references, environment keys, Ollama endpoint config, and routing readiness.").option("--mode <mode>", "mode for routing readiness", "migrate").option("--bias <bias>", "quality|balanced|speed|ollama", "balanced").option("--json").action(async (options: { mode: string; bias: ModelBiasInput; json?: boolean }) => {
   const config = await loadConfig()
   const report = await createModelProofReport(config, defaultSecretStore(), { mode: options.mode, bias: options.bias })
   console.log(options.json ? JSON.stringify(report, null, 2) : renderModelProofReport(report))
   if (!report.ready) process.exitCode = 1
 })
 
-program.command("model-routing").argument("[mode]", "mode", "migrate").description("Recommend models for D3 Code roles, modes, subagents, and safety bias.").option("--bias <bias>", "quality|balanced|speed|local", "balanced").option("--json").action(async (mode: string, options: { bias: ModelBias; json?: boolean }) => {
+program.command("model-routing").argument("[mode]", "mode", "migrate").description("Recommend models for D3 Code roles, modes, subagents, and safety bias.").option("--bias <bias>", "quality|balanced|speed|ollama", "balanced").option("--json").action(async (mode: string, options: { bias: ModelBiasInput; json?: boolean }) => {
   const config = await loadConfig()
   const plan = createModelRoutingPlan(config, mode, options.bias)
   console.log(options.json ? JSON.stringify(plan, null, 2) : renderModelRoutingPlan(plan))

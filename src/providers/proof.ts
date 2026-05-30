@@ -1,7 +1,7 @@
 import type { D3CodeConfig } from "../config/config.js"
 import type { SecretStore } from "../security/secrets.js"
 import { normalizeProviderID, providers, resolveModel } from "./catalog.js"
-import { createModelRoutingPlan, type ModelBias } from "./routing.js"
+import { createModelRoutingPlan, type ModelBiasInput } from "./routing.js"
 
 export interface ProviderProofItem {
   id: string
@@ -33,7 +33,7 @@ async function secretPresent(secrets: SecretStore | undefined, ref: string | und
   return Boolean(await secrets.get(ref))
 }
 
-export async function createModelProofReport(config: D3CodeConfig, secrets?: SecretStore, options: { mode?: string; bias?: ModelBias } = {}): Promise<ModelProofReport> {
+export async function createModelProofReport(config: D3CodeConfig, secrets?: SecretStore, options: { mode?: string; bias?: ModelBiasInput } = {}): Promise<ModelProofReport> {
   const items: ProviderProofItem[] = []
   let defaultProvider = ""
   try {
@@ -59,8 +59,9 @@ export async function createModelProofReport(config: D3CodeConfig, secrets?: Sec
     const envPresent = provider.env.some((name) => Boolean(process.env[name]))
     const configuredPresent = await secretPresent(secrets, configuredRef)
     const ollama = provider.id === "ollama"
+    const ollamaBaseURL = process.env.D3CODE_OLLAMA_BASE_URL ?? process.env.D3CODE_LOCAL_BASE_URL
     const status: ProviderProofItem["status"] = ollama
-      ? process.env.D3CODE_LOCAL_BASE_URL ? "ok" : "action"
+      ? ollamaBaseURL ? "ok" : "action"
       : configuredPresent || envPresent ? "ok" : configuredRef ? "action" : "missing"
     items.push(item({
       id: `provider-${provider.id}`,
@@ -71,12 +72,12 @@ export async function createModelProofReport(config: D3CodeConfig, secrets?: Sec
         `secret-ref:${configuredRef ?? "none"}`,
         `secret-present:${configuredPresent ? "yes" : "no"}`,
         `env-present:${envPresent ? "yes" : "no"}`,
-        ...(ollama ? [`base-url:${process.env.D3CODE_LOCAL_BASE_URL ?? "default:http://localhost:11434"}`] : []),
+        ...(ollama ? [`base-url:${ollamaBaseURL ?? "default:http://localhost:11434"}`] : []),
       ],
       next: status === "ok"
         ? `Provider ${provider.id} can be selected with /model ${provider.id}/${provider.defaultModel}.`
         : ollama
-          ? "Set D3CODE_LOCAL_BASE_URL if Ollama is not at the default URL. Do not include /v1; D3 Code adds it."
+          ? "Set D3CODE_OLLAMA_BASE_URL if Ollama is not at the default URL. Do not include /v1; D3 Code adds it."
           : `Set ${provider.env.join(" or ")} or run setup with --api-key-env for ${provider.id}.`,
     }))
   }
@@ -87,7 +88,7 @@ export async function createModelProofReport(config: D3CodeConfig, secrets?: Sec
     id: "routing-readiness",
     status: routing.ready && missingRouteProviders.length === 0 ? "ok" : "action",
     evidence: [`mode:${routing.mode}`, `bias:${routing.bias}`, `routes:${routing.routes.length}`, `missing-route-providers:${missingRouteProviders.join(",") || "none"}`],
-    next: routing.ready ? "Keep model-routing output with setup proof." : "Run `d3code model-routing migrate` and configure missing route provider secrets or choose local bias.",
+    next: routing.ready ? "Keep model-routing output with setup proof." : "Run `d3code model-routing migrate` and configure missing route provider secrets or choose Ollama bias.",
   }))
 
   return {

@@ -114,7 +114,7 @@ test("CLI lists baked-in modes and skills", async () => {
   assert.match(routing.stdout, /D3 Model Routing Plan: migrate/)
   assert.match(routing.stdout, /web\/API scaffold implementer/)
 
-  const routingJson = await cli(["model-routing", "audit", "--bias", "local", "--json"])
+  const routingJson = await cli(["model-routing", "audit", "--bias", "ollama", "--json"])
   const parsedRouting = JSON.parse(routingJson.stdout) as { routes: Array<{ recommended: string }> }
   assert.ok(parsedRouting.routes.every((route) => route.recommended === "ollama/llama3.1"))
 })

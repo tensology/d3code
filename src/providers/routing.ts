@@ -3,7 +3,8 @@ import type { SafetyMode } from "../domain/types.js"
 import type { D3CodeModeID } from "../skills/modes.js"
 import { normalizeProviderID, providers } from "./catalog.js"
 
-export type ModelBias = "quality" | "balanced" | "speed" | "local"
+export type ModelBias = "quality" | "balanced" | "speed" | "ollama"
+export type ModelBiasInput = ModelBias | "local"
 
 export interface ModelRoute {
   role: string
@@ -72,26 +73,31 @@ function secretFor(modelRef: string): string {
   return provider?.env.join("|") ?? "unknown"
 }
 
+export function normalizeModelBias(bias: ModelBiasInput): ModelBias {
+  return bias === "local" ? "ollama" : bias
+}
+
 function score(route: Omit<ModelRoute, "requiredSecret">, bias: ModelBias): Omit<ModelRoute, "requiredSecret"> {
   if (bias === "speed" && !route.role.match(/architect|judge|reviewer|designer|lead/)) {
     return { ...route, recommended: route.fallback, fallback: route.recommended, rationale: `${route.rationale} Speed bias swaps to the lower-latency fallback first.` }
   }
-  if (bias === "local") {
-    return { ...route, recommended: "ollama/llama3.1", fallback: route.recommended, rationale: `${route.rationale} Local bias prefers Ollama when configured.` }
+  if (bias === "ollama") {
+    return { ...route, recommended: "ollama/llama3.1", fallback: route.recommended, rationale: `${route.rationale} Ollama bias prefers the local Ollama endpoint when configured.` }
   }
   return route
 }
 
-export function createModelRoutingPlan(config: D3CodeConfig, mode: string, bias: ModelBias = "balanced"): ModelRoutingPlan {
+export function createModelRoutingPlan(config: D3CodeConfig, mode: string, bias: ModelBiasInput = "balanced"): ModelRoutingPlan {
   const modeID = (mode in routeSets ? mode : "chat") as D3CodeModeID
+  const normalizedBias = normalizeModelBias(bias)
   const configuredSecrets = Object.keys(config.modelSecrets)
   const routes = routeSets[modeID].map((entry) => {
-    const selected = bias === "quality" ? entry : score(entry, bias)
+    const selected = normalizedBias === "quality" ? entry : score(entry, normalizedBias)
     return { ...selected, requiredSecret: secretFor(selected.recommended) }
   })
   return {
     mode: modeID,
-    bias,
+    bias: normalizedBias,
     configuredDefault: config.defaultModel,
     configuredSecrets,
     ready: routes.every((entry) => configuredSecrets.includes(providerOf(entry.recommended)) || providerOf(entry.recommended) === "ollama"),
