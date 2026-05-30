@@ -1,9 +1,10 @@
 <h1 align="center">D3 Code</h1>
 
 <p align="center">
-  A terminal coding agent for Rocket D3 servers: connect to an existing D3
-  environment, inspect accounts safely, understand BASIC and multivalue data,
-  and produce migration/API/QA proof without pretending legacy systems are simple.
+  An OpenCode-style coding-agent harness for Rocket D3 servers: connect to an
+  existing D3 environment, inspect accounts safely, understand BASIC and
+  multivalue data, and produce migration/API/QA proof without pretending legacy
+  systems are simple.
 </p>
 
 <p align="center">
@@ -30,7 +31,29 @@ D3 Code is not Rocket D3, and it does not install or license Rocket D3 for you.
 
 Rocket D3 is Rocket Software's MultiValue database and application development environment. Rocket describes D3 as a way to build business applications quickly with data connectivity and rapid development tooling, and positions it inside the wider Rocket MultiValue Application Development Platform.
 
-D3 Code sits beside an existing D3 server. It gives an operator or developer a D3-aware terminal assistant that can:
+D3 Code is the harness around that existing D3 environment.
+
+If you know tools like OpenCode, Codex, Claude Code, or other terminal coding agents, D3 Code is that idea pointed at Rocket D3 instead of a normal source-code repo. It gives an AI model a controlled set of D3-aware tools, a safety policy, a memory/config layer, and repeatable proof commands. The model does not get raw unlimited shell access to your production database. It works through D3 Code's profiles, command classifiers, adapters, and evidence gates.
+
+In practical terms, D3 Code is made of five pieces:
+
+| Piece | What it means |
+|---|---|
+| **CLI/TUI harness** | The `d3code` command starts a terminal agent, loads your model/provider settings, remembers the active D3 profile, and exposes D3-aware slash commands. |
+| **D3 connection profiles** | Profiles describe how to reach D3: local shell or SSH, entry command, account, prompt pattern, allowed accounts, and whether to keep a persistent session alive. |
+| **D3 tool layer** | Instead of treating D3 as plain text in a terminal, D3 Code has tools for items, dictionaries, locks, AQL/TCL, BASIC compile/catalog, subroutine calls, account indexing, and terminal captures. |
+| **Safety and proof layer** | Risky operations are classified before they run. Writes, compile/catalog, and subroutine calls require explicit confirmation, and proof commands record what was actually checked. |
+| **Migration workbench** | Captured D3 evidence can become bundles, audits, OpenAPI plans, adapter skeletons, mock web APIs, QA evidence, readiness reports, and release handoffs. |
+
+So the short version is:
+
+```text
+Rocket D3 is the database/application platform.
+D3 Code is the AI coding-agent harness that knows how to inspect, reason about,
+guard, document, and modernize work around that platform.
+```
+
+D3 Code sits beside an existing D3 server. It gives an operator or developer a D3-aware assistant that can:
 
 | Area | What D3 Code does |
 |---|---|
