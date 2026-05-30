@@ -18,7 +18,8 @@ import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
-import { formatWorkspaceChangeFooter, renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
+import { renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
+import { formatBusyStatus, formatPromptMeta } from "./session-surface.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -63,20 +64,6 @@ function transcriptFromSession(session: StoredSession | undefined) {
   ]
 }
 
-function formatTokenUsage(usage: ChatUsage | undefined): string {
-  if (!usage) return "tok --"
-  const extras = [
-    usage.cacheReadInputTokens ? `${usage.cacheReadInputTokens}cr` : undefined,
-    usage.cacheCreationInputTokens ? `${usage.cacheCreationInputTokens}cw` : undefined,
-  ].filter(Boolean)
-  return `tok ${usage.inputTokens}i/${usage.outputTokens}o/${usage.totalTokens}t${extras.length ? ` ${extras.join("/")}` : ""}`
-}
-
-function formatInstructionCount(project: ProjectContext | undefined): string {
-  const count = project?.instructions.length ?? 0
-  return count ? `${count} instr` : "no instr"
-}
-
 export function App(props: AppProps) {
   const app = useApp()
   const [draft, setDraft] = useState<PromptDraft>({ text: "", cursor: 0 })
@@ -96,6 +83,7 @@ export function App(props: AppProps) {
   const [project, setProject] = useState<ProjectContext | undefined>()
   const [caretOn, setCaretOn] = useState(true)
   const [busyFrame, setBusyFrame] = useState(0)
+  const [busySeconds, setBusySeconds] = useState(0)
   const [history, setHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState<number | undefined>()
   const [abortMessage, setAbortMessage] = useState("")
@@ -163,6 +151,14 @@ export function App(props: AppProps) {
   useEffect(() => {
     if (!busy) return
     const timer = setInterval(() => setBusyFrame((current) => current + 1), 140)
+    return () => clearInterval(timer)
+  }, [busy])
+
+  useEffect(() => {
+    if (!busy) return
+    setBusySeconds(0)
+    const started = Date.now()
+    const timer = setInterval(() => setBusySeconds(Math.floor((Date.now() - started) / 1000)), 1000)
     return () => clearInterval(timer)
   }, [busy])
 
@@ -303,9 +299,9 @@ export function App(props: AppProps) {
   }
 
   async function submit(line: string) {
-    setBusy(true)
     setAbortMessage("")
-    setActiveTask("asking model")
+    setActiveTask(line.startsWith("/") ? `running ${line.split(/\s+/)[0]}` : "asking model")
+    setBusy(true)
     streamSuppressRef.current = false
     streamIterationRef.current = undefined
     const abortController = new AbortController()
@@ -330,6 +326,7 @@ export function App(props: AppProps) {
         return
       }
       if (line.startsWith("/")) {
+        setActiveTask(`running ${line.split(/\s+/)[0]}`)
         const result = await handleSlashCommand(line, props.config, { model, safety, profile, mode })
         if (result.clear) setTranscript([])
         const nextModel = result.state?.model ?? model
@@ -472,6 +469,7 @@ export function App(props: AppProps) {
   }
 
   const renderedDraft = renderPromptDraft(draft, caretOn)
+  const promptMeta = formatPromptMeta({ model, profile, mode, safety, usage, workspaceChanges, project })
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -524,12 +522,23 @@ export function App(props: AppProps) {
         {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
-      <Box marginTop={1} flexDirection="row">
-        <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} </Text>
-        {busy ? <Text>{activeTask || "working"}</Text> : <><Text>{renderedDraft.before}</Text><Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text><Text>{renderedDraft.after}</Text></>}
+      <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
+        <Box flexDirection="row">
+          <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} </Text>
+          {busy ? (
+            <Text>{formatBusyStatus(activeTask, busySeconds)}</Text>
+          ) : (
+            <>
+              <Text>{renderedDraft.before}</Text>
+              <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
+              <Text>{renderedDraft.after}</Text>
+            </>
+          )}
+        </Box>
+        <Box flexDirection="row">
+          <Text dimColor>{promptMeta}</Text>
+        </Box>
       </Box>
-      <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
-      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 off"} | {mode}/{safety} | {formatTokenUsage(usage)} | {formatWorkspaceChangeFooter(workspaceChanges)} | {formatInstructionCount(project)}</Text>
     </Box>
   )
 }
