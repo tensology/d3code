@@ -16,6 +16,6 @@ test("session surface meta matches the compact prompt footer style", () => {
     model: "kilocode/kilo-auto/free",
     mode: "chat",
     safety: "ask",
-    workspaceChanges: { filesChanged: 2, added: 1, removed: 0, files: [] },
+    workspaceChanges: { filesChanged: 2, added: 1, removed: 0, modified: 1, files: [] },
   }), "kilocode/kilo-auto/free | D3 off | chat/ask | tok -- | files 2 +1 | no instr")
 })

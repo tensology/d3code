@@ -14,9 +14,14 @@ test("workspace change summary detects new and modified files after a turn", () 
 
   assert.equal(summary?.filesChanged, 2)
   assert.equal(summary?.added, 1)
+  assert.equal(summary?.modified, 1)
   assert.deepEqual(summary?.files.map((file) => `${file.code}:${file.path}`), [" M:src/app.ts", "??:scratch.txt"])
   assert.equal(formatWorkspaceChangeFooter(summary), "files 2 +1")
-  assert.match(renderWorkspaceChangeSummary(summary!), /Changed 2 files, 1 added/)
+  assert.equal(renderWorkspaceChangeSummary(summary!), [
+    "Files changed: 2 (1 modified, 1 added)",
+    "modified src/app.ts",
+    "added    scratch.txt",
+  ].join("\n"))
 })
 
 test("workspace change summary stays quiet when status did not change", () => {

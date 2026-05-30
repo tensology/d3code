@@ -17,6 +17,7 @@ export interface WorkspaceChangeSummary {
   filesChanged: number
   added: number
   removed: number
+  modified: number
   files: WorkspaceFileState[]
 }
 
@@ -50,15 +51,30 @@ export function summarizeWorkspaceChanges(before: WorkspaceSnapshot, after: Work
     filesChanged: changed.length,
     added: changed.filter((file) => file.code.includes("A") || file.code === "??").length,
     removed: changed.filter((file) => file.code.includes("D")).length,
+    modified: changed.filter((file) => file.code.includes("M")).length,
     files: changed,
   }
 }
 
+export function workspaceStatusLabel(code: string): string {
+  if (code === "??" || code.includes("A")) return "added"
+  if (code.includes("D")) return "deleted"
+  if (code.includes("R")) return "renamed"
+  if (code.includes("M")) return "modified"
+  if (code.includes("U")) return "conflict"
+  return "changed"
+}
+
 export function renderWorkspaceChangeSummary(summary: WorkspaceChangeSummary): string {
+  const details = [
+    summary.modified ? `${summary.modified} modified` : "",
+    summary.added ? `${summary.added} added` : "",
+    summary.removed ? `${summary.removed} removed` : "",
+  ].filter(Boolean).join(", ")
   return [
-    `Changed ${summary.filesChanged} file${summary.filesChanged === 1 ? "" : "s"}${summary.added ? `, ${summary.added} added` : ""}${summary.removed ? `, ${summary.removed} removed` : ""}`,
-    ...summary.files.slice(0, 8).map((file) => `${file.code.trim() || "M"} ${file.path}`),
-    summary.files.length > 8 ? `... ${summary.files.length - 8} more` : undefined,
+    `Files changed: ${summary.filesChanged}${details ? ` (${details})` : ""}`,
+    ...summary.files.slice(0, 8).map((file) => `${workspaceStatusLabel(file.code).padEnd(8)} ${file.path}`),
+    summary.files.length > 8 ? `... ${summary.files.length - 8} more files` : undefined,
   ].filter(Boolean).join("\n")
 }
 
