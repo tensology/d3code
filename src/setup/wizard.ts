@@ -6,18 +6,42 @@ import { normalizeProviderID, providers } from "../providers/catalog.js"
 import type { SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 
+export interface Choice {
+  id: string
+  label: string
+  hint?: string
+}
+
 function normalizeSafety(value: string): SafetyMode {
   if (value === "plan" || value === "trust" || value === "ask") return value
   return "ask"
 }
 
+function renderChoices(title: string, choices: Choice[]): void {
+  console.log("")
+  console.log(title)
+  for (const [index, choice] of choices.entries()) {
+    console.log(`  ${index + 1}. ${choice.label}${choice.hint ? ` - ${choice.hint}` : ""}`)
+  }
+}
+
+export function resolveSetupChoice(input: string, choices: Choice[], fallback: string): string {
+  const answer = input.trim().toLowerCase()
+  if (!answer) return fallback
+  const number = Number(answer)
+  if (Number.isInteger(number) && number >= 1 && number <= choices.length) return choices[number - 1]?.id ?? fallback
+  return choices.find((choice) => choice.id.toLowerCase() === answer || choice.label.toLowerCase() === answer)?.id ?? answer
+}
+
 export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore): Promise<D3CodeConfig> {
   const rl = createInterface({ input, output })
   try {
-    console.log("D3 Code first-run setup")
-    console.log("Configure the model first, then optionally point D3 Code at a local or SSH Rocket D3 server.")
-    console.log("Providers: " + providers.map((provider) => provider.id).join(", "))
-    const providerID = normalizeProviderID((await rl.question(`Provider [openai]: `)).trim() || "openai")
+    console.log("")
+    console.log("D3 Code setup")
+    console.log("Choose the model D3 Code should use, then optionally add a Rocket D3 connection profile.")
+    const providerChoices = providers.map((provider) => ({ id: provider.id, label: provider.name, hint: provider.id === "ollama" ? "local Ollama on this machine" : provider.id }))
+    renderChoices("Model provider", providerChoices)
+    const providerID = normalizeProviderID(resolveSetupChoice(await rl.question("Provider 1-4 [1 OpenAI]: "), providerChoices, "openai"))
     const provider = providers.find((item) => item.id === providerID) ?? providers[0]
     if (provider.id === "ollama") {
       console.log("Ollama uses the local OpenAI-compatible endpoint at http://localhost:11434 by default.")
@@ -31,9 +55,27 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
       config.modelSecrets[provider.id] = ref
     }
     config.defaultModel = `${provider.id}/${model}`
-    config.defaultSafety = normalizeSafety((await rl.question("Default safety ask|plan|trust [ask]: ")).trim() || "ask")
+    renderChoices("Default approval mode", [
+      { id: "ask", label: "Ask", hint: "confirm risky actions before they run" },
+      { id: "plan", label: "Plan", hint: "read and explain only" },
+      { id: "trust", label: "Trust", hint: "allow normal guarded work" },
+    ])
+    config.defaultSafety = normalizeSafety(resolveSetupChoice(await rl.question("Approval mode 1-3 [1 Ask]: "), [
+      { id: "ask", label: "Ask" },
+      { id: "plan", label: "Plan" },
+      { id: "trust", label: "Trust" },
+    ], "ask"))
 
-    const localOrSsh = ((await rl.question("D3 server connection local|ssh|skip [local]: ")).trim() || "local").toLowerCase()
+    renderChoices("Rocket D3 connection", [
+      { id: "local", label: "This machine", hint: "run the D3 command from this shell" },
+      { id: "ssh", label: "SSH server", hint: "connect to D3 on another server" },
+      { id: "skip", label: "Skip for now", hint: "configure the model only" },
+    ])
+    const localOrSsh = resolveSetupChoice(await rl.question("Connection 1-3 [1 This machine]: "), [
+      { id: "local", label: "This machine" },
+      { id: "ssh", label: "SSH server" },
+      { id: "skip", label: "Skip for now" },
+    ], "local").toLowerCase()
     if (localOrSsh !== "skip") {
       const profileName = (await rl.question("Profile name [default]: ")).trim() || "default"
       const account = (await rl.question("Default D3 account name/path: ")).trim() || undefined
@@ -43,7 +85,14 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
         .filter(Boolean)
       const entryCommand = (await rl.question("Command to enter D3/TCL on that server (blank if shell already lands there): ")).trim() || undefined
       const promptPattern = (await rl.question("D3 prompt regex [>]: ")).trim() || ">"
-      const sessionModeAnswer = ((await rl.question("Session mode oneshot|persistent [persistent]: ")).trim() || "persistent").toLowerCase()
+      renderChoices("D3 runtime session", [
+        { id: "persistent", label: "Keep connected", hint: "best for the IDE and agent" },
+        { id: "oneshot", label: "One command at a time", hint: "safer but less interactive" },
+      ])
+      const sessionModeAnswer = resolveSetupChoice(await rl.question("Session 1-2 [1 Keep connected]: "), [
+        { id: "persistent", label: "Keep connected" },
+        { id: "oneshot", label: "One command at a time" },
+      ], "persistent").toLowerCase()
       const sessionMode = sessionModeAnswer === "oneshot" ? "oneshot" : "persistent"
       let profile: ConnectionProfile
       if (localOrSsh === "ssh") {
