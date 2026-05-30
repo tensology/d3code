@@ -20,6 +20,7 @@ import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, move
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
 import { formatBusyStatus, formatPromptMeta } from "./session-surface.js"
+import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -77,7 +78,7 @@ export function App(props: AppProps) {
   const [mode, setMode] = useState(props.mode ?? "chat")
   const [busy, setBusy] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>(messagesFromSession(props.config, props.session, initialContext))
-  const [transcript, setTranscript] = useState<Array<{ role: string; content: string }>>(transcriptFromSession(props.session))
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>(transcriptFromSession(props.session))
   const [welcome, setWelcome] = useState<WelcomeSummary | undefined>()
   const [streamingAssistant, setStreamingAssistant] = useState("")
   const [project, setProject] = useState<ProjectContext | undefined>()
@@ -188,16 +189,8 @@ export function App(props: AppProps) {
       return
     }
     if (busy) return
-    if (key.return) {
-      const line = draft.text.trim()
-      setDraft({ text: "", cursor: 0 })
-      setHistoryIndex(undefined)
-      if (!line) return
-      setHistory((current) => [...current.filter((entry) => entry !== line), line].slice(-80))
-      void appendPromptHistory(line, { mode, profile }).catch((error) => {
-        setTranscript((current) => [...current, { role: "error", content: `Could not save prompt history: ${(error as Error).message}` }])
-      })
-      void submit(line)
+    if (key.return || value === "\r" || value === "\n") {
+      submitDraft()
       return
     }
     if (key.upArrow) {
@@ -235,6 +228,16 @@ export function App(props: AppProps) {
       return
     }
     if (value) {
+      const newlineIndex = value.search(/[\r\n]/)
+      if (newlineIndex !== -1) {
+        const beforeReturn = value.slice(0, newlineIndex)
+        const afterReturn = value.slice(newlineIndex).replace(/^[\r\n]+/, "")
+        const nextDraft = beforeReturn ? insertText(draft, beforeReturn) : draft
+        submitLine(nextDraft.text.trim())
+        setDraft({ text: afterReturn, cursor: afterReturn.length })
+        setHistoryIndex(undefined)
+        return
+      }
       if (value.includes("\u001B")) {
         applyRawTerminalInput(value)
         return
@@ -243,6 +246,22 @@ export function App(props: AppProps) {
       setHistoryIndex(undefined)
     }
   })
+
+  function submitDraft() {
+    const line = draft.text.trim()
+    setDraft({ text: "", cursor: 0 })
+    setHistoryIndex(undefined)
+    submitLine(line)
+  }
+
+  function submitLine(line: string) {
+    if (!line) return
+    setHistory((current) => [...current.filter((entry) => entry !== line), line].slice(-80))
+    void appendPromptHistory(line, { mode, profile }).catch((error) => {
+      setTranscript((current) => [...current, { role: "error", content: `Could not save prompt history: ${(error as Error).message}` }])
+    })
+    void submit(line)
+  }
 
   function recallHistory(direction: "up" | "down") {
     setHistoryIndex((current) => {
@@ -514,10 +533,7 @@ export function App(props: AppProps) {
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box flexDirection="column" marginTop={1}>
         {transcript.slice(-18).map((entry, index) => (
-          <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : entry.role === "tool-start" || entry.role === "file-change" ? "cyan" : "gray"}>
-            {entry.role === "user" ? "› " : entry.role === "assistant" ? "d3code: " : entry.role === "error" ? "error: " : entry.role === "tool-start" ? "⏺ " : entry.role === "tool" ? "⎿ " : entry.role === "file-change" ? "◆ " : ""}
-            {entry.content}
-          </Text>
+          <TranscriptEntryView key={`${entry.role}-${index}`} entry={entry} />
         ))}
         {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
