@@ -21,6 +21,7 @@ export interface D3AgentTurnRequest extends D3AgentState {
   maxToolIterations?: number
   chatFn?: AgentChatFunction
   onToken?: (token: string) => void
+  onEvent?: (event: D3AgentTurnEvent) => void
   signal?: AbortSignal
 }
 
@@ -36,6 +37,11 @@ export interface D3AgentToolEvent {
   reason?: string
   result: ToolRunResult
 }
+
+export type D3AgentTurnEvent =
+  | { type: "assistant_delta"; token: string; iteration: number }
+  | { type: "tool_start"; name: string; input?: unknown; reason?: string }
+  | { type: "tool_result"; name: string; compact: string }
 
 export interface D3AgentTurnResult {
   output: string
@@ -117,7 +123,15 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
   const maxToolIterations = request.maxToolIterations ?? 4
 
   for (let iteration = 0; iteration <= maxToolIterations; iteration += 1) {
-    const response = await chatFn(config, secrets, { modelRef: request.model, messages, onToken: iteration === 0 ? request.onToken : undefined, signal: request.signal })
+    const response = await chatFn(config, secrets, {
+      modelRef: request.model,
+      messages,
+      onToken: (token) => {
+        request.onToken?.(token)
+        request.onEvent?.({ type: "assistant_delta", token, iteration })
+      },
+      signal: request.signal,
+    })
     const assistant: ChatMessage = { role: "assistant", content: response.content }
     messages.push(assistant)
 
@@ -127,12 +141,14 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
     const blocked = blockedToolMessage(toolRequest)
     if (blocked) return { output: blocked, messages, toolEvents }
 
+    request.onEvent?.({ type: "tool_start", name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason })
     const result = await runToolByName(config, {
       name: toolRequest.name,
       input: toolRequest.input,
       profile: request.profile,
       safety: request.safety,
     })
+    request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: result.compact })
     toolEvents.push({ name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason, result })
     messages.push(toolResultMessage(toolRequest, result))
   }

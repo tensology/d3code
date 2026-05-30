@@ -83,8 +83,11 @@ export function App(props: AppProps) {
   const [history, setHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState<number | undefined>()
   const [abortMessage, setAbortMessage] = useState("")
+  const [activeTask, setActiveTask] = useState("")
   const d3Session = useRef<D3Session | undefined>()
   const abortRef = useRef<AbortController | undefined>()
+  const streamSuppressRef = useRef(false)
+  const streamIterationRef = useRef<number | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
 
@@ -269,6 +272,9 @@ export function App(props: AppProps) {
   async function submit(line: string) {
     setBusy(true)
     setAbortMessage("")
+    setActiveTask("asking model")
+    streamSuppressRef.current = false
+    streamIterationRef.current = undefined
     const abortController = new AbortController()
     abortRef.current = abortController
     setTranscript((current) => [...current, { role: "user", content: line }])
@@ -326,14 +332,46 @@ export function App(props: AppProps) {
         profile,
         mode,
         project,
-        onToken: (token) => setStreamingAssistant((current) => current + token),
+        onEvent: (event) => {
+          if (event.type === "assistant_delta") {
+            if (streamIterationRef.current !== event.iteration) {
+              streamIterationRef.current = event.iteration
+              streamSuppressRef.current = false
+              setActiveTask("streaming response")
+              setStreamingAssistant("")
+            }
+            if (streamSuppressRef.current) return
+            setStreamingAssistant((current) => {
+              const next = current + event.token
+              const toolIndex = next.search(/<d3_tool>/i)
+              if (toolIndex === -1) return next
+              streamSuppressRef.current = true
+              return next.slice(0, toolIndex).trimEnd()
+            })
+          }
+          if (event.type === "tool_start") {
+            setStreamingAssistant("")
+            setActiveTask(`running ${event.name}`)
+            setTranscript((current) => [
+              ...current,
+              {
+                role: "tool-start",
+                content: `${event.name}${event.reason ? `: ${event.reason}` : ""}`,
+              },
+            ])
+          }
+          if (event.type === "tool_result") {
+            setActiveTask("reading result")
+            streamSuppressRef.current = false
+            setTranscript((current) => [...current, { role: "tool", content: `${event.name}\n${event.compact}` }])
+          }
+        },
         signal: abortController.signal,
       })
       setStreamingAssistant("")
       setMessages(response.messages)
       for (const event of response.toolEvents) {
         const content = `${event.name}\n${event.result.compact}`
-        setTranscript((current) => [...current, { role: "tool", content }])
         await record({ type: "tool", content, metadata: { tool: event.name, input: event.input, reason: event.reason } })
       }
       setTranscript((current) => [...current, { role: "assistant", content: response.output || "(empty response)" }])
@@ -343,6 +381,7 @@ export function App(props: AppProps) {
       setTranscript((current) => [...current, { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message }])
     } finally {
       if (abortRef.current === abortController) abortRef.current = undefined
+      setActiveTask("")
       setBusy(false)
     }
   }
@@ -434,8 +473,8 @@ export function App(props: AppProps) {
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box flexDirection="column" marginTop={1}>
         {transcript.slice(-18).map((entry, index) => (
-          <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : "gray"}>
-            {entry.role === "user" ? "› " : entry.role === "assistant" ? "d3code: " : entry.role === "error" ? "error: " : ""}
+          <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : entry.role === "tool-start" ? "cyan" : "gray"}>
+            {entry.role === "user" ? "› " : entry.role === "assistant" ? "d3code: " : entry.role === "error" ? "error: " : entry.role === "tool-start" ? "⏺ " : entry.role === "tool" ? "⎿ " : ""}
             {entry.content}
           </Text>
         ))}
@@ -444,7 +483,7 @@ export function App(props: AppProps) {
       </Box>
       <Box marginTop={1} flexDirection="row">
         <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} </Text>
-        {busy ? <Text>working</Text> : <><Text>{renderedDraft.before}</Text><Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text><Text>{renderedDraft.after}</Text></>}
+        {busy ? <Text>{activeTask || "working"}</Text> : <><Text>{renderedDraft.before}</Text><Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text><Text>{renderedDraft.after}</Text></>}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety} | {project?.instructions.length ? `${project.instructions.length} folder instruction${project.instructions.length === 1 ? "" : "s"}` : "no folder instructions"}</Text>

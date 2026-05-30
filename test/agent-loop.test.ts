@@ -18,6 +18,7 @@ const secrets = {
 
 test("agent loop runs a model-requested D3 tool and resumes with the result", async () => {
   const calls: string[] = []
+  const events: string[] = []
   const chatFn: AgentChatFunction = async (_config, _secrets, request) => {
     calls.push(request.messages.at(-1)?.content ?? "")
     if (calls.length === 1) {
@@ -42,12 +43,16 @@ test("agent loop runs a model-requested D3 tool and resumes with the result", as
     safety: "ask",
     mode: "chat",
     chatFn,
+    onEvent: (event) => {
+      if (event.type === "tool_start" || event.type === "tool_result") events.push(`${event.type}:${event.name}`)
+    },
   })
 
   assert.equal(calls.length, 2)
   assert.match(result.output, /checked local D3 availability/i)
   assert.equal(result.toolEvents.length, 1)
   assert.equal(result.toolEvents[0]?.name, "d3_detect")
+  assert.deepEqual(events, ["tool_start:d3_detect", "tool_result:d3_detect"])
 })
 
 test("agent loop blocks non-D3 tool requests", async () => {
@@ -71,6 +76,7 @@ test("agent loop blocks non-D3 tool requests", async () => {
 
 test("agent loop forwards streaming tokens from the first model response", async () => {
   let streamed = ""
+  const deltas: string[] = []
   const chatFn: AgentChatFunction = async (_config, _secrets, request) => {
     request.onToken?.("Hello")
     request.onToken?.(" D3")
@@ -86,10 +92,39 @@ test("agent loop forwards streaming tokens from the first model response", async
     onToken: (token) => {
       streamed += token
     },
+    onEvent: (event) => {
+      if (event.type === "assistant_delta") deltas.push(`${event.iteration}:${event.token}`)
+    },
   })
 
   assert.equal(streamed, "Hello D3")
+  assert.deepEqual(deltas, ["0:Hello", "0: D3"])
   assert.equal(result.output, "Hello D3")
+})
+
+test("agent loop streams final assistant response after a tool result", async () => {
+  const deltas: string[] = []
+  let calls = 0
+  const chatFn: AgentChatFunction = async (_config, _secrets, request) => {
+    calls += 1
+    if (calls === 1) return { provider: "test", model: "test", content: "<d3_tool>{\"name\":\"d3_detect\",\"input\":{}}</d3_tool>" }
+    request.onToken?.("Done")
+    return { provider: "test", model: "test", content: "Done" }
+  }
+
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "detect d3",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn,
+    onEvent: (event) => {
+      if (event.type === "assistant_delta") deltas.push(`${event.iteration}:${event.token}`)
+    },
+  })
+
+  assert.equal(result.output, "Done")
+  assert.deepEqual(deltas, ["1:Done"])
 })
 
 test("agent system prompt is D3-only and names reference-manual grounding", () => {
