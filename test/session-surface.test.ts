@@ -11,6 +11,7 @@ test("session surface formats elapsed time for active work", () => {
   assert.equal(formatDurationMs(65_000), "1m05s")
   assert.equal(formatBusyStatus("streaming response", 5), "working: streaming response 5s  esc to interrupt")
   assert.equal(formatBusyStatus("streaming response", 5, "↓ 12 tokens"), "working: streaming response 5s · ↓ 12 tokens  esc to interrupt")
+  assert.equal(formatBusyStatus("streaming response", 5, "↓ 12 tokens", "esc again to interrupt"), "working: streaming response 5s · ↓ 12 tokens  esc again to interrupt")
   assert.equal(formatTimelineProgress("✢", "running ! sleep", 65), "✢ running ! sleep 1m05s")
   assert.equal(estimateStreamTokens(""), 0)
   assert.equal(estimateStreamTokens("hello d3code"), 3)

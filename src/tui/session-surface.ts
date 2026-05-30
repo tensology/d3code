@@ -63,9 +63,9 @@ export function estimateStreamTokens(text: string): number {
   return Math.max(1, Math.ceil(trimmed.length / 4))
 }
 
-export function formatBusyStatus(task: string, elapsedSeconds: number, progress?: string): string {
+export function formatBusyStatus(task: string, elapsedSeconds: number, progress?: string, interruptHint = "esc to interrupt"): string {
   const progressText = progress ? ` · ${progress}` : ""
-  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}${progressText}  esc to interrupt`
+  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}${progressText}  ${interruptHint}`
 }
 
 export function formatTimelineProgress(frame: string, task: string, elapsedSeconds: number): string {
