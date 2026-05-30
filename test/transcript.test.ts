@@ -5,9 +5,12 @@ import { compactTranscriptContent, transcriptColor, transcriptPrefix } from "../
 test("transcript prefixes make tool and file events first-class message blocks", () => {
   assert.equal(transcriptPrefix("user"), "› ")
   assert.equal(transcriptPrefix("assistant"), "d3code: ")
+  assert.equal(transcriptPrefix("shell-input"), "! ")
   assert.equal(transcriptPrefix("tool"), "  ⎿ ")
+  assert.equal(transcriptPrefix("shell-output"), "  ⎿ ")
   assert.equal(transcriptPrefix("file-change"), "  ◆ ")
   assert.equal(transcriptColor("tool-start"), "cyan")
+  assert.equal(transcriptColor("shell-input"), "yellow")
 })
 
 test("transcript compacts noisy tool output", () => {

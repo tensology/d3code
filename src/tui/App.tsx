@@ -21,6 +21,7 @@ import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary } from "./workspace-changes.js"
 import { formatBusyStatus, formatPromptMeta } from "./session-surface.js"
 import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
+import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -326,7 +327,7 @@ export function App(props: AppProps) {
     const abortController = new AbortController()
     abortRef.current = abortController
     const beforeWorkspace = await snapshotWorkspace()
-    setTranscript((current) => [...current, { role: "user", content: line }])
+    setTranscript((current) => [...current, { role: line.startsWith("!") ? "shell-input" : "user", content: line.startsWith("!") ? line.slice(1).trim() : line }])
     try {
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
       if (line === "/d3" || line.startsWith("/d3 ")) {
@@ -338,6 +339,10 @@ export function App(props: AppProps) {
         d3Session.current = undefined
         setMode("chat")
         setTranscript((current) => [...current, { role: "system", content: "Back in agent chat. Use /d3 to attach to the D3 runtime again." }])
+        return
+      }
+      if (line.startsWith("!")) {
+        await submitLocalShellLine(line.slice(1).trim(), abortController.signal)
         return
       }
       if (mode === "d3" && !line.startsWith("/")) {
@@ -472,6 +477,18 @@ export function App(props: AppProps) {
     ])
   }
 
+  async function submitLocalShellLine(command: string, signal: AbortSignal) {
+    if (!command) {
+      setTranscript((current) => [...current, { role: "error", content: "Usage: ! <unix command>" }])
+      return
+    }
+    setActiveTask(`running ! ${command.split(/\s+/)[0]}`)
+    const result = await runLocalShellCommand(command, { signal })
+    const output = renderLocalShellResult(result)
+    setTranscript((current) => [...current, { role: "shell-output", content: output || "exit 0" }])
+    await record({ type: "tool", content: `shell\n$ ${command}\n${output}`, metadata: { tool: "local_shell", command, exitCode: result.exitCode, signal: result.signal } })
+  }
+
   async function submitD3TerminalLine(line: string) {
     const selected = selectProfile(props.config, profile)
     if (!selected) {
@@ -521,6 +538,7 @@ export function App(props: AppProps) {
             <Text color="cyan">/profile <Text dimColor>show or switch D3 profiles</Text></Text>
             <Text color="cyan">/d3 <Text dimColor>attach to the D3 runtime terminal</Text></Text>
             <Text color="cyan">/ide <Text dimColor>open the browser workbench</Text></Text>
+            <Text color="cyan">! <Text dimColor>run a local Unix command in this session</Text></Text>
           </Box>
           <Box marginTop={1}>
             <Text dimColor>

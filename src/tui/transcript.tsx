@@ -15,10 +15,12 @@ export function compactTranscriptContent(content: string, maxLines = 8): string[
 
 export function transcriptPrefix(role: string): string {
   if (role === "user") return "› "
+  if (role === "shell-input") return "! "
   if (role === "assistant") return "d3code: "
   if (role === "error") return "error: "
   if (role === "tool-start") return "⏺ "
   if (role === "tool") return "  ⎿ "
+  if (role === "shell-output") return "  ⎿ "
   if (role === "file-change") return "  ◆ "
   return "  "
 }
@@ -26,8 +28,9 @@ export function transcriptPrefix(role: string): string {
 export function transcriptColor(role: string): string {
   if (role === "error") return "red"
   if (role === "assistant") return "green"
+  if (role === "shell-input") return "yellow"
   if (role === "user") return "white"
-  if (role === "tool-start" || role === "file-change") return "cyan"
+  if (role === "tool-start" || role === "file-change" || role === "shell-output") return "cyan"
   return "gray"
 }
 
@@ -59,6 +62,7 @@ function FileChangeBlock({ content }: { content: string }) {
 
 export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
   if (entry.role === "tool") return <ToolBlock content={entry.content} />
+  if (entry.role === "shell-output") return <ToolBlock content={entry.content} />
   if (entry.role === "file-change") return <FileChangeBlock content={entry.content} />
   return (
     <Text color={transcriptColor(entry.role)}>

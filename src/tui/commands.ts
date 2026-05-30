@@ -142,6 +142,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
           "/modernization-proof <before-file> <after-file> [compile-output-file]",
           "/sessions, /resume <id>, /audit-help, /migrate-help, /api-help, /modernize-help",
           "/safety ask|plan|trust, /profile <name>, /doctor, /profile-doctor, /config, /clear, /exit",
+          "! <unix command> runs a local shell command in this same session and reports output plus file changes.",
           "Normal text is sent to the selected model with D3 Code system context.",
         ].join("\n"),
       }
