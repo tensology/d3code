@@ -5,6 +5,8 @@ All notable changes to D3 Code will be documented in this file.
 ## 0.1.0 - 2026-05-30
 
 - Added `/ide` and `d3code ide` to start a local browser-based D3 Code IDE server with profile context, D3 terminal sends, file/dictionary reads, guarded item writes, file listing, and indexed evidence search.
+- Shaped the browser IDE shell around D3 terminology from the local Rocket references: profiles/accounts, data files/items, dictionaries, BASIC/subroutines, indexes/references, and a D3 runtime terminal.
+- Wired the browser IDE agent lane into the existing D3-only agent tool loop so browser requests can inspect D3 through guarded tools instead of bypassing safety.
 - Removed the old user-facing dashboard/cockpit commands and artifacts from the TUI/CLI path so browser work consolidates around the IDE surface.
 - Added a D3-only model tool loop for the interactive terminal session, allowing the model to request registered D3 tools, receive compact evidence, and continue the answer.
 - Added Rocket D3 manual/reference search as a read-only D3 tool for manual-grounded answers.

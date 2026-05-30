@@ -238,7 +238,7 @@ What happens behind the scenes:
 | Account/file discovery | Use the active local/SSH D3 profile to inspect the account, files, dictionaries, and indexed context. |
 | Reads | Pull items, dictionary entries, locks, indexes, selected records, BASIC source, and cached search hits. |
 | Application work | Capture D3 evidence, derive resources/screens/actions/access/data shape, then generate or update a runnable app/API slice. |
-| Browser IDE | Start `/ide --port 3737` to run a local web IDE with profile context, D3 terminal sends, hashed-file reads/writes, dictionary reads, file listing, and indexed evidence search. |
+| Browser IDE | Start `/ide --port 3737` to run a local web IDE with profile/account context, D3-native left panels for data files/items, dictionaries, BASIC/subroutines, and indexes/references, a main item/BASIC editor, a right-side D3-only agent lane, and a bottom D3 runtime terminal. |
 | Risky operations | Stop before writes, compile/catalog, subroutine calls, account changes, or destructive TCL unless confirmation is explicit. |
 | Follow-up work | Keep the session history, profile, model, mode, safety setting, and generated evidence available as context. |
 

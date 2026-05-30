@@ -22,7 +22,7 @@ export async function runToolByName(config: D3CodeConfig, request: ToolRunReques
   const tool = getTool(request.name)
   if (!tool) throw new Error(`Unknown tool: ${request.name}`)
   const profile = selectProfile(config, request.profile)
-  const sessionlessTools = new Set(["d3_detect", "d3_search"])
+  const sessionlessTools = new Set(["d3_detect", "d3_search", "d3_manual_search"])
   const needsSession = !sessionlessTools.has(request.name)
   if (needsSession && !profile) throw new Error("No D3 profile selected. Use /profile or configure one with profile-add-local/profile-add-ssh.")
   const session = needsSession && profile ? createD3Session(profile) : undefined

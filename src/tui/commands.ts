@@ -132,7 +132,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /status, /ide [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|local], /model-routing [mode] [--bias quality|balanced|speed|local], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /status, /ide|/id [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|local], /model-routing [mode] [--bias quality|balanced|speed|local], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -147,7 +147,8 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       }
     case "/status":
       return { output: renderIdeStatusReport(await createIdeStatusReport(config, state)) }
-    case "/ide": {
+    case "/ide":
+    case "/id": {
       const portValue = flagValue(args, "--port") ?? args.find((arg) => /^\d+$/.test(arg))
       const port = portValue ? Number(portValue) : 3737
       if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [--port 3737] [--host 127.0.0.1]" }
@@ -161,8 +162,9 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
           "",
           "Browser surfaces:",
           "- D3 terminal: POST /api/terminal/send",
-          "- file/database manager: /api/files, /api/item, /api/dict",
-          "- profile/tool context: /api/status, /api/profiles, /api/tools",
+          "- file/database manager: /api/files, /api/item, /api/dict, /api/locks, /api/aql",
+          "- BASIC/subroutine actions: /api/basic/compile, /api/basic/catalog, /api/subroutine/call",
+          "- profile/tool context: /api/status, /api/profiles, /api/profile, /api/account/login, /api/tools",
         ].join("\n"),
       }
     }

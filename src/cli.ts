@@ -1187,7 +1187,7 @@ program.command("bundle-artifacts").argument("<bundle-json-file>").requiredOptio
   console.log(JSON.stringify(await writeBundleArtifacts(options.out, createBundleArtifacts(bundle), bundle), null, 2))
 })
 
-program.command("ide").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host", "127.0.0.1").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (options: { port: number; host: string; profile?: string; model?: string; safety?: string; mode: string }) => {
+program.command("ide").alias("id").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host", "127.0.0.1").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (options: { port: number; host: string; profile?: string; model?: string; safety?: string; mode: string }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const mode = getMode(options.mode) ?? getMode("chat")!
