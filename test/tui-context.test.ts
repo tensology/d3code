@@ -34,3 +34,21 @@ test("chat system prompt carries explicit no-profile context", () => {
   assert.match(prompt, /allowed accounts: none/)
   assert.match(prompt, /In plan safety/)
 })
+
+test("chat system prompt includes project folder instructions when loaded", () => {
+  const prompt = createChatSystemPrompt(config, {
+    model: "openai/gpt-5",
+    safety: "ask",
+    profile: "prod",
+    mode: "chat",
+    project: {
+      cwd: "/work/d3app",
+      root: "/work/d3app",
+      instructions: [{ path: "/work/d3app/D3CODE.md", label: "D3CODE.md", content: "Only work against the SALES account." }],
+    },
+  })
+
+  assert.match(prompt, /Project Folder Instructions/)
+  assert.match(prompt, /D3CODE\.md/)
+  assert.match(prompt, /Only work against the SALES account/)
+})

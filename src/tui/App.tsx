@@ -15,6 +15,7 @@ import { appendEvent, newSession, saveSession, type StoredSession } from "../ses
 import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
+import { loadProjectContext, type ProjectContext } from "./project-context.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -75,8 +76,12 @@ export function App(props: AppProps) {
   const [transcript, setTranscript] = useState<Array<{ role: string; content: string }>>(transcriptFromSession(props.session))
   const [welcome, setWelcome] = useState<WelcomeSummary | undefined>()
   const [streamingAssistant, setStreamingAssistant] = useState("")
+  const [project, setProject] = useState<ProjectContext | undefined>()
+  const [caretOn, setCaretOn] = useState(true)
+  const [busyFrame, setBusyFrame] = useState(0)
   const d3Session = useRef<D3Session | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
+  const spinnerFrames = ["·", "✢", "✣", "✦"]
 
   useEffect(() => {
     let cancelled = false
@@ -92,11 +97,36 @@ export function App(props: AppProps) {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    void loadProjectContext().then((context) => {
+      if (cancelled) return
+      setProject(context)
+      setMessages(messagesFromSession(props.config, props.session, { model, safety, profile, mode, project: context }))
+    }).catch((error) => {
+      if (!cancelled) setTranscript((current) => [...current, { role: "error", content: `Could not load folder instructions: ${(error as Error).message}` }])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     return () => {
       void d3Session.current?.close()
       d3Session.current = undefined
     }
   }, [])
+
+  useEffect(() => {
+    const timer = setInterval(() => setCaretOn((current) => !current), 520)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!busy) return
+    const timer = setInterval(() => setBusyFrame((current) => current + 1), 140)
+    return () => clearInterval(timer)
+  }, [busy])
 
   async function record(event: Parameters<typeof appendEvent>[1]) {
     const next = appendEvent(session, event)
@@ -105,6 +135,10 @@ export function App(props: AppProps) {
   }
 
   useInput((value, key) => {
+    if (key.ctrl && value === "c") {
+      app.exit()
+      return
+    }
     if (busy) return
     if (key.return) {
       const line = input.trim()
@@ -115,10 +149,6 @@ export function App(props: AppProps) {
     }
     if (key.backspace || key.delete) {
       setInput((current) => current.slice(0, -1))
-      return
-    }
-    if (key.ctrl && value === "c") {
-      app.exit()
       return
     }
     if (value) setInput((current) => current + value)
@@ -157,7 +187,7 @@ export function App(props: AppProps) {
           setMode(result.state.mode)
         }
         if ("profile" in (result.state ?? {})) setProfile(result.state?.profile)
-        if (result.state) setMessages([{ role: "system", content: createD3AgentSystemPrompt(props.config, { model: nextModel, safety: nextSafety, profile: nextProfile, mode: nextMode }) }])
+        if (result.state) setMessages([{ role: "system", content: createD3AgentSystemPrompt(props.config, { model: nextModel, safety: nextSafety, profile: nextProfile, mode: nextMode, project }) }])
         if (result.output) {
           setTranscript((current) => [...current, { role: "system", content: result.output }])
           await record({ type: "system", content: result.output, metadata: { command: line } })
@@ -180,6 +210,7 @@ export function App(props: AppProps) {
         safety,
         profile,
         mode,
+        project,
         onToken: (token) => setStreamingAssistant((current) => current + token),
       })
       setStreamingAssistant("")
@@ -285,18 +316,19 @@ export function App(props: AppProps) {
       <Box flexDirection="column" marginTop={1}>
         {transcript.slice(-18).map((entry, index) => (
           <Text key={`${entry.role}-${index}`} color={entry.role === "error" ? "red" : entry.role === "assistant" ? "green" : entry.role === "user" ? "white" : "gray"}>
-            {entry.role === "user" ? "> " : entry.role === "assistant" ? "d3code: " : entry.role === "error" ? "error: " : ""}
+            {entry.role === "user" ? "› " : entry.role === "assistant" ? "d3code: " : entry.role === "error" ? "error: " : ""}
             {entry.content}
           </Text>
         ))}
         {streamingAssistant ? <Text color="green">d3code: {streamingAssistant}</Text> : null}
       </Box>
       <Box marginTop={1} flexDirection="row">
-        <Text color="cyan" bold>{busy ? "..." : "›"} </Text>
-        <Text>{input}</Text>
+        <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} </Text>
+        <Text>{busy ? "working" : input}</Text>
+        {!busy ? <Text inverse={caretOn} dimColor={!caretOn}> </Text> : null}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
-      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety}</Text>
+      <Text dimColor>{model} | {profile ? `D3 ${profile}` : "D3 not connected"} | {mode}/{safety} | {project?.instructions.length ? `${project.instructions.length} folder instruction${project.instructions.length === 1 ? "" : "s"}` : "no folder instructions"}</Text>
     </Box>
   )
 }

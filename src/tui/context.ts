@@ -1,12 +1,15 @@
 import type { D3CodeConfig } from "../config/config.js"
 import type { SafetyMode } from "../domain/types.js"
 import { modeSystemPrompt } from "../skills/modes.js"
+import type { ProjectContext } from "./project-context.js"
+import { renderProjectInstructions } from "./project-context.js"
 
 export interface ChatRuntimeContext {
   model: string
   safety: SafetyMode
   profile?: string
   mode: string
+  project?: ProjectContext
 }
 
 export function createChatSystemPrompt(config: D3CodeConfig, context: ChatRuntimeContext): string {
@@ -48,5 +51,7 @@ export function createChatSystemPrompt(config: D3CodeConfig, context: ChatRuntim
     "- \"show me the files\", \"read item 100 from CUSTOMERS\", \"read dictionary NAME from CUSTOMERS\"",
     "- \"build an app from bundle d3-app-bundle.json to ./app-output\"",
     "- \"build an application from files CUSTOMERS,ORDERS programs BP to ./app-output\"",
+    "",
+    context.project ? renderProjectInstructions(context.project) : "Project Folder Instructions:\n- not loaded yet",
   ].join("\n")
 }

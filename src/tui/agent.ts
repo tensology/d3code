@@ -1,6 +1,7 @@
 import type { D3CodeConfig } from "../config/config.js"
 import type { SafetyMode } from "../domain/types.js"
 import { chat, type ChatMessage, type ChatRequest, type ChatResponse } from "../llm/client.js"
+import type { ProjectContext } from "./project-context.js"
 import type { SecretStore } from "../security/secrets.js"
 import { d3Tools, getTool } from "../d3/tools.js"
 import { runToolByName, type ToolRunResult } from "../tools/runner.js"
@@ -11,6 +12,7 @@ export interface D3AgentState {
   safety: SafetyMode
   profile?: string
   mode: string
+  project?: ProjectContext
 }
 
 export interface D3AgentTurnRequest extends D3AgentState {
