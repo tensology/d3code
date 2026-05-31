@@ -65,7 +65,7 @@ export function estimateStreamTokens(text: string): number {
 
 export function formatBusyStatus(task: string, elapsedSeconds: number, progress?: string, interruptHint = "esc to interrupt"): string {
   const progressText = progress ? ` · ${progress}` : ""
-  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}${progressText}  ${interruptHint}`
+  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}${progressText}  ${interruptHint.replace(" to ", " ")}`
 }
 
 export function formatTimelineProgress(frame: string, task: string, elapsedSeconds: number): string {

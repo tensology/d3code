@@ -34,6 +34,7 @@ export function transcriptPrefix(role: string): string {
   if (role === "assistant-stream") return "  ⎿ "
   if (role === "assistant-interrupted") return "  ⎿ "
   if (role === "pending") return "  ⎿ "
+  if (role === "queued") return "queued › "
   if (role === "error") return "error: "
   if (role === "system") return "  ⎿ "
   if (role === "tool-start") return "⏺ "
@@ -48,6 +49,7 @@ export function transcriptColor(role: string): string {
   if (role === "assistant" || role === "assistant-stream") return "green"
   if (role === "assistant-interrupted") return "yellow"
   if (role === "pending") return "yellow"
+  if (role === "queued") return "cyan"
   if (role === "shell-input") return "white"
   if (role === "user") return "white"
   if (role === "tool-start" || role === "file-change" || role === "shell-output") return "cyan"
@@ -89,8 +91,18 @@ function PendingBlock({ content }: { content: string }) {
   )
 }
 
+function QueuedBlock({ content }: { content: string }) {
+  return (
+    <Text color="cyan">
+      {transcriptPrefix("queued")}
+      <Text dimColor>{content}</Text>
+    </Text>
+  )
+}
+
 export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
   if (entry.role === "pending") return <PendingBlock content={entry.content} />
+  if (entry.role === "queued") return <QueuedBlock content={entry.content} />
   if (entry.role === "assistant" || entry.role === "assistant-stream") return <ResponseBlock content={`d3code\n${entry.content}`} titleColor="green" maxLines={14} />
   if (entry.role === "assistant-interrupted") return <ResponseBlock content={`d3code interrupted\n${entry.content}`} titleColor="yellow" maxLines={14} />
   if (entry.role === "tool") return <ResponseBlock content={entry.content} />

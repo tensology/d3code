@@ -86,7 +86,7 @@ function transcriptFromSession(session: StoredSession | undefined) {
   ]
 }
 
-function compactTaskLabel(label: string, maxLength = 34): string {
+function compactTaskLabel(label: string, maxLength = 26): string {
   if (label.length <= maxLength) return label
   return `${label.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
 }
@@ -800,6 +800,8 @@ export function App(props: AppProps) {
   ].filter(Boolean).join(" · ")
   const interruptHint = abortMessage === "Esc again to interrupt." ? "esc again to interrupt" : "esc to interrupt"
   const suggestions = commandSuggestions(draft.text)
+  const queuedPreview = queuedLines.slice(0, 3)
+  const queuedOverflow = queuedLines.length - queuedPreview.length
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -851,11 +853,16 @@ export function App(props: AppProps) {
         {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: pacedAssistant }} /> : null}
         {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `${streamingToolLabel || "Bash running"}\n${pacedShellOutput.trimEnd()}` }} /> : null}
         {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `${streamingToolLabel || "D3 running"}\n${pacedD3Output.trimEnd()}` }} /> : null}
+        {busy && queuedPreview.map((line, index) => (
+          <TranscriptEntryView key={`queued-${index}-${line}`} entry={{ role: "queued", content: line }} />
+        ))}
+        {busy && queuedOverflow > 0 ? <TranscriptEntryView entry={{ role: "queued", content: `+${queuedOverflow} more` }} /> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
         <Box flexDirection="row">
-          <Text color={busy ? "yellow" : "cyan"} bold>{`${busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} `}</Text>
+          <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"}</Text>
+          <Text> </Text>
           {busy ? (
             <Text>{formatBusyStatus(activeTask, busySeconds, busyProgress, interruptHint)}</Text>
           ) : (
@@ -870,9 +877,8 @@ export function App(props: AppProps) {
           <Box flexDirection="row">
             {queuedLines.length ? (
               <>
-                <Text color="cyan">{queuedLines.length === 1 ? "queued" : `${queuedLines.length} queued`} › </Text>
-                <Text>{queuedLines[0]}</Text>
-                {queuedLines.length > 1 ? <Text dimColor>{`  +${queuedLines.length - 1} more`}</Text> : null}
+                <Text color="cyan">{queuedLines.length === 1 ? "queued" : `${queuedLines.length} queued`}</Text>
+                <Text dimColor>{`  next runs automatically · esc removes last`}</Text>
               </>
             ) : (
               <>

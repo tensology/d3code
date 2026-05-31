@@ -8,6 +8,7 @@ test("transcript prefixes make tool and file events first-class message blocks",
   assert.equal(transcriptPrefix("assistant-stream"), "  ⎿ ")
   assert.equal(transcriptPrefix("assistant-interrupted"), "  ⎿ ")
   assert.equal(transcriptPrefix("pending"), "  ⎿ ")
+  assert.equal(transcriptPrefix("queued"), "queued › ")
   assert.equal(transcriptPrefix("shell-input"), "› ! ")
   assert.equal(transcriptPrefix("system"), "  ⎿ ")
   assert.equal(transcriptPrefix("tool"), "  ⎿ ")
@@ -18,6 +19,7 @@ test("transcript prefixes make tool and file events first-class message blocks",
   assert.equal(transcriptColor("assistant-stream"), "green")
   assert.equal(transcriptColor("assistant-interrupted"), "yellow")
   assert.equal(transcriptColor("pending"), "yellow")
+  assert.equal(transcriptColor("queued"), "cyan")
 })
 
 test("transcript compacts noisy tool output", () => {
