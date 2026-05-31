@@ -157,6 +157,7 @@ export function App(props: AppProps) {
   const rawEscapeSuppressUntilRef = useRef(0)
   const workspaceBaselineRef = useRef<WorkspaceSnapshot | undefined>()
   const queuedLinesRef = useRef<string[]>([])
+  const interruptNoticeRef = useRef("")
   const streamSuppressRef = useRef(false)
   const streamIterationRef = useRef<number | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
@@ -301,8 +302,17 @@ export function App(props: AppProps) {
       clearTimeout(interruptTimerRef.current)
       interruptTimerRef.current = undefined
     }
+    const queuedCount = queuedLinesRef.current.length
+    if (queuedCount > 0) {
+      queuedLinesRef.current = []
+      setQueuedLines([])
+    }
+    const notice = queuedCount > 0
+      ? `${message} Cleared ${queuedCount} queued ${queuedCount === 1 ? "turn" : "turns"}.`
+      : message
+    interruptNoticeRef.current = notice
     abortRef.current?.abort()
-    setAbortMessage(message)
+    setAbortMessage(notice)
     setBusy(false)
     setStreamingAssistant("")
     setStreamingShellOutput("")
@@ -315,14 +325,19 @@ export function App(props: AppProps) {
       setHistoryIndex(undefined)
       return
     }
+    const canInterruptRunningTurn = busyRef.current && abortRef.current && !abortRef.current.signal.aborted
+    if (interruptArmedRef.current || count > 1) {
+      if (canInterruptRunningTurn) interruptActiveTurn("Interrupted.")
+      return
+    }
+    if (canInterruptRunningTurn) {
+      armInterrupt()
+      return
+    }
     if (queuedLinesRef.current.length > 0) {
       const nextQueue = queuedLinesRef.current.slice(0, -1)
       queuedLinesRef.current = nextQueue
       setQueuedLines(nextQueue)
-      return
-    }
-    if (interruptArmedRef.current || count > 1) {
-      interruptActiveTurn("Interrupted. Press Enter for the next instruction.")
       return
     }
     armInterrupt()
@@ -560,6 +575,7 @@ export function App(props: AppProps) {
     setStreamingToolLabel("")
     setWorkspaceChanges(undefined)
     workspaceBaselineRef.current = undefined
+    interruptNoticeRef.current = ""
     streamSuppressRef.current = false
     streamIterationRef.current = undefined
     const abortController = new AbortController()
@@ -567,6 +583,7 @@ export function App(props: AppProps) {
     const beforeWorkspace = await snapshotWorkspace()
     workspaceBaselineRef.current = beforeWorkspace
     setTranscript((current) => [...current, { role: line.startsWith("!") ? "shell-input" : "user", content: line.startsWith("!") ? line.slice(1).trim() : line }])
+    let abortRecorded = false
     try {
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
       if (line === "/d3" || line.startsWith("/d3 ")) {
@@ -681,14 +698,16 @@ export function App(props: AppProps) {
       await record({ type: "assistant", content: response.output || "", metadata: { model, usage: response.usage, toolEvents: response.toolEvents.map((event) => event.name) } })
     } catch (error) {
       const interruptedAssistant = streamingAssistant.trim()
+      const interruptNotice = interruptNoticeRef.current || "Interrupted."
       setStreamingAssistant("")
       setStreamingShellOutput("")
       setStreamingD3Output("")
       setStreamingToolLabel("")
+      abortRecorded = abortController.signal.aborted
       setTranscript((current) => [
         ...current,
         ...(abortController.signal.aborted && interruptedAssistant ? [{ role: "assistant-interrupted", content: interruptedAssistant }] : []),
-        { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? "Interrupted." : (error as Error).message },
+        { role: abortController.signal.aborted ? "system" : "error", content: abortController.signal.aborted ? interruptNotice : (error as Error).message },
       ])
     } finally {
       setActiveTask("checking files")
@@ -700,9 +719,22 @@ export function App(props: AppProps) {
         setTranscript((current) => [...current, { role: "file-change", content: rendered }])
         await record({ type: "system", content: rendered, metadata: { workspaceChanges: summary } })
       }
+      if (abortController.signal.aborted && !abortRecorded) {
+        const interruptNotice = interruptNoticeRef.current || "Interrupted."
+        setAbortMessage("")
+        setTranscript((current) => [...current, { role: "system", content: interruptNotice }])
+      }
       if (abortRef.current === abortController) abortRef.current = undefined
       workspaceBaselineRef.current = undefined
       setActiveTask("")
+      if (abortController.signal.aborted) {
+        queuedLinesRef.current = []
+        setQueuedLines([])
+        busyRef.current = false
+        setBusy(false)
+        interruptNoticeRef.current = ""
+        return
+      }
       const [nextQueuedLine, ...remainingQueuedLines] = queuedLinesRef.current
       if (nextQueuedLine) {
         queuedLinesRef.current = remainingQueuedLines
@@ -712,6 +744,7 @@ export function App(props: AppProps) {
         busyRef.current = false
       }
       setBusy(false)
+      interruptNoticeRef.current = ""
     }
   }
 
@@ -897,7 +930,7 @@ export function App(props: AppProps) {
               {queuedLines.length ? (
                 <>
                   <Text color="cyan">{queuedLines.length === 1 ? "queued" : `${queuedLines.length} queued`}</Text>
-                  <Text dimColor>{`  next runs automatically · esc removes last`}</Text>
+                  <Text dimColor>{`  next runs automatically unless you interrupt`}</Text>
                 </>
               ) : (
                 <Text dimColor>enter queues this prompt while the current turn finishes</Text>
