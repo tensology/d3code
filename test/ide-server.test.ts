@@ -211,6 +211,39 @@ test("IDE server agent panel runs the guarded D3 agent loop", async () => {
   assert.match(payload.tools[0]?.result ?? "", /CUSTOMERS/)
 })
 
+test("IDE server streams browser agent tokens and D3 tool events", async () => {
+  let calls = 0
+  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, {
+    port: 0,
+    agentChatFn: async (_config, _secrets, request) => {
+      calls += 1
+      if (calls === 1) {
+        request.onToken?.("<d3_tool>")
+        return { provider: "test", model: "fake", content: "<d3_tool>{\"name\":\"d3_list_files\",\"input\":{},\"reason\":\"inspect files\"}</d3_tool>" }
+      }
+      request.onToken?.("Here ")
+      request.onToken?.("are files.")
+      return { provider: "test", model: "fake", content: "Here are files." }
+    },
+  })
+
+  const response = await fetch(`${server.url}/api/agent`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    body: JSON.stringify({ input: "show files" }),
+  })
+  const stream = await response.text()
+
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/)
+  assert.match(stream, /event: assistant_delta/)
+  assert.match(stream, /event: tool_start/)
+  assert.match(stream, /"name":"d3_list_files"/)
+  assert.match(stream, /event: tool_result/)
+  assert.match(stream, /event: done/)
+  assert.match(stream, /Here are files/)
+})
+
 test("slash /ide starts the IDE server and returns a browser URL", async () => {
   const result = await handleSlashCommand("/ide --port 0", config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
 

@@ -42,6 +42,19 @@ function sendJson(res: ServerResponse, status: number, value: unknown): void {
   send(res, status, `${JSON.stringify(value, null, 2)}\n`, "application/json; charset=utf-8")
 }
 
+function startSse(res: ServerResponse): void {
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+  })
+}
+
+function writeSse(res: ServerResponse, event: string, data: unknown): void {
+  res.write(`event: ${event}\n`)
+  res.write(`data: ${JSON.stringify(data)}\n\n`)
+}
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
@@ -90,8 +103,12 @@ function html(): string {
     "function terminalText(v){return typeof v==='string'?v:JSON.stringify(v,null,2)}",
     "function renderTerminal(){const out=$('terminal').dataset.output||'';$('terminal').textContent=(out?out.replace(/\\s*$/,'')+'\\n':'')+'> '+terminalDraft;$('command').value=terminalDraft;$('terminal').scrollTop=$('terminal').scrollHeight}",
     "function show(id,v){if(id==='terminal'){$('terminal').dataset.output=terminalText(v);renderTerminal();return}$(id).textContent=terminalText(v)}",
-    "function addBubble(role,text){const div=document.createElement('div');div.className='chat-bubble '+role;div.textContent=text;$('agentOutput').appendChild(div);$('agentOutput').scrollTop=$('agentOutput').scrollHeight}",
+    "function addBubble(role,text){const div=document.createElement('div');div.className='chat-bubble '+role;div.textContent=text;$('agentOutput').appendChild(div);$('agentOutput').scrollTop=$('agentOutput').scrollHeight;return div}",
+    "function addToolEvent(t){const div=document.createElement('div');div.className='tool-event';div.innerHTML='<div class=\"tool-name\">'+escapeHtml(t.name||'tool')+'</div><div class=\"chat-tool-result\">'+escapeHtml(t.result||t.compact||t.reason||'running')+'</div>';$('agentOutput').appendChild(div);$('agentOutput').scrollTop=$('agentOutput').scrollHeight;return div}",
     "function showAgent(v){if(v.error){addBubble('assistant',v.error);return}addBubble('assistant',v.output||JSON.stringify(v,null,2));(v.tools||[]).forEach(t=>{const div=document.createElement('div');div.className='tool-event';div.innerHTML='<div class=\"tool-name\">'+escapeHtml(t.name||'tool')+'</div><div class=\"chat-tool-result\">'+escapeHtml(t.result||'')+'</div>';$('agentOutput').appendChild(div)});$('agentOutput').scrollTop=$('agentOutput').scrollHeight}",
+    "function parseSseEvent(block){let event='message';let data='';block.split(/\\r?\\n/).forEach(line=>{if(line.startsWith('event:'))event=line.slice(6).trim();if(line.startsWith('data:'))data+=line.slice(5).trim()});try{return {event,data:JSON.parse(data||'{}')}}catch{return {event,data:{}}}}",
+    "function removeIfEmpty(node){if(node&&!node.textContent.trim())node.remove()}",
+    "async function streamAgent(input){addBubble('user',input);let assistant=null;let buffer='';let suppress=false;const response=await fetch('/api/agent',{method:'POST',headers:{'content-type':'application/json','accept':'text/event-stream'},body:JSON.stringify({input})});if(!response.ok||!response.body){showAgent(await response.json());return}const reader=response.body.getReader();const decoder=new TextDecoder();let pending='';while(true){const read=await reader.read();if(read.done)break;pending+=decoder.decode(read.value,{stream:true});let boundary;while((boundary=pending.indexOf('\\n\\n'))!==-1){const block=pending.slice(0,boundary);pending=pending.slice(boundary+2);if(!block.trim())continue;const msg=parseSseEvent(block);if(msg.event==='assistant_delta'){if(!assistant)assistant=addBubble('assistant','');if(suppress)continue;buffer+=msg.data.token||'';const toolIndex=buffer.search(/<d3_tool>/i);if(toolIndex!==-1){suppress=true;buffer=buffer.slice(0,toolIndex).trimEnd()}assistant.textContent=buffer;$('agentOutput').scrollTop=$('agentOutput').scrollHeight}if(msg.event==='tool_start'){suppress=true;removeIfEmpty(assistant);assistant=null;buffer='';addToolEvent({name:msg.data.name,reason:msg.data.reason,result:'running...'})}if(msg.event==='tool_result'){suppress=false;addToolEvent({name:msg.data.name,result:msg.data.compact})}if(msg.event==='done'){if(msg.data.output&&(!assistant||assistant.textContent.trim()!==msg.data.output.trim()))addBubble('assistant',msg.data.output);if(assistant)assistant.textContent=assistant.textContent||msg.data.output||''}if(msg.event==='error'){addBubble('assistant',msg.data.error||'Agent failed')}}}}",
     "document.querySelectorAll('.tab').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));btn.classList.add('active');$(btn.dataset.pane).classList.add('active')});",
     "$('profileMenuButton').onclick=()=>$('profileMenu').classList.toggle('open');",
     "document.addEventListener('click',e=>{if(!$('profileMenu').contains(e.target)&&!$('profileMenuButton').contains(e.target))$('profileMenu').classList.remove('open')});",
@@ -137,7 +154,7 @@ function html(): string {
     "$('searchBtn').onclick=async()=>show('searchResults',await api('/api/search?query='+encodeURIComponent($('search').value)));",
     "$('manualBtn').onclick=async()=>show('searchResults',await api('/api/manual-search?query='+encodeURIComponent($('manual').value)));",
     "$('callSubroutine').onclick=async()=>show('searchResults',await api('/api/subroutine/call',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('subroutine').value,args:$('subArgs').value.split(/\\s+/).filter(Boolean),confirmed:$('confirmCall').checked})}));",
-    "$('agentSend').onclick=async()=>{const input=$('agentPrompt').value.trim();if(!input)return;addBubble('user',input);$('agentPrompt').value='';showAgent(await api('/api/agent',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({input})}))};",
+    "$('agentSend').onclick=async()=>{const input=$('agentPrompt').value.trim();if(!input)return;$('agentPrompt').value='';try{await streamAgent(input)}catch(error){addBubble('assistant',error.message||String(error))}};",
     "$('agentPrompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('agentSend').click()}});",
     "boot().catch(e=>show('terminal',String(e.stack||e)));",
     "</script>",
@@ -206,6 +223,29 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   if (req.method === "POST" && url.pathname === "/api/agent") {
     const body = await readJson(req) as { input?: string }
     if (!body.input) return sendJson(res, 400, { error: "input is required" })
+    if ((req.headers.accept ?? "").includes("text/event-stream") || url.searchParams.get("stream") === "1") {
+      startSse(res)
+      try {
+        const turn = await runD3AgentTurn(config, defaultSecretStore(), {
+          ...state,
+          input: body.input,
+          history: state.agentHistory,
+          chatFn: options.agentChatFn,
+          onEvent: (event) => writeSse(res, event.type, event),
+        })
+        state.agentHistory = turn.messages
+        writeSse(res, "done", {
+          output: turn.output,
+          tools: turn.toolEvents.map((event) => ({ name: event.name, input: event.input, reason: event.reason, result: event.result.compact })),
+          usage: turn.usage,
+        })
+      } catch (error) {
+        writeSse(res, "error", { error: (error as Error).message })
+      } finally {
+        res.end()
+      }
+      return
+    }
     const turn = await runD3AgentTurn(config, defaultSecretStore(), {
       ...state,
       input: body.input,
