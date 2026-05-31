@@ -878,34 +878,30 @@ export function App(props: AppProps) {
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
         <Box flexDirection="row">
-          <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"}</Text>
+          <Text color={busy ? "gray" : "cyan"} bold>›</Text>
           <Text> </Text>
-          {busy ? (
-            <Text>{formatBusyStatus(activeTask, busySeconds, busyProgress, interruptHint)}</Text>
-          ) : (
-            <>
-              <Text>{renderedDraft.before}</Text>
-              <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
-              <Text>{renderedDraft.after}</Text>
-            </>
-          )}
+          <Text>{renderedDraft.before}</Text>
+          <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
+          <Text>{renderedDraft.after}</Text>
         </Box>
         {busy ? (
-          <Box flexDirection="row">
-            {queuedLines.length ? (
-              <>
-                <Text color="cyan">{queuedLines.length === 1 ? "queued" : `${queuedLines.length} queued`}</Text>
-                <Text dimColor>{`  next runs automatically · esc removes last`}</Text>
-              </>
-            ) : (
-              <>
-                <Text color="gray">next   › </Text>
-                <Text>{renderedDraft.before}</Text>
-                <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
-                <Text>{renderedDraft.after}</Text>
-              </>
-            )}
-          </Box>
+          <>
+            <Box flexDirection="row">
+              <Text color="yellow" bold>{spinnerFrames[busyFrame % spinnerFrames.length]}</Text>
+              <Text> </Text>
+              <Text>{formatBusyStatus(activeTask, busySeconds, busyProgress, interruptHint)}</Text>
+            </Box>
+            <Box flexDirection="row">
+              {queuedLines.length ? (
+                <>
+                  <Text color="cyan">{queuedLines.length === 1 ? "queued" : `${queuedLines.length} queued`}</Text>
+                  <Text dimColor>{`  next runs automatically · esc removes last`}</Text>
+                </>
+              ) : (
+                <Text dimColor>enter queues this prompt while the current turn finishes</Text>
+              )}
+            </Box>
+          </>
         ) : null}
         {suggestions.length > 0 ? (
           <Box flexDirection="column" marginTop={0}>
