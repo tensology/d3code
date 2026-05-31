@@ -121,6 +121,16 @@ npm link
 d3code
 ```
 
+On a fresh D3 Linux server, use the setup script instead:
+
+```bash
+git clone --recurse-submodules https://github.com/tensology/d3code.git
+cd d3code
+./setup.sh
+```
+
+`setup.sh` installs or verifies Node.js 20+ and npm where the platform package manager allows it, installs dependencies, builds the CLI, links the `d3code` command, and checks whether the local `d3` command is visible. It does not install, license, start, stop, mount, or modify Rocket D3 itself.
+
 That last command is the product. On first run, if `~/.d3code/config.json` does not exist, `d3code` opens the setup wizard and asks for:
 
 1. model provider, for example OpenAI, Anthropic, OpenRouter, Ollama, or Kilo Code Gateway
