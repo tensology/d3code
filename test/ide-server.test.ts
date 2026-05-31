@@ -179,15 +179,23 @@ test("IDE server agent panel runs the guarded D3 agent loop", async () => {
 test("slash /ide starts the IDE server and returns a browser URL", async () => {
   const result = await handleSlashCommand("/ide --port 0", config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
 
-  assert.match(result.output, /D3 Code IDE running/)
+  assert.match(result.output, /D3 Code IDE started/)
   assert.match(result.output, /http:\/\/127\.0\.0\.1:\d+/)
-  assert.match(result.output, /\/api\/terminal\/send/)
-  assert.match(result.output, /\/api\/basic\/compile/)
+  assert.doesNotMatch(result.output, /Browser surfaces/)
+  assert.doesNotMatch(result.output, /\/api\/terminal\/send/)
+  assert.match(result.output, /\/ide stop/)
+})
+
+test("slash /ide stop stops running IDE servers", async () => {
+  await handleSlashCommand("/ide --port 0", config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
+  const result = await handleSlashCommand("/ide stop", config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
+
+  assert.match(result.output, /D3 Code IDE stopped/)
 })
 
 test("slash /id is an IDE alias", async () => {
   const result = await handleSlashCommand("/id --port 0", config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
 
-  assert.match(result.output, /D3 Code IDE running/)
+  assert.match(result.output, /D3 Code IDE started/)
   assert.match(result.output, /http:\/\/127\.0\.0\.1:\d+/)
 })

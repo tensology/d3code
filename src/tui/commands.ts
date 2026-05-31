@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises"
+import { spawn } from "node:child_process"
 import { agents } from "../agents/registry.js"
 import { renderDelegationPlan } from "../agents/delegation.js"
 import { renderAgentRunReport, runAgentTask } from "../agents/run.js"
@@ -61,7 +62,7 @@ import { renderRecipe } from "../skills/recipes.js"
 import { createSetupProofReport, renderSetupProofReport } from "../setup/proof.js"
 import { listSessions, loadSession } from "../sessions/store.js"
 import { checkGeneratedWebApp } from "../migration/webapp-check.js"
-import { startIdeServer } from "../ide/server.js"
+import { startIdeServer, stopIdeServers } from "../ide/server.js"
 
 export interface RuntimeState {
   model: string
@@ -75,6 +76,17 @@ export interface CommandResult {
   clear?: boolean
   state?: Partial<RuntimeState>
   output: string
+}
+
+function openBrowserBestEffort(url: string): void {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open"
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url]
+  try {
+    const child = spawn(command, args, { detached: true, stdio: "ignore" })
+    child.unref()
+  } catch {
+    // Opening the browser is a convenience only; the URL is still printed.
+  }
 }
 
 function decodeInlineBody(parts: string[]): string {
@@ -132,7 +144,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [stop] [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -174,22 +186,23 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return { output: renderIdeStatusReport(await createIdeStatusReport(config, state)) }
     case "/ide":
     case "/id": {
+      if (args[0] === "stop") {
+        await stopIdeServers()
+        return { output: "D3 Code IDE stopped." }
+      }
       const portValue = flagValue(args, "--port") ?? args.find((arg) => /^\d+$/.test(arg))
       const port = portValue ? Number(portValue) : 3737
-      if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [--port 3737] [--host 127.0.0.1]" }
+      if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [stop] [--port 3737] [--host 127.0.0.1]" }
       const host = flagValue(args, "--host") ?? "127.0.0.1"
       const server = await startIdeServer(config, state, { host, port })
+      if (port !== 0) openBrowserBestEffort(server.url)
       return {
         output: [
-          `D3 Code IDE running: ${server.url}`,
+          `D3 Code IDE started: ${server.url}`,
           `Profile: ${state.profile ?? config.defaultProfile ?? "default"}`,
           `Safety: ${state.safety}`,
-          "",
-          "Browser surfaces:",
-          "- D3 terminal: POST /api/terminal/send",
-          "- file/database manager: /api/files, /api/item, /api/dict, /api/locks, /api/aql",
-          "- BASIC/subroutine actions: /api/basic/compile, /api/basic/catalog, /api/subroutine/call",
-          "- profile/tool context: /api/status, /api/profiles, /api/profile, /api/account/login, /api/tools",
+          "Opened in your browser if the terminal allows it.",
+          "Use /ide stop to stop the server.",
         ].join("\n"),
       }
     }
