@@ -803,48 +803,63 @@ export function App(props: AppProps) {
   const queuedPreview = queuedLines.slice(0, 3)
   const queuedOverflow = queuedLines.length - queuedPreview.length
   const liveWorkspaceChange = busy && workspaceChanges ? renderWorkspaceChangeSummary(workspaceChanges) : ""
+  const sessionHasStarted = transcript.length > 0 || busy || hasStreamingBlock || queuedLines.length > 0
+  const providerStatus = welcome?.providerStatus ?? "checking"
+  const d3Status = welcome?.d3Status ?? "checking"
+  const d3Label = profile ? `D3 ${profile}` : `D3 ${d3Status}`
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
-      <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="column">
-        <Box flexDirection="column" marginBottom={1}>
-          {logoLines.map((line) => <Text key={line} color="cyan" bold>{line}</Text>)}
+      {sessionHasStarted ? (
+        <Box borderStyle="single" borderColor="gray" borderTop={false} borderLeft={false} borderRight={false} paddingBottom={1} flexDirection="row">
+          <Text color="cyan" bold>D3 Code</Text>
+          <Text dimColor>{`  ${welcome?.providerModel ?? model} | `}</Text>
+          <Text color={providerStatus === "connected" ? "green" : "yellow"}>{providerStatus === "connected" ? "● AI" : "○ AI"}</Text>
+          <Text dimColor>{" | "}</Text>
+          <Text color={d3Status === "connected" ? "green" : "yellow"}>{d3Status === "connected" ? "●" : "○"} {d3Label}</Text>
+          <Text dimColor>{` | ${mode}/${safety}`}</Text>
         </Box>
-        <Box flexDirection="row">
-        <Box width="38%" flexDirection="column" paddingRight={2}>
-          <Box flexDirection="column">
-            <Text color="cyan" bold>D3 Code</Text>
+      ) : (
+        <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="column">
+          <Box flexDirection="column" marginBottom={1}>
+            {logoLines.map((line) => <Text key={line} color="cyan" bold>{line}</Text>)}
           </Box>
-          <Text dimColor>Rocket D3 agent shell</Text>
-          <Box marginTop={1} flexDirection="column">
-            <Text color={welcome?.providerStatus === "connected" ? "green" : "yellow"}>{welcome?.providerStatus === "connected" ? "●" : "○"} AI {welcome?.providerStatus ?? "checking"}</Text>
-            <Text color={welcome?.d3Status === "connected" ? "green" : "yellow"}>{welcome?.d3Status === "connected" ? "●" : "○"} D3 {welcome?.d3Status ?? "checking"}</Text>
-          </Box>
-          <Box marginTop={1} flexDirection="column">
-            <Text dimColor>{welcome?.providerName ?? "Checking provider"}</Text>
-            <Text dimColor>{welcome?.providerModel ?? model}</Text>
-            <Text dimColor>{welcome?.d3Detail ?? "Checking D3 profile"}</Text>
+          <Box flexDirection="row">
+            <Box width="38%" flexDirection="column" paddingRight={2}>
+              <Box flexDirection="column">
+                <Text color="cyan" bold>D3 Code</Text>
+              </Box>
+              <Text dimColor>Rocket D3 agent shell</Text>
+              <Box marginTop={1} flexDirection="column">
+                <Text color={providerStatus === "connected" ? "green" : "yellow"}>{providerStatus === "connected" ? "●" : "○"} AI {providerStatus}</Text>
+                <Text color={d3Status === "connected" ? "green" : "yellow"}>{d3Status === "connected" ? "●" : "○"} D3 {d3Status}</Text>
+              </Box>
+              <Box marginTop={1} flexDirection="column">
+                <Text dimColor>{welcome?.providerName ?? "Checking provider"}</Text>
+                <Text dimColor>{welcome?.providerModel ?? model}</Text>
+                <Text dimColor>{welcome?.d3Detail ?? "Checking D3 profile"}</Text>
+              </Box>
+            </Box>
+            <Box width="62%" borderStyle="single" borderColor="gray" borderTop={false} borderBottom={false} borderRight={false} paddingLeft={2} flexDirection="column">
+              <Text color="cyan" bold>Getting Started</Text>
+              <Text>{welcome?.primaryAction ?? "Loading connection state..."}</Text>
+              <Box marginTop={1} flexDirection="column">
+                <Text color="cyan">/help <Text dimColor>controls and slash commands</Text></Text>
+                <Text color="cyan">/setup <Text dimColor>configure AI provider and D3 profile</Text></Text>
+                <Text color="cyan">/profile <Text dimColor>show or switch D3 profiles</Text></Text>
+                <Text color="cyan">/d3 <Text dimColor>attach to the D3 runtime terminal</Text></Text>
+                <Text color="cyan">/ide <Text dimColor>open the browser workbench</Text></Text>
+                <Text color="cyan">! <Text dimColor>run a local Unix command in this session</Text></Text>
+              </Box>
+              <Box marginTop={1}>
+                <Text dimColor>
+                  Built with ♥ by {terminalLink("Tensology", "https://www.tensology.com")} & {terminalLink("Crystal Logic", "https://www.crystallogic.co.za")}
+                </Text>
+              </Box>
+            </Box>
           </Box>
         </Box>
-        <Box width="62%" borderStyle="single" borderColor="gray" borderTop={false} borderBottom={false} borderRight={false} paddingLeft={2} flexDirection="column">
-          <Text color="cyan" bold>Getting Started</Text>
-          <Text>{welcome?.primaryAction ?? "Loading connection state..."}</Text>
-          <Box marginTop={1} flexDirection="column">
-            <Text color="cyan">/help <Text dimColor>controls and slash commands</Text></Text>
-            <Text color="cyan">/setup <Text dimColor>configure AI provider and D3 profile</Text></Text>
-            <Text color="cyan">/profile <Text dimColor>show or switch D3 profiles</Text></Text>
-            <Text color="cyan">/d3 <Text dimColor>attach to the D3 runtime terminal</Text></Text>
-            <Text color="cyan">/ide <Text dimColor>open the browser workbench</Text></Text>
-            <Text color="cyan">! <Text dimColor>run a local Unix command in this session</Text></Text>
-          </Box>
-          <Box marginTop={1}>
-            <Text dimColor>
-              Built with ♥ by {terminalLink("Tensology", "https://www.tensology.com")} & {terminalLink("Crystal Logic", "https://www.crystallogic.co.za")}
-            </Text>
-          </Box>
-        </Box>
-        </Box>
-      </Box>
+      )}
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box flexDirection="column" marginTop={1}>
         {transcript.slice(-18).map((entry, index) => (
