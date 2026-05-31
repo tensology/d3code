@@ -49,6 +49,6 @@ test("D3 session timeout 0 can still be interrupted by AbortSignal", async () =>
 })
 
 test("D3 stacked input logs in, runs the command, and releases the account", () => {
-  assert.equal(d3StackedInput("dm\ndm\n", "WHO"), "dm\rdm\rWHO\rOFF\r")
-  assert.equal(d3StackedInput("dm\rdm\r", "LIST MD\nWHO"), "dm\rdm\rLIST MD\rWHO\rOFF\r")
+  assert.equal(d3StackedInput("dm\ndm\n", "WHO"), "dm\\rdm\\rWHO\\rOFF\\r")
+  assert.equal(d3StackedInput("dm\rdm\r", "LIST MD\nWHO"), "dm\\rdm\\rLIST MD\\rWHO\\rOFF\\r")
 })

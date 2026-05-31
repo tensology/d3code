@@ -25,7 +25,8 @@ export function d3StackedInput(startupInput: string | undefined, command: string
     .join("\r")
     .replace(/\r?\n/g, "\r")
     .replace(/\r{2,}/g, "\r")
-  return parts.endsWith("\r") ? parts : `${parts}\r`
+  const normalized = parts.endsWith("\r") ? parts : `${parts}\r`
+  return normalized.replace(/\r/g, "\\r")
 }
 
 function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number | undefined, options: D3RunOptions = {}, env?: NodeJS.ProcessEnv): Promise<D3CommandResult> {
