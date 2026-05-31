@@ -48,6 +48,7 @@ import { defaultSecretStore } from "./security/secrets.js"
 import { createSetupProofReport, renderSetupProofReport } from "./setup/proof.js"
 import { runSetupWizard } from "./setup/wizard.js"
 import { App } from "./tui/App.js"
+import { consumeEarlyInput, startCapturingEarlyInput } from "./tui/early-input.js"
 import { createMigrationPlan } from "./migration/planner.js"
 import { createOpenApiFromMigrationPlan } from "./migration/openapi.js"
 import { generateAdapterSkeleton } from "./migration/adapter.js"
@@ -176,14 +177,17 @@ const program = new Command()
   .option("--mode <mode>", "operating mode")
   .option("--resume <session>", "resume a saved D3 Code session")
   .action(async (_path, options: { model?: string; safety?: string; profile?: string; mode?: string; resume?: string }) => {
+    const canCaptureEarlyInput = existsSync(configPath)
+    if (canCaptureEarlyInput) startCapturingEarlyInput()
     let config = await loadConfig()
     if (!existsSync(configPath)) config = await runSetupWizard(config, defaultSecretStore())
+    const initialInput = canCaptureEarlyInput ? consumeEarlyInput() : ""
     const session = options.resume ? await loadSession(options.resume) : undefined
     const profile = selectProfile(config, options.profile)
     const mode = getMode(options.mode ?? "chat") ?? getMode("chat")!
     const model = options.model ?? session?.model ?? config.defaultModel
     const safety = options.safety ? parseSafety(options.safety) : session?.safety ?? mode.safetyBias ?? effectiveSafety(config, undefined, profile)
-    render(React.createElement(App, { model, safety, profile: options.profile ?? session?.profile ?? profile?.name, mode: mode.id, config, session }))
+    render(React.createElement(App, { model, safety, profile: options.profile ?? session?.profile ?? profile?.name, mode: mode.id, config, session, initialInput }))
   })
 
 program.command("init").description("Create default ~/.d3code config if missing.").action(async () => {

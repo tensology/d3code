@@ -72,6 +72,7 @@ export interface AppProps {
   mode?: string
   config: D3CodeConfig
   session?: StoredSession
+  initialInput?: string
 }
 
 function messagesFromSession(config: D3CodeConfig, session: StoredSession | undefined, context: ChatRuntimeContext): ChatMessage[] {
@@ -202,6 +203,12 @@ export function App(props: AppProps) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const initialInput = props.initialInput?.trim()
+    if (!initialInput) return
+    setDraft({ text: initialInput, cursor: initialInput.length })
+  }, [props.initialInput])
 
   useEffect(() => {
     return () => {
