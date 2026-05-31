@@ -166,7 +166,23 @@ detect_d3() {
   if need_cmd d3; then
     ok "Rocket D3 detected at $(command -v d3)."
     info "D3 version:"
-    d3 -V 2>&1 || warn "d3 -V failed; D3 may still require environment/session setup."
+    local d3_version_output d3_version_status
+    if d3_version_output="$(d3 -V 2>&1)"; then
+      d3_version_status=$?
+    else
+      d3_version_status=$?
+    fi
+    printf '%s\n' "$d3_version_output"
+    if ! printf '%s\n' "$d3_version_output" | grep -Eq 'MON[[:space:]]*=.*FLASH[[:space:]]*=.*SQL[[:space:]]*='; then
+      if ! printf '%s\n' "$d3_version_output" | grep -Eq 'MON[[:space:]]*=' ||
+         ! printf '%s\n' "$d3_version_output" | grep -Eq 'FLASH[[:space:]]*=' ||
+         ! printf '%s\n' "$d3_version_output" | grep -Eq 'SQL[[:space:]]*='; then
+        warn "D3 version proof was not found; D3 may still require environment/session setup."
+      fi
+    fi
+    if [ "$d3_version_status" -eq 0 ]; then
+      return
+    fi
     return
   fi
   warn "Rocket D3 was not found in PATH."
