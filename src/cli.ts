@@ -772,6 +772,13 @@ program.command("tool-compact").argument("<name>").argument("[json]").descriptio
   console.log(output.compact)
 })
 
+program.command("estate").description("Explain the selected D3 account estate: login, files, likely file types, and next investigation steps.").option("--profile <name>").option("--safety <mode>").option("--limit <n>", "maximum files to show", (value) => Number(value), 40).action(async (options: { profile?: string; safety?: string; limit: number }) => {
+  const config = await loadConfig()
+  const profile = selectProfile(config, options.profile)
+  const output = await runToolByName(config, { name: "d3_estate_report", input: { limit: options.limit }, safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile })
+  console.log(output.compact)
+})
+
 program.command("read-item").argument("<file>").argument("<item>").description("Read a D3 item from the selected profile using CT.").option("--profile <name>").option("--safety <mode>").action(async (file: string, item: string, options: { profile?: string; safety?: string }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)

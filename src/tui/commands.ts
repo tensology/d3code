@@ -189,7 +189,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
         output: [
           "Commands:",
           "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [public|stop] [--port N] [--host 127.0.0.1|0.0.0.0], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
-          "/login [profile] [account], /logout, /account, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
+          "/login [profile] [account], /logout, /account, /estate, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
           "/goal-plan <id>, /goal-next <id>, /goal-verify <id>, /goal-evidence <id> <evidence>, /goal-apply-bundle-evidence <id> <bundle.json> [artifacts-dir], /goal-audit-bundle <id> <bundle.json> [artifacts-dir] [--apply]",
@@ -707,6 +707,10 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       if (!profile) return { output: "No profile configured." }
       const who = await runToolByName(config, { name: "d3_tcl", input: { command: "WHO", confirmed: true }, safety: state.safety, profile: profile.name })
       return { output: [`Profile: ${profile.name}`, `Configured account: ${profile.account ?? "not pinned"}`, "", who.compact].join("\n") }
+    }
+    case "/estate": {
+      const result = await runToolByName(config, { name: "d3_estate_report", input: { limit: 40 }, safety: state.safety, profile: state.profile })
+      return { output: result.compact }
     }
     case "/files": {
       const result = await runToolByName(config, { name: "d3_list_files", safety: state.safety, profile: state.profile })

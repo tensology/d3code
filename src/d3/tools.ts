@@ -2,6 +2,7 @@ import { assertD3Allowed } from "../core/permissions.js"
 import type { D3CommandResult, ToolContext, ToolDefinition } from "../domain/types.js"
 import { indexD3Account, loadIndex, saveIndex, searchDocuments } from "../indexing/indexer.js"
 import { detectLocalD3 } from "./detect.js"
+import { inspectD3Estate } from "./estate.js"
 import { formatManualSearchResult, searchDefaultManuals } from "./manual-search.js"
 
 function requireSession(context: ToolContext) {
@@ -164,6 +165,15 @@ export const d3Tools: ToolDefinition[] = [
       const args = input as { query: string; limit?: number; paths?: string[] }
       const result = await searchDefaultManuals(args.query, args.limit, args.paths)
       return { ...result, compact: formatManualSearchResult(result) }
+    },
+  },
+  {
+    name: "d3_estate_report",
+    description: "Explain the active D3 account estate: login, visible files, likely file types, and next investigation steps.",
+    mutates: false,
+    execute: async (input: unknown, context) => {
+      const args = input as { limit?: number }
+      return inspectD3Estate(requireSession(context), { limit: args.limit })
     },
   },
 ]

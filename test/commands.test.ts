@@ -537,6 +537,11 @@ test("slash commands expose D3 account, file, index, compile, catalog, and call 
     assert.match(account.output, /Configured account: SALES/)
     assert.match(account.output, /SALES/)
 
+    const estate = await handleSlashCommand("/estate", toolConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
+    assert.match(estate.output, /D3 Estate: fake \/ SALES/)
+    assert.match(estate.output, /CUSTOMERS \[data\]/)
+    assert.match(estate.output, /What I can help with next/)
+
     const files = await handleSlashCommand("/files", toolConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
     assert.match(files.output, /CUSTOMERS/)
 
