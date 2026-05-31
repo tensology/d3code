@@ -5,7 +5,6 @@ import { writeBundleArtifacts } from "../app/write.js"
 import { selectProfile, type D3CodeConfig } from "../config/config.js"
 import { captureBundleFromSession } from "../capture/capture.js"
 import { createD3Session } from "../d3/adapter.js"
-import { D3_TCL_PROMPT_PATTERN } from "../d3/prompts.js"
 import { runToolByName } from "../tools/runner.js"
 import type { CommandResult, RuntimeState } from "./commands.js"
 
@@ -69,8 +68,8 @@ async function buildFromLiveProfile(input: string, tokens: string[], config: D3C
         "",
         "Run `d3code` for first-run setup, or configure one explicitly:",
         "d3code setup",
-        `d3code profile-add-local --name prod --account DM --entry "d3" --prompt "${D3_TCL_PROMPT_PATTERN}" --session persistent`,
-        `d3code profile-add-ssh --name prod --host <host> --user <user> --account DM --entry "d3" --prompt "${D3_TCL_PROMPT_PATTERN}" --session persistent`,
+        `d3code profile-add-local --name prod --account DM --entry "d3"`,
+        `d3code profile-add-ssh --name prod --host <host> --user <user> --account DM --entry "d3"`,
       ].join("\n"),
     }
   }

@@ -1,7 +1,6 @@
 import type { D3CodeConfig } from "../config/config.js"
 import { selectProfile } from "../config/config.js"
 import type { ProfileDoctorReport } from "./profile-doctor.js"
-import { D3_TCL_PROMPT_PATTERN } from "./prompts.js"
 
 export interface LiveProofStep {
   id: string
@@ -43,8 +42,8 @@ export function createLiveProofReport(config: D3CodeConfig, profileName?: string
         ? [`profile:${profile.name}`, `type:${profile.type}`, `account:${profile.account ?? "not pinned"}`, `session:${profile.sessionMode ?? "oneshot"}`]
         : ["no configured D3 profile"],
       commands: [
-        `d3code profile-add-local --name prod --account <account> --entry "d3" --prompt "${D3_TCL_PROMPT_PATTERN}" --session persistent`,
-        `d3code profile-add-ssh --name prod --host <host> --user <user> --account <account> --entry "d3" --prompt "${D3_TCL_PROMPT_PATTERN}" --session persistent`,
+        `d3code profile-add-local --name prod --account <account> --entry "d3"`,
+        `d3code profile-add-ssh --name prod --host <host> --user <user> --account <account> --entry "d3"`,
       ],
     }),
     step({
@@ -52,7 +51,7 @@ export function createLiveProofReport(config: D3CodeConfig, profileName?: string
       status: profile?.sessionMode === "persistent" ? "ok" : profile ? "action" : "missing",
       title: "Use a terminal-like persistent session for account-stateful D3 work",
       evidence: profile ? [`session:${profile.sessionMode ?? "oneshot"}`, `prompt:${profile.promptPattern ?? "not configured"}`] : ["profile required first"],
-      commands: profile ? [`d3code profile-add-${profile.type === "ssh" ? "ssh" : "local"} --name ${profile.name} --session persistent --prompt "<prompt-pattern>"`] : ["Create the profile with --session persistent and --prompt <pattern>."],
+      commands: profile ? [`d3code profile-add-${profile.type === "ssh" ? "ssh" : "local"} --name ${profile.name} --entry "d3"`] : ['Create the profile with --entry "d3"; D3 Code will default the normal TCL prompt and persistent session.'],
     }),
     step({
       id: "read-only-smoke",

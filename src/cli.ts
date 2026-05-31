@@ -167,6 +167,18 @@ function collectOption(value: string, previous: string[] = []): string[] {
   return [...previous, value]
 }
 
+function isD3EntryCommand(entry?: string): boolean {
+  return Boolean(entry && /(^|[\/\s])d3(\s|$)/i.test(entry))
+}
+
+function defaultD3PromptPattern(entry?: string, prompt?: string): string | undefined {
+  return normalizeD3PromptPattern(prompt) ?? (isD3EntryCommand(entry) ? D3_TCL_PROMPT_PATTERN : undefined)
+}
+
+function defaultD3SessionMode(entry?: string, session?: "oneshot" | "persistent"): "oneshot" | "persistent" | undefined {
+  return session ?? (isD3EntryCommand(entry) ? "persistent" : undefined)
+}
+
 const program = new Command()
   .name("d3code")
   .description("Agentic terminal coding environment for Rocket D3.")
@@ -211,8 +223,8 @@ program
   .option("--account <account>", "D3 account for the profile")
   .option("--entry <command>", "command that enters D3/TCL")
   .option("--startup-input <input>", "text to send after the D3 process starts; use \\n for newlines")
-  .option("--prompt <pattern>", "expected D3 prompt pattern")
-  .option("--session <mode>", "session mode: oneshot|persistent")
+  .option("--prompt <pattern>", `expected D3 prompt pattern (default: ${D3_TCL_PROMPT_PATTERN})`)
+  .option("--session <mode>", "session mode: oneshot|persistent (default: persistent)")
   .option("--host <host>", "SSH host for a D3 profile")
   .option("--user <username>", "SSH username for a D3 profile")
   .option("--port <port>", "SSH port for a D3 profile", (value) => Number(value))
@@ -350,8 +362,8 @@ program
       account: options.account,
       entryCommand: options.entry,
       startupInput: options.startupInput?.replace(/\\n/g, "\n"),
-      promptPattern: normalizeD3PromptPattern(options.prompt),
-      sessionMode: options.session,
+      promptPattern: defaultD3PromptPattern(options.entry, options.prompt),
+      sessionMode: defaultD3SessionMode(options.entry, options.session),
       safetyDefault: options.safety ? parseSafety(options.safety) : undefined,
       allowedAccounts: options.allowedAccounts?.split(",").map((item) => item.trim()).filter(Boolean),
     }
@@ -370,8 +382,8 @@ program
   .option("--account <account>")
   .option("--entry <command>", "remote command that enters D3/TCL")
   .option("--startup-input <input>", "text to send after the D3 process starts; use \\n for newlines")
-  .option("--prompt <pattern>", "expected D3 prompt pattern")
-  .option("--session <mode>", "session mode: oneshot|persistent")
+  .option("--prompt <pattern>", `expected D3 prompt pattern (default: ${D3_TCL_PROMPT_PATTERN})`)
+  .option("--session <mode>", "session mode: oneshot|persistent (default: persistent)")
   .option("--safety <mode>", "default safety for this profile")
   .option("--allowed-accounts <accounts>", "comma-separated account allowlist for this profile")
   .description("Add or update an SSH D3 profile. Passwords/keys are not stored here.")
@@ -386,8 +398,8 @@ program
       account: options.account,
       entryCommand: options.entry,
       startupInput: options.startupInput?.replace(/\\n/g, "\n"),
-      promptPattern: normalizeD3PromptPattern(options.prompt),
-      sessionMode: options.session,
+      promptPattern: defaultD3PromptPattern(options.entry, options.prompt),
+      sessionMode: defaultD3SessionMode(options.entry, options.session),
       safetyDefault: options.safety ? parseSafety(options.safety) : undefined,
       allowedAccounts: options.allowedAccounts?.split(",").map((item) => item.trim()).filter(Boolean),
     }
@@ -396,6 +408,30 @@ program
     await saveConfig(config)
     console.log(`Saved SSH profile ${options.name}`)
   })
+
+program.command("profile-remove").argument("<name>").description("Remove a saved D3 connection profile.").action(async (name: string) => {
+  const config = await loadConfig()
+  const before = config.profiles.length
+  config.profiles = config.profiles.filter((profile) => profile.name !== name)
+  if (config.profiles.length === before) throw new Error(`Unknown profile: ${name}`)
+  if (config.defaultProfile === name) config.defaultProfile = config.profiles[0]?.name
+  await saveConfig(config)
+  console.log(`Removed profile ${name}`)
+})
+
+program.command("profile-release").argument("[name]").description("Send OFF through a D3 profile to release the D3 account/session.").option("--timeout <ms>", "release timeout", (value) => Number(value), 10_000).action(async (name: string | undefined, options: { timeout: number }) => {
+  const config = await loadConfig()
+  const profile = selectProfile(config, name)
+  if (!profile) throw new Error(name ? `Unknown profile: ${name}` : "No profile configured")
+  const releaseProfile = { ...profile, sessionMode: "oneshot" as const, promptPattern: undefined }
+  const session = createD3Session(releaseProfile)
+  try {
+    await session.run("OFF", options.timeout)
+  } finally {
+    await session.close()
+  }
+  console.log(`Released profile ${profile.name}`)
+})
 
 program.command("login").description("Verify or switch into the selected D3 account with WHO and VERSION proof.").option("--profile <name>").option("--account <account>", "LOGTO this account before proof").option("--safety <mode>").action(async (options: { profile?: string; account?: string; safety?: string }) => {
   const config = await loadConfig()

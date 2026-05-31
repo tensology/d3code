@@ -248,7 +248,8 @@ main() {
   fi
   printf '\nNext steps:\n'
   printf '  d3code setup\n'
-  printf '  d3code profile-add-local --name prod --account DM --entry "d3" --prompt ":" --session persistent\n'
+  printf '  d3code profile-add-local --name prod --account DM --entry "d3"\n'
+  printf '  d3code profile-release prod\n'
   printf '  d3code\n'
 }
 

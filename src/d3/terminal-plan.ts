@@ -72,7 +72,7 @@ export function createD3TerminalBridgePlan(profile?: ConnectionProfile): D3Termi
       "Writes, catalog, lock breaks, account changes, and destructive TCL remain blocked or confirmed by the D3 safety policy.",
     ],
     nextCommands: [
-      profile ? `d3code profile-doctor --profile ${profile.name}` : "d3code profile-add-local --name prod --entry '<d3-command>' --session persistent --prompt '<prompt-regex>'",
+      profile ? `d3code profile-doctor --profile ${profile.name}` : 'd3code profile-add-local --name prod --entry "d3"',
       "d3code terminal-plan --profile <profile>",
       "d3code terminal-capture --profile <profile> --out ./terminal-proof '<screen command or menu entry>'",
       "d3code screen-parse screen-transcript.txt --width 80 --height 24",

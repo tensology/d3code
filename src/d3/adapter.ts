@@ -41,7 +41,7 @@ export class LocalD3Session implements D3Session {
   async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     const entry = this.profile.entryCommand ?? "sh"
     if (entry === "sh") return runProcess("sh", ["-lc", command], undefined, timeoutMs, options)
-    return runProcess("sh", ["-lc", `${entry} <<'D3CODE_EOF'\n${command}\nD3CODE_EOF`], undefined, timeoutMs, options)
+    return runProcess("sh", ["-lc", `${entry} <<'D3CODE_EOF'\n${this.profile.startupInput ?? ""}${command}\nD3CODE_EOF`], undefined, timeoutMs, options)
   }
 
   async close(): Promise<void> {}

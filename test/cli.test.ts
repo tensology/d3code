@@ -951,6 +951,46 @@ test("CLI profiles are isolated under D3CODE_HOME", async () => {
   assert.match(result.stdout, /session=persistent/)
 })
 
+test("CLI local profiles default to persistent TCL sessions", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-profile-defaults-"))
+  const env = { ...process.env, D3CODE_HOME: home }
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "local-test", "--account", "DM", "--entry", "d3"], { cwd: process.cwd(), env })
+
+  const config = JSON.parse(await readFile(join(home, "config.jsonc"), "utf8")) as { profiles: Array<{ promptPattern?: string; sessionMode?: string }> }
+  assert.equal(config.profiles[0]?.promptPattern, "(^|\\n):\\s*$")
+  assert.equal(config.profiles[0]?.sessionMode, "persistent")
+
+  const result = await execFileAsync("node", ["dist/src/cli.js", "profiles"], { cwd: process.cwd(), env })
+  assert.match(result.stdout, /session=persistent/)
+})
+
+test("CLI can remove a saved profile", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-profile-remove-"))
+  const env = { ...process.env, D3CODE_HOME: home }
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "prod", "--account", "DM"], { cwd: process.cwd(), env })
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "test", "--account", "SALES"], { cwd: process.cwd(), env })
+
+  const removed = await execFileAsync("node", ["dist/src/cli.js", "profile-remove", "prod"], { cwd: process.cwd(), env })
+  assert.match(removed.stdout, /Removed profile prod/)
+
+  const profiles = await execFileAsync("node", ["dist/src/cli.js", "profiles"], { cwd: process.cwd(), env })
+  assert.doesNotMatch(profiles.stdout, /prod/)
+  assert.match(profiles.stdout, /test/)
+})
+
+test("CLI can release a profile by sending OFF", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-profile-release-"))
+  const entry = join(home, "capture.sh")
+  const capture = join(home, "release.txt")
+  await writeFile(entry, `#!/bin/sh\ncat > ${capture}\n`, { mode: 0o755 })
+  const env = { ...process.env, D3CODE_HOME: home }
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "prod", "--entry", entry, "--startup-input", "dm\\ndm\\n"], { cwd: process.cwd(), env })
+
+  const released = await execFileAsync("node", ["dist/src/cli.js", "profile-release", "prod"], { cwd: process.cwd(), env })
+  assert.match(released.stdout, /Released profile prod/)
+  assert.equal((await readFile(capture, "utf8")).trim(), "dm\ndm\nOFF")
+})
+
 test("CLI setup supports noninteractive model/key configuration", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-setup-"))
   const result = await execFileAsync("node", ["dist/src/cli.js", "setup", "--provider", "openai", "--default-model", "gpt-5-mini", "--api-key-env", "OPENAI_API_KEY", "--default-safety", "trust", "--skip-d3"], {
