@@ -1,4 +1,5 @@
 import type { BundleArtifacts, D3ApplicationBundle } from "./bundle.js"
+import { D3_TCL_PROMPT_PATTERN } from "../d3/prompts.js"
 
 export interface LiveOperatorRunbook {
   account: string
@@ -54,8 +55,8 @@ export function createLiveOperatorRunbook(bundle: D3ApplicationBundle, artifacts
         title: "Configure model and D3 profile",
         commands: [
           "d3code setup-proof",
-          `d3code profile-add-local --name ${bundle.profile} --account ${bundle.account} --entry "d3" --prompt ">" --session persistent --allowed-accounts ${bundle.account}`,
-          `d3code profile-add-ssh --name ${bundle.profile} --host <host> --user <user> --account ${bundle.account} --entry "d3" --prompt ">" --session persistent --allowed-accounts ${bundle.account}`,
+          `d3code profile-add-local --name ${bundle.profile} --account ${bundle.account} --entry "d3" --prompt "${D3_TCL_PROMPT_PATTERN}" --session persistent --allowed-accounts ${bundle.account}`,
+          `d3code profile-add-ssh --name ${bundle.profile} --host <host> --user <user> --account ${bundle.account} --entry "d3" --prompt "${D3_TCL_PROMPT_PATTERN}" --session persistent --allowed-accounts ${bundle.account}`,
         ],
         evidence: ["setup-proof ready or named missing actions", "profile stores no plaintext secrets", "one active D3 account is pinned"],
       },

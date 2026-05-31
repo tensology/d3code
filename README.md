@@ -170,7 +170,7 @@ In the setup wizard:
 | Profile name | `prod`, `test`, or `default` |
 | D3 account | `DM`, `SYSPROG`, `SALES`, or the account you are allowed to inspect |
 | Command to enter D3/TCL | `d3`, `/usr/bin/d3`, or blank if the shell already lands in D3 |
-| D3 prompt regex | usually `>` unless your site uses something else |
+| D3 prompt regex | usually `:` for the normal TCL prompt; `>` means an active select list |
 | Session mode | `persistent` for account-stateful work |
 
 Then run `d3code` and work in the session. If the profile is wrong, ask the session to switch profile/account or use `/profile` and `/login` as explicit controls.
@@ -205,7 +205,7 @@ d3code setup \
   --port 22 \
   --account DM \
   --entry "d3" \
-  --prompt ">" \
+  --prompt ":" \
   --session persistent \
   --allowed-accounts DM,SALES
 ```

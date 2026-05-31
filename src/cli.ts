@@ -18,6 +18,7 @@ import { detectLocalD3 } from "./d3/detect.js"
 import { createLiveProofReport, profileDoctorGoalEvidence, renderLiveProofReport } from "./d3/live-proof.js"
 import { checkLiveProofArtifacts, renderLiveProofArtifactReport, renderLiveProofScaffold, writeLiveProofScaffold } from "./d3/live-proof-artifacts.js"
 import { diagnoseProfile, renderProfileDoctor } from "./d3/profile-doctor.js"
+import { D3_TCL_PROMPT_PATTERN } from "./d3/prompts.js"
 import { createIdeTerminalContract, renderIdeTerminalContract } from "./d3/ide-terminal.js"
 import { parseD3ScreenTranscript, renderD3ScreenBuffer } from "./d3/screen-buffer.js"
 import { captureD3Terminal, renderD3TerminalCapture, writeD3TerminalCapture } from "./d3/terminal-capture.js"
@@ -246,7 +247,7 @@ program
           name,
           account: options.account,
           entryCommand: options.entry,
-          promptPattern: options.prompt ?? ">",
+          promptPattern: options.prompt ?? D3_TCL_PROMPT_PATTERN,
           sessionMode,
           safetyDefault: config.defaultSafety,
           allowedAccounts: allowedAccounts?.length ? allowedAccounts : undefined,
