@@ -95,16 +95,39 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
 }
 
 export function parseD3ToolRequest(content: string): D3AgentToolRequest | undefined {
-  const match = content.match(/<d3_tool>\s*([\s\S]*?)\s*<\/d3_tool>/i)
-  if (!match) return undefined
-  let parsed: Partial<D3AgentToolRequest>
-  try {
-    parsed = JSON.parse(match[1] ?? "{}") as Partial<D3AgentToolRequest>
-  } catch (error) {
-    throw new Error(`Malformed D3 tool request JSON. The model must emit a complete JSON object inside <d3_tool>...</d3_tool>. ${(error as Error).message}`)
+  const d3ToolMatch = content.match(/<d3_tool>\s*([\s\S]*?)\s*<\/d3_tool>/i)
+  if (d3ToolMatch) {
+    let parsed: Partial<D3AgentToolRequest>
+    try {
+      parsed = JSON.parse(d3ToolMatch[1] ?? "{}") as Partial<D3AgentToolRequest>
+    } catch (error) {
+      throw new Error(`Malformed D3 tool request JSON. The model must emit a complete JSON object inside <d3_tool>...</d3_tool>. ${(error as Error).message}`)
+    }
+    if (!parsed.name || typeof parsed.name !== "string") throw new Error("D3 tool request must include a string name.")
+    return { name: parsed.name, input: parsed.input, reason: typeof parsed.reason === "string" ? parsed.reason : undefined }
   }
-  if (!parsed.name || typeof parsed.name !== "string") throw new Error("D3 tool request must include a string name.")
-  return { name: parsed.name, input: parsed.input, reason: typeof parsed.reason === "string" ? parsed.reason : undefined }
+
+  const toolCallMatch = content.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/i)
+  if (!toolCallMatch) return undefined
+  const body = toolCallMatch[1] ?? ""
+  const name = body.split(/\r?\n/, 1)[0]?.trim()
+  if (!name) throw new Error("D3 tool request must include a tool name.")
+  const input: Record<string, unknown> = {}
+  let reason: string | undefined
+  for (const match of body.matchAll(/<arg_key>\s*([\s\S]*?)\s*<\/arg_key>\s*<arg_value>\s*([\s\S]*?)\s*<\/arg_value>/gi)) {
+    const key = match[1]?.trim()
+    const value = match[2]?.trim()
+    if (!key) continue
+    if (key === "reason") reason = value
+    else input[key] = value
+  }
+  let parsedInput: unknown = Object.keys(input).length ? input : undefined
+  try {
+    if (typeof input.input === "string") parsedInput = JSON.parse(input.input)
+  } catch (error) {
+    throw new Error(`Malformed D3 tool_call input JSON. ${(error as Error).message}`)
+  }
+  return { name, input: parsedInput, reason }
 }
 
 function toolResultMessage(request: D3AgentToolRequest, result: ToolRunResult): ChatMessage {

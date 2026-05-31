@@ -691,7 +691,7 @@ export function App(props: AppProps) {
             if (streamSuppressRef.current) return
             setStreamingAssistant((current) => {
               const next = current + event.token
-              const toolIndex = next.search(/<d3_tool>/i)
+              const toolIndex = next.search(/<(d3_tool|tool_call)>/i)
               if (toolIndex === -1) return next
               streamSuppressRef.current = true
               return next.slice(0, toolIndex).trimEnd()

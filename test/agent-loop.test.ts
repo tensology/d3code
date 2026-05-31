@@ -190,6 +190,19 @@ test("parser extracts one D3 tool request from assistant text", () => {
   assert.deepEqual(request?.input, { file: "CUSTOMERS", item: "100" })
 })
 
+test("parser accepts streamed tool_call blocks emitted by chat models", () => {
+  const request = parseD3ToolRequest([
+    "I'll inspect the account.",
+    "<tool_call>d3_estate_report",
+    "<arg_key>reason</arg_key><arg_value>get overview of active account files</arg_value>",
+    "</tool_call>",
+  ].join("\n"))
+
+  assert.equal(request?.name, "d3_estate_report")
+  assert.equal(request?.reason, "get overview of active account files")
+  assert.equal(request?.input, undefined)
+})
+
 test("parser reports malformed D3 tool JSON clearly", () => {
   assert.throws(
     () => parseD3ToolRequest("<d3_tool>{\"name\":\"d3_list_files\"</d3_tool>"),
