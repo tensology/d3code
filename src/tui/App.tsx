@@ -578,14 +578,14 @@ export function App(props: AppProps) {
     streamIterationRef.current = undefined
     const abortController = new AbortController()
     abortRef.current = abortController
-    const beforeWorkspace = await snapshotWorkspace()
-    workspaceBaselineRef.current = beforeWorkspace
     const inputRole = line.startsWith("!")
       ? "shell-input"
       : mode === "d3" && !line.startsWith("/")
         ? "d3-input"
         : "user"
     setTranscript((current) => [...current, { role: inputRole, content: line.startsWith("!") ? line.slice(1).trim() : line }])
+    const beforeWorkspace = await snapshotWorkspace()
+    workspaceBaselineRef.current = beforeWorkspace
     let abortRecorded = false
     try {
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
