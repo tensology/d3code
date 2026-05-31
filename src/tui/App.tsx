@@ -20,7 +20,7 @@ import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, move
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeDetails, renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary, type WorkspaceSnapshot } from "./workspace-changes.js"
 import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
-import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
+import { TranscriptEntryView, visibleTranscriptEntries, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
 import { commandSuggestions } from "./command-suggestions.js"
@@ -895,6 +895,7 @@ export function App(props: AppProps) {
   const composerTitle = formatComposerTitle({ mode, busy })
   const composerHint = formatComposerHint({ busy, draftText: draft.text, queuedCount: queuedLines.length })
   const activeTurnEcho = busy && activeSubmittedTurn ? formatActiveTurnEcho(activeSubmittedTurn) : undefined
+  const visibleTranscript = visibleTranscriptEntries(transcript, activeSubmittedTurn)
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -950,7 +951,7 @@ export function App(props: AppProps) {
       )}
       <Box marginTop={1} borderStyle="single" borderColor="gray" borderLeft={false} borderRight={false} borderBottom={false} />
       <Box flexDirection="column" marginTop={1}>
-        {transcript.slice(-18).map((entry, index) => (
+        {visibleTranscript.slice(-18).map((entry, index) => (
           <TranscriptEntryView key={`${entry.role}-${index}`} entry={entry} />
         ))}
         {pendingTurn ? <TranscriptEntryView entry={{ role: "pending", content: pendingTurn }} /> : null}

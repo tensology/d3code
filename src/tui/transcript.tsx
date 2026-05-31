@@ -6,6 +6,23 @@ export interface TranscriptEntry {
   content: string
 }
 
+export function visibleTranscriptEntries(
+  entries: TranscriptEntry[],
+  activeInput?: Pick<TranscriptEntry, "role" | "content">,
+): TranscriptEntry[] {
+  if (!activeInput) return entries
+  let index = -1
+  for (let position = entries.length - 1; position >= 0; position--) {
+    const entry = entries[position]!
+    if (entry.role === activeInput.role && entry.content === activeInput.content) {
+      index = position
+      break
+    }
+  }
+  if (index === -1) return entries
+  return [...entries.slice(0, index), ...entries.slice(index + 1)]
+}
+
 export function wrapTranscriptLine(line: string, width = 74): string[] {
   if (line.length <= width) return [line]
   const wrapped: string[] = []

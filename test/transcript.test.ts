@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { compactTranscriptContent, transcriptColor, transcriptPrefix, wrapTranscriptLine } from "../src/tui/transcript.js"
+import { compactTranscriptContent, visibleTranscriptEntries, transcriptColor, transcriptPrefix, wrapTranscriptLine } from "../src/tui/transcript.js"
 
 test("transcript prefixes make tool and file events first-class message blocks", () => {
   assert.equal(transcriptPrefix("user"), "› ")
@@ -40,4 +40,19 @@ test("transcript wraps long logical lines before compacting", () => {
   const compacted = compactTranscriptContent("Commands:\n/help ".repeat(20), 4)
   assert.equal(compacted.length, 4)
   assert.match(compacted.at(-1) ?? "", /more lines/)
+})
+
+test("visible transcript hides only the active submitted input while a turn is running", () => {
+  const transcript = [
+    { role: "user", content: "previous" },
+    { role: "assistant", content: "done" },
+    { role: "shell-input", content: "npm test" },
+  ]
+
+  assert.deepEqual(visibleTranscriptEntries(transcript, { role: "shell-input", content: "npm test" }), [
+    { role: "user", content: "previous" },
+    { role: "assistant", content: "done" },
+  ])
+  assert.deepEqual(visibleTranscriptEntries(transcript, undefined), transcript)
+  assert.deepEqual(visibleTranscriptEntries(transcript, { role: "shell-input", content: "npm run build" }), transcript)
 })
