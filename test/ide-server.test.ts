@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
 import { basicAuthHeader, defaultIdeAuth } from "../src/ide/auth.js"
-import { startIdeServer, stopIdeServers } from "../src/ide/server.js"
+import { startIdeServer, stopIdeServers, type IdeRuntimeState, type IdeServerOptions } from "../src/ide/server.js"
 import { handleSlashCommand } from "../src/tui/commands.js"
 
 const config: D3CodeConfig = {
@@ -28,12 +28,16 @@ const config: D3CodeConfig = {
   modelSecrets: {},
 }
 
+function startTestIdeServer(config: D3CodeConfig, state: IdeRuntimeState, options: IdeServerOptions = {}) {
+  return startIdeServer(config, state, { ...options, saveConfigFn: async () => {} })
+}
+
 test.afterEach(async () => {
   await stopIdeServers()
 })
 
 test("IDE server serves browser shell and D3 profile APIs", async () => {
-  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
 
   const html = await fetch(server.url).then((response) => response.text())
   assert.match(html, /D3 Code IDE/)
@@ -61,7 +65,7 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
 })
 
 test("IDE server requires basic auth when public", async () => {
-  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { host: "0.0.0.0", port: 0 })
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { host: "0.0.0.0", port: 0 })
   const url = `http://127.0.0.1:${server.port}`
 
   const denied = await fetch(url)
@@ -74,7 +78,7 @@ test("IDE server requires basic auth when public", async () => {
 })
 
 test("IDE server normalizes browser-created D3 profiles for terminal emulation", async () => {
-  const server = await startIdeServer({ ...config, profiles: [...config.profiles] }, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const server = await startTestIdeServer({ ...config, profiles: [...config.profiles] }, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
 
   const response = await fetch(`${server.url}/api/profile/manage`, {
     method: "PUT",
@@ -104,7 +108,7 @@ test("IDE server normalizes browser-created D3 profiles for terminal emulation",
 })
 
 test("IDE server exposes terminal send through guarded D3 tool layer", async () => {
-  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
 
   const response = await fetch(`${server.url}/api/terminal/send`, {
     method: "POST",
@@ -118,7 +122,7 @@ test("IDE server exposes terminal send through guarded D3 tool layer", async () 
 })
 
 test("IDE server can switch profile and LOGTO through the guarded D3 layer", async () => {
-  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
 
   const switched = await fetch(`${server.url}/api/profile`, {
     method: "POST",
@@ -141,7 +145,7 @@ test("IDE server can switch profile and LOGTO through the guarded D3 layer", asy
 })
 
 test("IDE server exposes database, BASIC, dictionary, and subroutine workbench APIs", async () => {
-  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
 
   const files = await fetch(`${server.url}/api/files`).then((response) => response.json()) as { result: string }
   assert.match(files.result, /CUSTOMERS/)
@@ -183,7 +187,7 @@ test("IDE server exposes database, BASIC, dictionary, and subroutine workbench A
 
 test("IDE server exposes sessionless manual search without a D3 profile", async () => {
   const noProfileConfig = { ...config, defaultProfile: undefined, profiles: [] }
-  const server = await startIdeServer(noProfileConfig, { model: "openai/gpt-5", safety: "ask", mode: "chat" }, { port: 0 })
+  const server = await startTestIdeServer(noProfileConfig, { model: "openai/gpt-5", safety: "ask", mode: "chat" }, { port: 0 })
 
   const response = await fetch(`${server.url}/api/manual-search?query=DICT`)
   const payload = await response.json() as { result: string }
@@ -194,7 +198,7 @@ test("IDE server exposes sessionless manual search without a D3 profile", async 
 
 test("IDE server agent panel runs the guarded D3 agent loop", async () => {
   let calls = 0
-  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, {
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, {
     port: 0,
     agentChatFn: async (_config, _secrets, request) => {
       calls += 1
@@ -227,7 +231,7 @@ test("IDE server agent panel runs the guarded D3 agent loop", async () => {
 
 test("IDE server streams browser agent tokens and D3 tool events", async () => {
   let calls = 0
-  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, {
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, {
     port: 0,
     agentChatFn: async (_config, _secrets, request) => {
       calls += 1

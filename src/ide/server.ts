@@ -26,6 +26,7 @@ export interface IdeServerOptions {
   port?: number
   agentChatFn?: AgentChatFunction
   requireAuth?: boolean
+  saveConfigFn?: (config: D3CodeConfig) => Promise<void>
 }
 
 export interface IdeServerHandle {
@@ -247,7 +248,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     config.profiles = [...config.profiles.filter((profile) => profile.name !== nextProfile.name), nextProfile]
     config.defaultProfile ??= nextProfile.name
     state.profile = nextProfile.name
-    await saveConfig(config)
+    await (options.saveConfigFn ?? saveConfig)(config)
     return sendJson(res, 200, { profile: nextProfile.name, saved: true })
   }
   if (req.method === "DELETE" && url.pathname === "/api/profile/manage") {
@@ -259,7 +260,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     if (before === config.profiles.length) return sendJson(res, 404, { error: `unknown profile: ${body.profile}` })
     if (config.defaultProfile === body.profile) config.defaultProfile = config.profiles[0]?.name
     if (state.profile === body.profile) state.profile = config.defaultProfile
-    await saveConfig(config)
+    await (options.saveConfigFn ?? saveConfig)(config)
     return sendJson(res, 200, { profile: body.profile, removed: true, defaultProfile: config.defaultProfile })
   }
   if (req.method === "POST" && url.pathname === "/api/account/login") {
