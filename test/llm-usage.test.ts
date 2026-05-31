@@ -130,3 +130,41 @@ test("OpenAI-compatible chat streams a final SSE line without trailing newline",
     delete process.env.KILO_API_KEY
   }
 })
+
+test("OpenAI-compatible chat streams SSE even when gateway omits the event-stream content type", async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (_url, init) => {
+    assert.match(String(init?.body), /"stream":true/)
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("data: {\"choices\":[{\"delta\":{\"content\":\"Live\"}}]}\n\n"))
+        controller.enqueue(new TextEncoder().encode("data: {\"choices\":[{\"delta\":{\"content\":\" now\"}}]}\n\n"))
+        controller.close()
+      },
+    }), { status: 200, headers: { "content-type": "application/octet-stream" } })
+  }) as typeof fetch
+
+  try {
+    const streamed: string[] = []
+    const config: D3CodeConfig = {
+      version: 1,
+      defaultModel: "kilocode/kilo-auto/free",
+      defaultSafety: "ask",
+      profiles: [],
+      modelSecrets: { kilocode: "env:KILO_API_KEY" },
+    }
+    process.env.KILO_API_KEY = "test-key"
+
+    const response = await chat(config, { get: async () => undefined, set: async () => undefined }, {
+      modelRef: "kilocode/kilo-auto/free",
+      messages: [{ role: "user", content: "hello" }],
+      onToken: (token) => streamed.push(token),
+    })
+
+    assert.deepEqual(streamed, ["Live", " now"])
+    assert.equal(response.content, "Live now")
+  } finally {
+    globalThis.fetch = originalFetch
+    delete process.env.KILO_API_KEY
+  }
+})

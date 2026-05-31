@@ -967,9 +967,11 @@ export function App(props: AppProps) {
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
-        <Box flexDirection="row">
-          <Text color={busy ? "cyan" : "gray"}>{composerTitle}</Text>
-        </Box>
+        {composerTitle ? (
+          <Box flexDirection="row">
+            <Text color={busy ? "cyan" : "gray"}>{composerTitle}</Text>
+          </Box>
+        ) : null}
         {activeTurnEcho ? (
           <Box flexDirection="row">
             <Text color={activeTurnEcho.color} bold>{activeTurnEcho.glyph}</Text>

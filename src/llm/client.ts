@@ -153,7 +153,9 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
     body: JSON.stringify(body),
     signal,
   })
-  if (onToken && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+  const contentType = response.headers.get("content-type") ?? ""
+  const shouldReadStream = onToken && response.ok && response.body && !contentType.includes("application/json")
+  if (shouldReadStream) {
     const { content, usage } = await readOpenAIStream(response, onToken)
     return { provider, model, content, usage, raw: { streamed: true, usage } }
   }
