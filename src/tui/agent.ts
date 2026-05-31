@@ -95,7 +95,7 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
 }
 
 export function parseD3ToolRequest(content: string): D3AgentToolRequest | undefined {
-  const d3ToolMatch = content.match(/<d3_tool>\s*([\s\S]*?)\s*<\/d3_tool>/i)
+  const d3ToolMatch = content.match(/<d3_tool>\s*([\s\S]*?)\s*<\/(?:d3_tool|d_value)>/i)
   if (d3ToolMatch) {
     let parsed: Partial<D3AgentToolRequest>
     try {
