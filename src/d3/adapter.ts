@@ -10,6 +10,24 @@ function interruptedError(): Error {
   return new Error("Interrupted.")
 }
 
+function isD3EntryCommand(entry?: string): boolean {
+  return Boolean(entry && /^(\S*\/)?d3(?:\s|$)/i.test(entry.trim()))
+}
+
+function d3Executable(entry?: string): string {
+  const trimmed = entry?.trim()
+  if (!trimmed) return "d3"
+  return trimmed.split(/\s+/, 1)[0] || "d3"
+}
+
+export function d3StackedInput(startupInput: string | undefined, command: string): string {
+  const parts = [startupInput ?? "", command, "OFF"]
+    .join("\r")
+    .replace(/\r?\n/g, "\r")
+    .replace(/\r{2,}/g, "\r")
+  return parts.endsWith("\r") ? parts : `${parts}\r`
+}
+
 function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number | undefined, options: D3RunOptions = {}, env?: NodeJS.ProcessEnv): Promise<D3CommandResult> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
@@ -71,6 +89,7 @@ export class LocalD3Session implements D3Session {
 
   async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     const entry = this.profile.entryCommand ?? "sh"
+    if (isD3EntryCommand(entry)) return runProcess(d3Executable(entry), ["-d", d3StackedInput(this.profile.startupInput, command)], undefined, timeoutMs, options)
     if (entry === "sh") return runProcess("sh", ["-lc", command], undefined, timeoutMs, options)
     return runProcess("sh", ["-lc", `${entry} <<'D3CODE_EOF'\n${this.profile.startupInput ?? ""}${command}\nD3CODE_EOF`], undefined, timeoutMs, options)
   }
@@ -287,6 +306,7 @@ function streamDelta(output: string, streamed: number, callback?: (chunk: string
 
 export function createD3Session(profile: ConnectionProfile): D3Session {
   if (profile.type === "ssh") return new SshD3Session(profile)
+  if (isD3EntryCommand(profile.entryCommand)) return new LocalD3Session(profile)
   if (profile.sessionMode === "persistent") return new PersistentLocalD3Session(profile)
   return new LocalD3Session(profile)
 }

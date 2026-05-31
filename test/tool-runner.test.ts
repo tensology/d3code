@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
-import { createD3Session } from "../src/d3/adapter.js"
+import { createD3Session, d3StackedInput } from "../src/d3/adapter.js"
 import { compactText } from "../src/tools/compact.js"
 import { runToolByName } from "../src/tools/runner.js"
 
@@ -46,4 +46,9 @@ test("D3 session timeout 0 can still be interrupted by AbortSignal", async () =>
   setTimeout(() => controller.abort(), 25)
 
   await assert.rejects(run, /Interrupted/)
+})
+
+test("D3 stacked input logs in, runs the command, and releases the account", () => {
+  assert.equal(d3StackedInput("dm\ndm\n", "WHO"), "dm\rdm\rWHO\rOFF\r")
+  assert.equal(d3StackedInput("dm\rdm\r", "LIST MD\nWHO"), "dm\rdm\rLIST MD\rWHO\rOFF\r")
 })
