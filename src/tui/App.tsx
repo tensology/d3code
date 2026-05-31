@@ -28,6 +28,7 @@ import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedL
 import { createBusyInputHandler } from "./busy-input.js"
 import { formatComposerHint, formatComposerTitle } from "./prompt-composer.js"
 import { formatActiveTurnEcho, formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine, type SubmittedTurn } from "./turn-surface.js"
+import { formatToolActivity, formatToolResultTitle } from "./tool-activity.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -708,21 +709,22 @@ export function App(props: AppProps) {
             })
           }
           if (event.type === "tool_start") {
+            const toolActivity = formatToolActivity(event)
             setStreamingAssistant("")
-            setStreamingToolLabel(event.name)
-            setActiveTask(event.name)
+            setStreamingToolLabel(toolActivity.split(/\r?\n/)[0] ?? event.name)
+            setActiveTask(toolActivity.split(/\r?\n/)[0] ?? event.name)
             setTranscript((current) => [
               ...current,
               {
                 role: "tool-start",
-                content: `${event.name}${event.reason ? `: ${event.reason}` : ""}`,
+                content: toolActivity,
               },
             ])
           }
           if (event.type === "tool_result") {
             setActiveTask("reading result")
             streamSuppressRef.current = false
-            setTranscript((current) => [...current, { role: "tool", content: `${event.name}\n${event.compact}` }])
+            setTranscript((current) => [...current, { role: "tool", content: `${formatToolResultTitle(event.name)}\n${event.compact}` }])
           }
         },
         signal: abortController.signal,
