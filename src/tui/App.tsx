@@ -86,18 +86,26 @@ function transcriptFromSession(session: StoredSession | undefined) {
   ]
 }
 
+function compactTaskLabel(label: string, maxLength = 34): string {
+  if (label.length <= maxLength) return label
+  return `${label.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
+}
+
+function actionLabel(kind: string, detail: string, fallback = "working"): string {
+  const clean = detail.trim()
+  return compactTaskLabel(clean ? `${kind}: ${clean}` : `${kind}: ${fallback}`)
+}
+
 function initialTaskForLine(line: string, mode: string): string {
   if (line.startsWith("!")) {
-    const command = line.slice(1).trim().split(/\s+/)[0]
-    return `running ! ${command || "shell"}`
+    return actionLabel("Bash", line.slice(1), "shell")
   }
   if (line === "/d3" || line.startsWith("/d3 ")) return "attaching D3 terminal"
   if (mode === "d3" && !line.startsWith("/")) {
-    const command = line.trim().split(/\s+/)[0]
-    return `running D3 ${command || "command"}`
+    return actionLabel("D3 TCL", line, "command")
   }
-  if (line.startsWith("/")) return `running ${line.split(/\s+/)[0]}`
-  return "asking model"
+  if (line.startsWith("/")) return actionLabel("Command", line.split(/\s+/)[0] ?? line, "slash command")
+  return "thinking"
 }
 
 function standaloneEscapeCount(value: string): number {
@@ -582,7 +590,7 @@ export function App(props: AppProps) {
         return
       }
       if (line.startsWith("/")) {
-        setActiveTask(`running ${line.split(/\s+/)[0]}`)
+        setActiveTask(actionLabel("Command", line.split(/\s+/)[0] ?? line, "slash command"))
         setTranscript((current) => [...current, { role: "tool-start", content: `Command: ${line.split(/\s+/)[0]}` }])
         const result = await handleSlashCommand(line, props.config, { model, safety, profile, mode })
         if (result.clear) setTranscript([])
@@ -644,7 +652,7 @@ export function App(props: AppProps) {
           if (event.type === "tool_start") {
             setStreamingAssistant("")
             setStreamingToolLabel(event.name)
-            setActiveTask(`running ${event.name}`)
+            setActiveTask(event.name)
             setTranscript((current) => [
               ...current,
               {
@@ -739,7 +747,7 @@ export function App(props: AppProps) {
       setTranscript((current) => [...current, { role: "error", content: "Usage: ! <unix command>" }])
       return
     }
-    setActiveTask(`running ! ${command.split(/\s+/)[0]}`)
+    setActiveTask(actionLabel("Bash", command, "shell"))
     setStreamingToolLabel(`Bash: ${command}`)
     setTranscript((current) => [...current, { role: "tool-start", content: `Bash: ${command}` }])
     const result = await runLocalShellCommand(command, {
@@ -762,7 +770,7 @@ export function App(props: AppProps) {
     }
     if (!d3Session.current) d3Session.current = createD3Session(selected)
     assertD3Allowed(safety, line, safety === "trust")
-    setActiveTask(`running D3 ${line.split(/\s+/)[0] ?? "command"}`)
+    setActiveTask(actionLabel("D3 TCL", line, "command"))
     setStreamingToolLabel(`D3 TCL: ${line}`)
     setTranscript((current) => [...current, { role: "tool-start", content: `D3 TCL: ${line}` }])
     const capture = await captureD3Terminal(d3Session.current, line, {
@@ -847,7 +855,7 @@ export function App(props: AppProps) {
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
         <Box flexDirection="row">
-          <Text color={busy ? "yellow" : "cyan"} bold>{busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} </Text>
+          <Text color={busy ? "yellow" : "cyan"} bold>{`${busy ? spinnerFrames[busyFrame % spinnerFrames.length] : "›"} `}</Text>
           {busy ? (
             <Text>{formatBusyStatus(activeTask, busySeconds, busyProgress, interruptHint)}</Text>
           ) : (
