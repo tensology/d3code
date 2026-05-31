@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs"
+import { execFile } from "node:child_process"
+import { platform } from "node:os"
 import { Command } from "commander"
 import { render } from "ink"
 import React from "react"
@@ -110,6 +112,30 @@ function configuredProviderID(defaultModel: string): string {
 function parseSafety(value: string): SafetyMode {
   if (!safetyValues.includes(value as SafetyMode)) throw new Error(`Safety must be one of: ${safetyValues.join(", ")}`)
   return value as SafetyMode
+}
+
+function runSystemCommand(command: string, args: string[], timeoutMs = 2500): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    execFile(command, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+      const errorCode = (error as NodeJS.ErrnoException | null)?.code
+      resolve({
+        code: typeof errorCode === "number" ? errorCode : error ? 1 : 0,
+        stdout: String(stdout ?? ""),
+        stderr: String(stderr ?? ""),
+      })
+    })
+  })
+}
+
+async function openTemporaryFirewallPort(port: number): Promise<string[]> {
+  if (port <= 0) return ["Firewall: skipped for ephemeral port."]
+  if (platform() !== "linux") return []
+  const state = await runSystemCommand("firewall-cmd", ["--state"])
+  if (state.code !== 0) return ["Firewall: not changed; firewalld is not running or firewall-cmd is unavailable."]
+  const add = await runSystemCommand("firewall-cmd", [`--add-port=${port}/tcp`, "--timeout=2h"])
+  if (add.code !== 0) return [`Firewall: could not open ${port}/tcp temporarily (${add.stderr.trim() || add.stdout.trim() || "permission denied"}).`]
+  const query = await runSystemCommand("firewall-cmd", [`--query-port=${port}/tcp`])
+  return query.code === 0 ? [`Firewall: opened ${port}/tcp temporarily for 2 hours.`] : [`Firewall: attempted temporary open for ${port}/tcp, but the rule was not confirmed.`]
 }
 
 function decodeInlineBody(parts: string[] = []): string {
@@ -1304,6 +1330,9 @@ program.command("ide").alias("id").argument("[visibility]", "use public to bind 
   console.log(`Profile: ${options.profile ?? profile?.name ?? "none"}`)
   if (publicMode || host === "0.0.0.0" || host === "::") console.log(`Auth: Basic user ${resolveIdeAuth(config).username}`)
   for (const note of ideAccessNotes(host, server.port, undefined, displayOptions)) console.log(note)
+  if (publicMode || host === "0.0.0.0" || host === "::") {
+    for (const note of await openTemporaryFirewallPort(server.port)) console.log(note)
+  }
   console.log("Press Ctrl+C to stop.")
   await new Promise<void>((resolve) => {
     process.once("SIGINT", () => resolve())

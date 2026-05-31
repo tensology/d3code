@@ -74,12 +74,16 @@ export function ideAccessNotes(host: string, port: number, interfaces: NetworkMa
   if (isPublicIdeHost(host)) {
     const displayHost = displayHostForIdeBind(host, interfaces, options)
     const privateLan = isPrivateIpv4(displayHost)
+    const hasConfiguredPublicHost = Boolean(cleanPublicHost(options.publicHost))
     return [
       "Access: listening on all server interfaces.",
       `${displayUrlLabelForIdeBind(host, interfaces, options)}: ${terminalLink(displayUrl, displayUrl)}`,
-      ...(privateLan && !cleanPublicHost(options.publicHost) ? [
+      ...(privateLan && !hasConfiguredPublicHost ? [
         "Public/WAN URL: not known from inside this server. 192.168/10/172.16-31 addresses are private LAN addresses.",
         `If you need internet access, use your public DNS/IP with this port, or use an SSH/VPN tunnel instead.`,
+      ] : []),
+      ...(hasConfiguredPublicHost ? [
+        "Network note: this server is still on a LAN/private address; public DNS also needs router/NAT forwarding for this port.",
       ] : []),
       "Only expose this on a trusted network or behind an SSH/VPN tunnel.",
     ]
