@@ -2,10 +2,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import type { ConnectionProfile, D3CommandResult, D3RunOptions, D3Session } from "../domain/types.js"
 import { normalizeD3PromptPattern } from "./prompts.js"
 
-function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number, options: D3RunOptions = {}): Promise<D3CommandResult> {
+function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number, options: D3RunOptions = {}, env?: NodeJS.ProcessEnv): Promise<D3CommandResult> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] })
+    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], env })
     let stdout = ""
     let stderr = ""
     const timer = setTimeout(() => {
@@ -194,11 +194,48 @@ export class SshD3Session implements D3Session {
 
   async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     const target = `${this.profile.username}@${this.profile.host}`
-    const port = this.profile.port ? ["-p", String(this.profile.port)] : []
-    const remote = this.profile.entryCommand
-      ? `${this.profile.entryCommand} <<'D3CODE_EOF'\n${command}\nD3CODE_EOF`
-      : command
-    return runProcess("ssh", [...port, target, remote], undefined, timeoutMs, options)
+    const port = String(this.profile.port ?? 22)
+    if (this.profile.entryCommand || this.profile.startupInput || this.profile.promptPattern) {
+      const script = [
+        "set timeout -1",
+        "set target $env(D3CODE_TARGET)",
+        "set port $env(D3CODE_PORT)",
+        "set entry $env(D3CODE_ENTRY)",
+        "if {$entry eq \"\"} {",
+        "  spawn ssh -tt -p $port $target",
+        "} else {",
+        "  spawn ssh -tt -p $port $target $entry",
+        "}",
+        "foreach line [split $env(D3CODE_STARTUP) \"\\n\"] {",
+        "  if {$line eq \"\"} { continue }",
+        "  expect -re {Enter your user id:|master dictionary:|user password:|:}",
+        "  send -- \"$line\\r\"",
+        "}",
+        "expect \":\"",
+        "foreach line [split $env(D3CODE_COMMAND) \"\\n\"] {",
+        "  if {$line eq \"\"} { continue }",
+        "  send -- \"$line\\r\"",
+        "  expect \":\"",
+        "}",
+        "send -- \"OFF\\r\"",
+        "expect {",
+        "  -re {Enter your user id:} {}",
+        "  eof {}",
+        "  timeout {}",
+        "}",
+        "close",
+        "wait",
+      ].join("\n")
+      return runProcess("expect", ["-c", script], undefined, timeoutMs, options, {
+        ...process.env,
+        D3CODE_TARGET: target,
+        D3CODE_PORT: port,
+        D3CODE_ENTRY: this.profile.entryCommand ?? "",
+        D3CODE_STARTUP: this.profile.startupInput ?? "",
+        D3CODE_COMMAND: command,
+      })
+    }
+    return runProcess("ssh", ["-p", port, target, command], undefined, timeoutMs, options)
   }
 
   async close(): Promise<void> {}
