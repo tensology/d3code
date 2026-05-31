@@ -25,6 +25,7 @@ import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
 import { commandSuggestions } from "./command-suggestions.js"
 import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
+import { createBusyInputHandler } from "./busy-input.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -473,51 +474,15 @@ export function App(props: AppProps) {
   })
 
   function handleBusyRawInput(value: string): void {
-    if (value.includes("\u0003")) {
-      interruptActiveTurn("Interrupted. Finishing any already-returned cleanup.")
-      return
-    }
-    if (value.includes("\t")) {
-      const tabIndex = value.indexOf("\t")
-      const beforeTab = value.slice(0, tabIndex)
-      const afterTab = value.slice(tabIndex + 1)
-      const draftAtTab = completeDraftCommand(beforeTab ? insertText(draftRef.current, beforeTab) : draftRef.current)
-      if (afterTab.search(/[\r\n]/) !== -1) {
-        submitDraftWithInput(draftAtTab, afterTab)
-        return
-      }
-      setDraft(afterTab ? insertText(draftAtTab, afterTab) : draftAtTab)
-      setHistoryIndex(undefined)
-      return
-    }
-    if (value.search(/[\r\n]/) !== -1) {
-      submitDraftWithInput(draftRef.current, value)
-      return
-    }
-    if (value.includes("\u001B")) {
-      applyRawTerminalInput(value)
-      return
-    }
-    if (value === "\u007F" || value === "\b") {
-      setDraft(backspace)
-      setHistoryIndex(undefined)
-      return
-    }
-    if (value === "\u0015") {
-      setDraft({ text: "", cursor: 0 })
-      setHistoryIndex(undefined)
-      return
-    }
-    if (value === "\u0001") {
-      setDraft(moveHome)
-      return
-    }
-    if (value === "\u0005") {
-      setDraft(moveEnd)
-      return
-    }
-    setDraft((current) => insertText(current, value))
-    setHistoryIndex(undefined)
+    createBusyInputHandler({
+      getDraft: () => draftRef.current,
+      setDraft,
+      submitLine,
+      completeDraft: completeDraftCommand,
+      applyEscapeInput: applyRawTerminalInput,
+      interrupt: interruptActiveTurn,
+      resetHistoryIndex: () => setHistoryIndex(undefined),
+    })(value)
   }
 
   function submitDraft() {
