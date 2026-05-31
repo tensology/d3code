@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft } from "../src/tui/prompt-state.js"
+import { applyRawPromptInput, backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft } from "../src/tui/prompt-state.js"
 
 test("prompt state inserts and edits at cursor", () => {
   let draft = { text: "helo", cursor: 2 }
@@ -21,4 +21,10 @@ test("prompt state supports home/end and visible cursor slices", () => {
   draft = moveEnd(draft)
   assert.equal(draft.cursor, 7)
   assert.deepEqual(renderPromptDraft(draft, true), { before: "LIST MD", cursor: " ", after: "" })
+})
+
+test("prompt state treats terminal backspace bytes as edits, not text", () => {
+  assert.deepEqual(applyRawPromptInput({ text: "/", cursor: 1 }, "\u007F"), { text: "", cursor: 0 })
+  assert.deepEqual(applyRawPromptInput({ text: "/", cursor: 1 }, "\b"), { text: "", cursor: 0 })
+  assert.deepEqual(applyRawPromptInput({ text: "/help", cursor: 2 }, "\u001B[3~"), { text: "/hlp", cursor: 2 })
 })

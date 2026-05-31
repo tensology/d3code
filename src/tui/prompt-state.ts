@@ -33,6 +33,12 @@ export function deleteForward(draft: PromptDraft): PromptDraft {
   }
 }
 
+export function applyRawPromptInput(draft: PromptDraft, value: string): PromptDraft {
+  if (value === "\u007F" || value === "\b") return backspace(draft)
+  if (value === "\u001B[3~") return deleteForward(draft)
+  return insertText(draft, value)
+}
+
 export function moveLeft(draft: PromptDraft): PromptDraft {
   return { ...draft, cursor: clampCursor(draft.text, draft.cursor - 1) }
 }

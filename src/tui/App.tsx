@@ -16,7 +16,7 @@ import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 import { loadProjectContext, type ProjectContext } from "./project-context.js"
-import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
+import { applyRawPromptInput, backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderLiveWorkspaceChangeSummary, renderWorkspaceChangeDetails, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary, type WorkspaceSnapshot } from "./workspace-changes.js"
 import { appendLiveTerminalChunk, estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
@@ -432,8 +432,8 @@ export function App(props: AppProps) {
       setHistoryIndex(undefined)
       return
     }
-    if (key.backspace || key.delete) {
-      setDraft(key.delete ? deleteForward : backspace)
+    if (key.backspace || value === "\u007F" || value === "\b" || key.delete || value === "\u001B[3~") {
+      setDraft((current) => key.delete || value === "\u001B[3~" ? deleteForward(current) : backspace(current))
       setHistoryIndex(undefined)
       return
     }
@@ -576,7 +576,7 @@ export function App(props: AppProps) {
       } else {
         const char = value[index]!
         if (char !== "\u001B") {
-          setDraft((current) => insertText(current, char))
+          setDraft((current) => applyRawPromptInput(current, char))
           setHistoryIndex(undefined)
         }
         index += 1
