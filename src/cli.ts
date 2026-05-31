@@ -20,6 +20,7 @@ import { createLiveProofReport, profileDoctorGoalEvidence, renderLiveProofReport
 import { checkLiveProofArtifacts, renderLiveProofArtifactReport, renderLiveProofScaffold, writeLiveProofScaffold } from "./d3/live-proof-artifacts.js"
 import { diagnoseProfile, renderProfileDoctor } from "./d3/profile-doctor.js"
 import { D3_TCL_PROMPT_PATTERN, normalizeD3PromptPattern } from "./d3/prompts.js"
+import { createLocalD3Profile, defaultD3PromptPattern, defaultD3SessionMode } from "./d3/profile-defaults.js"
 import { createIdeTerminalContract, renderIdeTerminalContract } from "./d3/ide-terminal.js"
 import { parseD3ScreenTranscript, renderD3ScreenBuffer } from "./d3/screen-buffer.js"
 import { captureD3Terminal, renderD3TerminalCapture, writeD3TerminalCapture } from "./d3/terminal-capture.js"
@@ -196,18 +197,6 @@ function collectOption(value: string, previous: string[] = []): string[] {
   return [...previous, value]
 }
 
-function isD3EntryCommand(entry?: string): boolean {
-  return Boolean(entry && /(^|[\/\s])d3(\s|$)/i.test(entry))
-}
-
-function defaultD3PromptPattern(entry?: string, prompt?: string): string | undefined {
-  return normalizeD3PromptPattern(prompt) ?? (isD3EntryCommand(entry) ? D3_TCL_PROMPT_PATTERN : undefined)
-}
-
-function defaultD3SessionMode(entry?: string, session?: "oneshot" | "persistent"): "oneshot" | "persistent" | undefined {
-  return session ?? (isD3EntryCommand(entry) ? "persistent" : undefined)
-}
-
 const program = new Command()
   .name("d3code")
   .description("Agentic terminal coding environment for Rocket D3.")
@@ -290,27 +279,30 @@ program
         const name = options.profileName ?? "prod"
         const sessionMode = options.session ?? "persistent"
         const allowedAccounts = options.allowedAccounts?.split(",").map((item) => item.trim()).filter(Boolean)
-        const base = {
-          name,
-          account: options.account,
-          entryCommand: options.entry,
-          startupInput: options.startupInput?.replace(/\\n/g, "\n"),
-          promptPattern: normalizeD3PromptPattern(options.prompt) ?? D3_TCL_PROMPT_PATTERN,
-          sessionMode,
-          safetyDefault: config.defaultSafety,
-          allowedAccounts: allowedAccounts?.length ? allowedAccounts : undefined,
-        }
-        const next = d3Mode === "ssh"
-          ? {
-              ...base,
+        const next = d3Mode === "local"
+          ? await createLocalD3Profile({
+            name,
+            account: options.account,
+            entry: options.entry,
+            startupInput: options.startupInput,
+            prompt: options.prompt,
+            session: sessionMode,
+            safety: config.defaultSafety,
+            allowedAccounts,
+          })
+          : {
+              name,
               type: "ssh" as const,
               host: options.host,
               username: options.user,
               port: options.port ?? 22,
-            }
-          : {
-              ...base,
-              type: "local" as const,
+              account: options.account,
+              entryCommand: options.entry,
+              startupInput: options.startupInput?.replace(/\\n/g, "\n"),
+              promptPattern: normalizeD3PromptPattern(options.prompt) ?? D3_TCL_PROMPT_PATTERN,
+              sessionMode,
+              safetyDefault: config.defaultSafety,
+              allowedAccounts: allowedAccounts?.length ? allowedAccounts : undefined,
             }
         if (next.type === "ssh" && (!next.host || !next.username)) throw new Error("SSH setup requires --host and --user")
         config.profiles = [...config.profiles.filter((profile) => profile.name !== name), next]
@@ -385,17 +377,16 @@ program
   .description("Add or update a local D3 profile.")
   .action(async (options: { name: string; account?: string; entry?: string; startupInput?: string; prompt?: string; session?: "oneshot" | "persistent"; safety?: string; allowedAccounts?: string }) => {
     const config = await loadConfig()
-    const next = {
+    const next = await createLocalD3Profile({
       name: options.name,
-      type: "local" as const,
       account: options.account,
-      entryCommand: options.entry,
-      startupInput: options.startupInput?.replace(/\\n/g, "\n"),
-      promptPattern: defaultD3PromptPattern(options.entry, options.prompt),
-      sessionMode: defaultD3SessionMode(options.entry, options.session),
-      safetyDefault: options.safety ? parseSafety(options.safety) : undefined,
+      entry: options.entry,
+      startupInput: options.startupInput,
+      prompt: options.prompt,
+      session: options.session,
+      safety: options.safety ? parseSafety(options.safety) : undefined,
       allowedAccounts: options.allowedAccounts?.split(",").map((item) => item.trim()).filter(Boolean),
-    }
+    })
     config.profiles = [...config.profiles.filter((profile) => profile.name !== options.name), next]
     config.defaultProfile ??= options.name
     await saveConfig(config)

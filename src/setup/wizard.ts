@@ -7,6 +7,7 @@ import { discoverProviderModels } from "../providers/model-discovery.js"
 import { secretRefForProvider, type SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 import { D3_TCL_PROMPT_PATTERN, describeD3PromptPattern, normalizeD3PromptPattern } from "../d3/prompts.js"
+import { DEFAULT_D3_PROFILE_NAME, inferLocalD3ProfileDefaults } from "../d3/profile-defaults.js"
 
 export interface Choice {
   id: string
@@ -111,16 +112,23 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
       { id: "skip", label: "Skip for now" },
     ], "local").toLowerCase()
     if (localOrSsh !== "skip") {
-      const profileName = (await rl.question("Profile name [default]: ")).trim() || "default"
-      const account = (await rl.question("Default D3 account name/path: ")).trim() || undefined
+      const localDefaults = localOrSsh === "local" ? await inferLocalD3ProfileDefaults() : undefined
+      if (localDefaults) console.log(`Detected local D3: ${localDefaults.detectionDetails}`)
+      const defaultName = localOrSsh === "local" ? DEFAULT_D3_PROFILE_NAME : "prod"
+      const profileName = (await rl.question(`Profile name [${defaultName}]: `)).trim() || defaultName
+      const defaultAccount = localDefaults?.account ?? ""
+      const account = (await rl.question(`Default D3 account name/path${defaultAccount ? ` [${defaultAccount}]` : ""}: `)).trim() || defaultAccount || undefined
       const allowedAccounts = (await rl.question("Allowed D3 accounts for this profile (comma-separated, blank for no allowlist): ")).trim()
         .split(",")
         .map((item) => item.trim())
         .filter(Boolean)
-      const entryCommand = (await rl.question("Command to enter D3/TCL on that server (blank if shell already lands there): ")).trim() || undefined
-      const startupInput = (await rl.question("Startup input after D3 opens (use \\n for newlines, blank for none): ")).trim().replace(/\\n/g, "\n") || undefined
+      const defaultEntry = localDefaults?.entryCommand ?? ""
+      const entryCommand = (await rl.question(`Command to enter D3/TCL on that server${defaultEntry ? ` [${defaultEntry}]` : " (blank if shell already lands there)"}: `)).trim() || defaultEntry || undefined
+      const defaultStartup = localDefaults?.startupInput?.replace(/\n/g, "\\n") ?? ""
+      const startupInput = (await rl.question(`Startup input after D3 opens (use \\n for newlines${defaultStartup ? `, default ${defaultStartup}` : ", blank for none"}): `)).trim().replace(/\\n/g, "\n") || localDefaults?.startupInput || undefined
       console.log(describeD3PromptPattern())
-      const promptPattern = normalizeD3PromptPattern(await rl.question(`D3 prompt regex [${D3_TCL_PROMPT_PATTERN}]: `)) || D3_TCL_PROMPT_PATTERN
+      const promptDefault = localDefaults?.promptPattern ?? D3_TCL_PROMPT_PATTERN
+      const promptPattern = normalizeD3PromptPattern(await rl.question(`D3 prompt regex [${promptDefault}]: `)) || promptDefault
       renderChoices("D3 runtime session", [
         { id: "persistent", label: "Keep connected", hint: "best for the IDE and agent" },
         { id: "oneshot", label: "One command at a time", hint: "safer but less interactive" },

@@ -1013,6 +1013,22 @@ test("CLI local profiles default to persistent TCL sessions", async () => {
   assert.match(result.stdout, /session=persistent/)
 })
 
+test("CLI local profile creation infers D3 defaults from the server command", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-profile-infer-"))
+  const d3 = join(home, "d3")
+  await writeFile(d3, "#!/bin/sh\nexit 0\n", { mode: 0o755 })
+  const env = { ...process.env, D3CODE_HOME: home, PATH: `${home}:${process.env.PATH ?? ""}` }
+
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "prod"], { cwd: process.cwd(), env })
+
+  const config = JSON.parse(await readFile(join(home, "config.jsonc"), "utf8")) as { profiles: Array<{ account?: string; entryCommand?: string; startupInput?: string; promptPattern?: string; sessionMode?: string }> }
+  assert.equal(config.profiles[0]?.account, "DM")
+  assert.equal(config.profiles[0]?.entryCommand, "d3")
+  assert.equal(config.profiles[0]?.startupInput, "dm\ndm\n")
+  assert.equal(config.profiles[0]?.promptPattern, "(^|\\n):\\s*$")
+  assert.equal(config.profiles[0]?.sessionMode, "persistent")
+})
+
 test("CLI can remove a saved profile", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-profile-remove-"))
   const env = { ...process.env, D3CODE_HOME: home }

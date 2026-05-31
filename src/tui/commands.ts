@@ -203,18 +203,27 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
         ].join("\n"),
       }
     case "/setup":
-      return {
-        output: [
-          "D3 Code setup",
-          "",
-          "For the full interactive setup wizard, exit this session and run:",
-          "  d3code setup",
-          "",
-          "That wizard configures the AI provider/key/model first, then optionally creates a Rocket D3 profile.",
-          "After setup, come back here and use:",
-          "  /profile",
-          "  /d3",
-        ].join("\n"),
+      {
+        const detected = await detectLocalD3()
+        const entry = detected.command ?? "d3"
+        const profileCommand = `d3code profile-add-local --name prod --account DM --entry "${entry}" --startup-input "dm\\ndm\\n"`
+        return {
+          output: [
+            "D3 Code setup",
+            "",
+            detected.available ? `Detected local D3: ${detected.details}` : `Local D3 was not auto-detected here: ${detected.details}`,
+            "",
+            "For this server, the likely D3 profile command is:",
+            `  ${profileCommand}`,
+            "",
+            "Then select/use it:",
+            "  /profile prod",
+            "  /d3",
+            "",
+            "For AI provider/key/model setup, exit this session and run:",
+            "  d3code setup",
+          ].join("\n"),
+        }
       }
     case "/d3":
       return {
