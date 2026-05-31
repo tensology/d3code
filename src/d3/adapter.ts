@@ -52,6 +52,7 @@ export class PersistentLocalD3Session implements D3Session {
   private stdout = ""
   private stderr = ""
   private sequence = 0
+  private startupSent = false
   private closedError?: Error
 
   constructor(readonly profile: ConnectionProfile) {}
@@ -75,6 +76,10 @@ export class PersistentLocalD3Session implements D3Session {
     this.child.on("close", (code, signal) => {
       this.closedError = new Error(`Persistent D3 session exited before the prompt was seen: code=${code ?? "null"} signal=${signal ?? "null"}`)
     })
+    if (this.profile.startupInput && !this.startupSent) {
+      this.child.stdin.write(this.profile.startupInput)
+      this.startupSent = true
+    }
   }
 
   async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
@@ -82,10 +87,10 @@ export class PersistentLocalD3Session implements D3Session {
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
     const promptPattern = this.profile.promptPattern ? new RegExp(this.profile.promptPattern) : undefined
-    if (promptPattern && this.stdout.length === 0) await absorbStartupPrompt(() => {
+    if (promptPattern && !promptPattern.test(this.stdout)) await absorbStartupPrompt(() => {
       if (this.closedError) throw this.closedError
       return promptPattern.test(this.stdout)
-    })
+    }, Math.min(timeoutMs, 2_000))
     const stdoutStart = this.stdout.length
     const stderrStart = this.stderr.length
     let streamedStdout = 0

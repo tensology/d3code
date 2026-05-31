@@ -84,3 +84,20 @@ test("persistent local D3 session streams prompted output without startup prompt
     await session.close()
   }
 })
+
+test("persistent local D3 session can send D3 login startup input before waiting for TCL prompt", async () => {
+  const session = new PersistentLocalD3Session({
+    name: "d3-login",
+    type: "local",
+    sessionMode: "persistent",
+    entryCommand: "node -e \"let b='';let authed=false;process.stdout.write('user id:');process.stdin.on('data',d=>{b+=d;if(!authed&&b==='dm\\\\ndm\\\\n'){authed=true;process.stdout.write('\\\\n:');return}if(authed&&b.endsWith('WHO\\\\n')){process.stdout.write('1 dm dm\\\\n:')}})\"",
+    startupInput: "dm\ndm\n",
+    promptPattern: ":",
+  })
+  try {
+    const result = await session.run("WHO", 1_000)
+    assert.match(result.stdout, /1 dm dm/)
+  } finally {
+    await session.close()
+  }
+})

@@ -10,6 +10,7 @@ export interface ConnectionProfile {
   username?: string
   account?: string
   entryCommand?: string
+  startupInput?: string
   promptPattern?: string
   sessionMode?: "oneshot" | "persistent"
   safetyDefault?: SafetyMode

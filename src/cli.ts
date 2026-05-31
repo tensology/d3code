@@ -18,7 +18,7 @@ import { detectLocalD3 } from "./d3/detect.js"
 import { createLiveProofReport, profileDoctorGoalEvidence, renderLiveProofReport } from "./d3/live-proof.js"
 import { checkLiveProofArtifacts, renderLiveProofArtifactReport, renderLiveProofScaffold, writeLiveProofScaffold } from "./d3/live-proof-artifacts.js"
 import { diagnoseProfile, renderProfileDoctor } from "./d3/profile-doctor.js"
-import { D3_TCL_PROMPT_PATTERN } from "./d3/prompts.js"
+import { D3_TCL_PROMPT_PATTERN, normalizeD3PromptPattern } from "./d3/prompts.js"
 import { createIdeTerminalContract, renderIdeTerminalContract } from "./d3/ide-terminal.js"
 import { parseD3ScreenTranscript, renderD3ScreenBuffer } from "./d3/screen-buffer.js"
 import { captureD3Terminal, renderD3TerminalCapture, writeD3TerminalCapture } from "./d3/terminal-capture.js"
@@ -210,6 +210,7 @@ program
   .option("--profile-name <name>", "D3 profile name")
   .option("--account <account>", "D3 account for the profile")
   .option("--entry <command>", "command that enters D3/TCL")
+  .option("--startup-input <input>", "text to send after the D3 process starts; use \\n for newlines")
   .option("--prompt <pattern>", "expected D3 prompt pattern")
   .option("--session <mode>", "session mode: oneshot|persistent")
   .option("--host <host>", "SSH host for a D3 profile")
@@ -226,6 +227,7 @@ program
     profileName?: string
     account?: string
     entry?: string
+    startupInput?: string
     prompt?: string
     session?: "oneshot" | "persistent"
     host?: string
@@ -251,7 +253,8 @@ program
           name,
           account: options.account,
           entryCommand: options.entry,
-          promptPattern: options.prompt ?? D3_TCL_PROMPT_PATTERN,
+          startupInput: options.startupInput?.replace(/\\n/g, "\n"),
+          promptPattern: normalizeD3PromptPattern(options.prompt) ?? D3_TCL_PROMPT_PATTERN,
           sessionMode,
           safetyDefault: config.defaultSafety,
           allowedAccounts: allowedAccounts?.length ? allowedAccounts : undefined,
@@ -333,19 +336,21 @@ program
   .requiredOption("--name <name>")
   .option("--account <account>")
   .option("--entry <command>", "command that enters D3/TCL")
+  .option("--startup-input <input>", "text to send after the D3 process starts; use \\n for newlines")
   .option("--prompt <pattern>", "expected D3 prompt pattern")
   .option("--session <mode>", "session mode: oneshot|persistent")
   .option("--safety <mode>", "default safety for this profile")
   .option("--allowed-accounts <accounts>", "comma-separated account allowlist for this profile")
   .description("Add or update a local D3 profile.")
-  .action(async (options: { name: string; account?: string; entry?: string; prompt?: string; session?: "oneshot" | "persistent"; safety?: string; allowedAccounts?: string }) => {
+  .action(async (options: { name: string; account?: string; entry?: string; startupInput?: string; prompt?: string; session?: "oneshot" | "persistent"; safety?: string; allowedAccounts?: string }) => {
     const config = await loadConfig()
     const next = {
       name: options.name,
       type: "local" as const,
       account: options.account,
       entryCommand: options.entry,
-      promptPattern: options.prompt,
+      startupInput: options.startupInput?.replace(/\\n/g, "\n"),
+      promptPattern: normalizeD3PromptPattern(options.prompt),
       sessionMode: options.session,
       safetyDefault: options.safety ? parseSafety(options.safety) : undefined,
       allowedAccounts: options.allowedAccounts?.split(",").map((item) => item.trim()).filter(Boolean),
@@ -364,12 +369,13 @@ program
   .option("--port <port>", "SSH port", (value) => Number(value), 22)
   .option("--account <account>")
   .option("--entry <command>", "remote command that enters D3/TCL")
+  .option("--startup-input <input>", "text to send after the D3 process starts; use \\n for newlines")
   .option("--prompt <pattern>", "expected D3 prompt pattern")
   .option("--session <mode>", "session mode: oneshot|persistent")
   .option("--safety <mode>", "default safety for this profile")
   .option("--allowed-accounts <accounts>", "comma-separated account allowlist for this profile")
   .description("Add or update an SSH D3 profile. Passwords/keys are not stored here.")
-  .action(async (options: { name: string; host: string; user: string; port: number; account?: string; entry?: string; prompt?: string; session?: "oneshot" | "persistent"; safety?: string; allowedAccounts?: string }) => {
+  .action(async (options: { name: string; host: string; user: string; port: number; account?: string; entry?: string; startupInput?: string; prompt?: string; session?: "oneshot" | "persistent"; safety?: string; allowedAccounts?: string }) => {
     const config = await loadConfig()
     const next = {
       name: options.name,
@@ -379,7 +385,8 @@ program
       port: options.port,
       account: options.account,
       entryCommand: options.entry,
-      promptPattern: options.prompt,
+      startupInput: options.startupInput?.replace(/\\n/g, "\n"),
+      promptPattern: normalizeD3PromptPattern(options.prompt),
       sessionMode: options.session,
       safetyDefault: options.safety ? parseSafety(options.safety) : undefined,
       allowedAccounts: options.allowedAccounts?.split(",").map((item) => item.trim()).filter(Boolean),

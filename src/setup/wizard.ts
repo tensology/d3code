@@ -6,7 +6,7 @@ import { normalizeProviderID, providers } from "../providers/catalog.js"
 import { discoverProviderModels } from "../providers/model-discovery.js"
 import type { SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
-import { D3_TCL_PROMPT_PATTERN, describeD3PromptPattern } from "../d3/prompts.js"
+import { D3_TCL_PROMPT_PATTERN, describeD3PromptPattern, normalizeD3PromptPattern } from "../d3/prompts.js"
 
 export interface Choice {
   id: string
@@ -118,8 +118,9 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
         .map((item) => item.trim())
         .filter(Boolean)
       const entryCommand = (await rl.question("Command to enter D3/TCL on that server (blank if shell already lands there): ")).trim() || undefined
+      const startupInput = (await rl.question("Startup input after D3 opens (use \\n for newlines, blank for none): ")).trim().replace(/\\n/g, "\n") || undefined
       console.log(describeD3PromptPattern())
-      const promptPattern = (await rl.question(`D3 prompt regex [${D3_TCL_PROMPT_PATTERN}]: `)).trim() || D3_TCL_PROMPT_PATTERN
+      const promptPattern = normalizeD3PromptPattern(await rl.question(`D3 prompt regex [${D3_TCL_PROMPT_PATTERN}]: `)) || D3_TCL_PROMPT_PATTERN
       renderChoices("D3 runtime session", [
         { id: "persistent", label: "Keep connected", hint: "best for the IDE and agent" },
         { id: "oneshot", label: "One command at a time", hint: "safer but less interactive" },
@@ -139,13 +140,14 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
           port: Number((await rl.question("SSH port [22]: ")).trim() || "22"),
           account,
           entryCommand,
+          startupInput,
           promptPattern,
           sessionMode,
           safetyDefault: config.defaultSafety,
           allowedAccounts: allowedAccounts.length ? allowedAccounts : undefined,
         }
       } else {
-        profile = { name: profileName, type: "local", account, entryCommand, promptPattern, sessionMode, safetyDefault: config.defaultSafety, allowedAccounts: allowedAccounts.length ? allowedAccounts : undefined }
+        profile = { name: profileName, type: "local", account, entryCommand, startupInput, promptPattern, sessionMode, safetyDefault: config.defaultSafety, allowedAccounts: allowedAccounts.length ? allowedAccounts : undefined }
       }
       config.profiles = [...config.profiles.filter((item) => item.name !== profile.name), profile]
       config.defaultProfile = profile.name

@@ -977,6 +977,8 @@ test("CLI setup can bootstrap a persistent D3 profile noninteractively", async (
     "SALES",
     "--entry",
     "d3",
+    "--startup-input",
+    "dm\\ndm\\n",
     "--prompt",
     ">",
     "--allowed-accounts",
@@ -996,6 +998,8 @@ test("CLI setup can bootstrap a persistent D3 profile noninteractively", async (
   assert.match(profiles.stdout, /account=SALES/)
   assert.match(profiles.stdout, /session=persistent/)
   assert.match(profiles.stdout, /allowed=SALES,DM/)
+  const config = JSON.parse(await readFile(join(home, "config.jsonc"), "utf8")) as { profiles: Array<{ startupInput?: string }> }
+  assert.equal(config.profiles[0]?.startupInput, "dm\ndm\n")
 
   const readiness = await execFileAsync("node", ["dist/src/cli.js", "readiness"], {
     cwd: process.cwd(),

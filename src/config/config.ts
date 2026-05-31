@@ -14,6 +14,7 @@ const ProfileSchema = z.object({
   username: z.string().optional(),
   account: z.string().optional(),
   entryCommand: z.string().optional(),
+  startupInput: z.string().optional(),
   promptPattern: z.string().optional(),
   sessionMode: z.enum(["oneshot", "persistent"]).optional(),
   safetyDefault: SafetySchema.optional(),

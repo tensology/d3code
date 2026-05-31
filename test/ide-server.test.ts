@@ -40,6 +40,8 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.match(html, /Dictionaries/)
   assert.match(html, /BASIC \/ Subroutines/)
   assert.match(html, /D3 Runtime/)
+  assert.match(html, /Terminal emulation/)
+  assert.match(html, /Startup input/)
   assert.match(html, /Item \/ BASIC Editor/)
   assert.match(html, /Agent/)
   assert.match(html, /Compile BASIC/)
@@ -52,6 +54,36 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
 
   const profiles = await fetch(`${server.url}/api/profiles`).then((response) => response.json()) as { profiles: Array<{ name: string }> }
   assert.deepEqual(profiles.profiles.map((profile) => profile.name), ["fake", "alt"])
+})
+
+test("IDE server normalizes browser-created D3 profiles for terminal emulation", async () => {
+  const server = await startIdeServer({ ...config, profiles: [...config.profiles] }, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+
+  const response = await fetch(`${server.url}/api/profile/manage`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      confirmed: true,
+      profile: {
+        name: "browser-d3",
+        type: "local",
+        account: "dm",
+        entryCommand: "d3",
+        startupInput: "dm\\ndm\\n",
+        promptPattern: ":",
+        sessionMode: "persistent",
+        safetyDefault: "ask",
+      },
+    }),
+  })
+  const payload = await response.json() as { profile: string }
+  assert.equal(response.status, 200)
+  assert.equal(payload.profile, "browser-d3")
+
+  const profiles = await fetch(`${server.url}/api/profiles`).then((res) => res.json()) as { profiles: Array<{ name: string; startupInput?: string; promptPattern?: string }> }
+  const saved = profiles.profiles.find((profile) => profile.name === "browser-d3")
+  assert.equal(saved?.startupInput, "dm\ndm\n")
+  assert.equal(saved?.promptPattern, "(^|\\n):\\s*$")
 })
 
 test("IDE server exposes terminal send through guarded D3 tool layer", async () => {
