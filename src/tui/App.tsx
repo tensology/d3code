@@ -31,15 +31,6 @@ import { formatToolActivity, formatToolResultTitle } from "./tool-activity.js"
 import { canEnableRawMode } from "./raw-mode.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
-const logoLines = [
-  "██████╗ ██████╗   ██████╗ ██████╗ ██████╗ ███████╗",
-  "██╔══██╗╚════██╗ ██╔════╝██╔═══██╗██╔══██╗██╔════╝",
-  "██║  ██║ █████╔╝ ██║     ██║   ██║██║  ██║█████╗  ",
-  "██║  ██║ ╚═══██╗ ██║     ██║   ██║██║  ██║██╔══╝  ",
-  "██████╔╝██████╔╝ ╚██████╗╚██████╔╝██████╔╝███████╗",
-  "╚═════╝ ╚═════╝   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
-]
-
 function renderTuiD3Screen(buffer: D3ScreenBuffer): string {
   const visibleEnd = Math.max(1, ...buffer.lines.map((line, index) => line.trim().length ? index + 1 : 0))
   return [
@@ -121,7 +112,6 @@ export function App(props: AppProps) {
   const [streamingToolLabel, setStreamingToolLabel] = useState("")
   const [activeSubmittedTurn, setActiveSubmittedTurn] = useState<SubmittedTurn>()
   const [project, setProject] = useState<ProjectContext | undefined>()
-  const [caretOn, setCaretOn] = useState(true)
   const [busyFrame, setBusyFrame] = useState(0)
   const [busySeconds, setBusySeconds] = useState(0)
   const [history, setHistory] = useState<string[]>([])
@@ -203,15 +193,6 @@ export function App(props: AppProps) {
       d3Session.current = undefined
     }
   }, [])
-
-  useEffect(() => {
-    if (busy) {
-      setCaretOn(true)
-      return
-    }
-    const timer = setInterval(() => setCaretOn((current) => !current), 520)
-    return () => clearInterval(timer)
-  }, [busy])
 
   useEffect(() => {
     if (!busy) return
@@ -865,7 +846,7 @@ export function App(props: AppProps) {
     setTranscript((current) => [...current, { role: "tool", content: `exit ${capture.result.exitCode ?? "unknown"} in ${formatDurationMs(capture.result.durationMs)}\n${output}` }])
   }
 
-  const renderedDraft = renderPromptDraft(draft, caretOn)
+  const renderedDraft = renderPromptDraft(draft, true)
   const promptMeta = formatPromptMeta({ model, profile, d3Attached, mode, safety, usage, workspaceChanges, project })
   const hasStreamingBlock = Boolean(streamingAssistant || streamingShellOutput || streamingD3Output)
   const shellLiveSummary = summarizeLiveOutput(streamingShellOutput, busySeconds)
@@ -897,7 +878,7 @@ export function App(props: AppProps) {
   const visibleTranscript = visibleTranscriptEntries(transcript, activeSubmittedTurn, hasStreamingBlock ? liveToolLabel : undefined)
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={1}>
+    <Box flexDirection="column" paddingX={0} paddingY={1}>
       {sessionHasStarted ? (
         <Box borderStyle="single" borderColor="gray" borderTop={false} borderLeft={false} borderRight={false} paddingBottom={1} flexDirection="row">
           <Text color="cyan" bold>D3 Code</Text>
@@ -909,14 +890,12 @@ export function App(props: AppProps) {
         </Box>
       ) : (
         <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="column">
-          <Box flexDirection="column" marginBottom={1}>
-            {logoLines.map((line) => <Text key={line} color="cyan" bold>{line}</Text>)}
+          <Box flexDirection="row" marginBottom={1}>
+            <Text color="cyan" bold>D3 Code</Text>
+            <Text dimColor> Rocket D3 agent shell</Text>
           </Box>
           <Box flexDirection="row">
             <Box width="38%" flexDirection="column" paddingRight={2}>
-              <Box flexDirection="column">
-                <Text color="cyan" bold>D3 Code</Text>
-              </Box>
               <Text dimColor>Rocket D3 agent shell</Text>
               <Box marginTop={1} flexDirection="column">
                 <Text color={providerStatus === "connected" ? "green" : "yellow"}>{providerStatus === "connected" ? "●" : "○"} AI {providerStatus}</Text>
@@ -974,7 +953,7 @@ export function App(props: AppProps) {
           <Text color={prompt.color} bold>{prompt.glyph}</Text>
           <Text> </Text>
           <Text>{renderedDraft.before}</Text>
-          <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
+          <Text inverse>{renderedDraft.cursor}</Text>
           <Text>{renderedDraft.after}</Text>
         </Box>
         {busy && activeTask ? (
