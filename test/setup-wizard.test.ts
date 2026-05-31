@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { isFreeModelID, orderSetupModels, resolveSetupChoice, type Choice } from "../src/setup/wizard.js"
+import { inferSshD3Defaults, isFreeModelID, orderSetupModels, resolveSetupChoice, type Choice } from "../src/setup/wizard.js"
 
 const choices: Choice[] = [
   { id: "openai", label: "OpenAI" },
@@ -52,4 +52,12 @@ test("setup model list orders free models first", () => {
 
 test("setup choices preserve unknown typed values for validation elsewhere", () => {
   assert.equal(resolveSetupChoice("custom-provider", choices, "openai"), "custom-provider")
+})
+
+test("SSH D3 setup defaults to standard D3 entry and login flow when probe cannot run", async () => {
+  const defaults = await inferSshD3Defaults({ host: "127.0.0.1", username: "missing-user", port: 1 })
+
+  assert.equal(defaults.entryCommand, "d3")
+  assert.equal(defaults.startupInput, "dm\ndm\n")
+  assert.match(defaults.promptPattern, /:/)
 })

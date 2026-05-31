@@ -1,5 +1,7 @@
 import { createInterface } from "node:readline/promises"
 import { stdin as input, stdout as output } from "node:process"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import type { D3CodeConfig } from "../config/config.js"
 import { saveConfig } from "../config/config.js"
 import { normalizeProviderID, providers } from "../providers/catalog.js"
@@ -8,6 +10,8 @@ import { secretRefForProvider, type SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 import { D3_TCL_PROMPT_PATTERN, describeD3PromptPattern, normalizeD3PromptPattern } from "../d3/prompts.js"
 import { DEFAULT_D3_PROFILE_NAME, inferLocalD3ProfileDefaults } from "../d3/profile-defaults.js"
+
+const execFileAsync = promisify(execFile)
 
 export interface Choice {
   id: string
@@ -57,6 +61,26 @@ function modelChoices(models: string[]): Choice[] {
 
 function displayModelChoices(models: string[], limit = 50): string[] {
   return orderSetupModels(models).slice(0, limit)
+}
+
+export async function inferSshD3Defaults(input: { host: string; username: string; port: number }): Promise<{ entryCommand: string; startupInput: string; promptPattern: string; detectionDetails: string }> {
+  try {
+    const result = await execFileAsync("ssh", ["-p", String(input.port), `${input.username}@${input.host}`, "command -v d3 || true"], { timeout: 5_000 })
+    const detected = result.stdout.trim().split(/\r?\n/).find(Boolean)
+    return {
+      entryCommand: detected ? "d3" : "d3",
+      startupInput: "dm\ndm\n",
+      promptPattern: D3_TCL_PROMPT_PATTERN,
+      detectionDetails: detected ? `Rocket D3 detected at ${detected}` : "Could not verify d3 on PATH; using standard `d3` entry command.",
+    }
+  } catch {
+    return {
+      entryCommand: "d3",
+      startupInput: "dm\ndm\n",
+      promptPattern: D3_TCL_PROMPT_PATTERN,
+      detectionDetails: "Could not probe SSH host; using standard Rocket D3 defaults.",
+    }
+  }
 }
 
 export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore): Promise<D3CodeConfig> {
@@ -118,45 +142,45 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
       const profileName = (await rl.question(`Profile name [${defaultName}]: `)).trim() || defaultName
       const defaultAccount = localDefaults?.account ?? ""
       const account = (await rl.question(`Default D3 account name/path${defaultAccount ? ` [${defaultAccount}]` : ""}: `)).trim() || defaultAccount || undefined
-      const allowedAccounts = (await rl.question("Allowed D3 accounts for this profile (comma-separated, blank for no allowlist): ")).trim()
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-      const defaultEntry = localDefaults?.entryCommand ?? ""
-      const entryCommand = (await rl.question(`Command to enter D3/TCL on that server${defaultEntry ? ` [${defaultEntry}]` : " (blank if shell already lands there)"}: `)).trim() || defaultEntry || undefined
-      const defaultStartup = localDefaults?.startupInput?.replace(/\r/g, "\\n").replace(/\n/g, "\\n") ?? ""
-      const startupAnswer = (await rl.question(`Startup input after D3 opens (use \\n for newlines${defaultStartup ? `, default ${defaultStartup}` : ", blank for none"}): `)).trim().replace(/\\n/g, "\n") || localDefaults?.startupInput || undefined
-      const startupInput = entryCommand && /(^|[\/\s])d3(\s|$)/i.test(entryCommand) ? startupAnswer?.replace(/\n/g, "\r") : startupAnswer
-      console.log(describeD3PromptPattern())
-      const promptDefault = localDefaults?.promptPattern ?? D3_TCL_PROMPT_PATTERN
-      const promptPattern = normalizeD3PromptPattern(await rl.question(`D3 prompt regex [${promptDefault}]: `)) || promptDefault
-      renderChoices("D3 runtime session", [
-        { id: "persistent", label: "Keep connected", hint: "best for the IDE and agent" },
-        { id: "oneshot", label: "One command at a time", hint: "safer but less interactive" },
-      ])
-      const sessionModeAnswer = resolveSetupChoice(await rl.question("Session 1-2 [1 Keep connected]: "), [
-        { id: "persistent", label: "Keep connected" },
-        { id: "oneshot", label: "One command at a time" },
-      ], "persistent").toLowerCase()
-      const sessionMode = sessionModeAnswer === "oneshot" ? "oneshot" : "persistent"
       let profile: ConnectionProfile
       if (localOrSsh === "ssh") {
+        const host = (await rl.question("SSH host/IP: ")).trim()
+        const username = (await rl.question("SSH username: ")).trim()
+        const port = Number((await rl.question("SSH port [22]: ")).trim() || "22")
+        const sshDefaults = await inferSshD3Defaults({ host, username, port })
+        console.log(`Detected SSH D3 defaults: ${sshDefaults.detectionDetails}`)
         profile = {
           name: profileName,
           type: "ssh",
-          host: (await rl.question("SSH host/IP: ")).trim(),
-          username: (await rl.question("SSH username: ")).trim(),
-          port: Number((await rl.question("SSH port [22]: ")).trim() || "22"),
+          host,
+          username,
+          port,
           account,
-          entryCommand,
-          startupInput,
-          promptPattern,
-          sessionMode,
+          entryCommand: sshDefaults.entryCommand,
+          startupInput: sshDefaults.startupInput,
+          promptPattern: sshDefaults.promptPattern,
+          sessionMode: "persistent",
           safetyDefault: config.defaultSafety,
-          allowedAccounts: allowedAccounts.length ? allowedAccounts : undefined,
         }
       } else {
-        profile = { name: profileName, type: "local", account, entryCommand, startupInput, promptPattern, sessionMode, safetyDefault: config.defaultSafety, allowedAccounts: allowedAccounts.length ? allowedAccounts : undefined }
+        const defaultEntry = localDefaults?.entryCommand ?? ""
+        const entryCommand = (await rl.question(`Command to enter D3/TCL${defaultEntry ? ` [${defaultEntry}]` : " (blank if shell already lands there)"}: `)).trim() || defaultEntry || undefined
+        const defaultStartup = localDefaults?.startupInput?.replace(/\r/g, "\\n").replace(/\n/g, "\\n") ?? ""
+        const startupAnswer = (await rl.question(`Startup input after D3 opens (use \\n for newlines${defaultStartup ? `, default ${defaultStartup}` : ", blank for none"}): `)).trim().replace(/\\n/g, "\n") || localDefaults?.startupInput || undefined
+        const startupInput = entryCommand && /(^|[\/\s])d3(\s|$)/i.test(entryCommand) ? startupAnswer?.replace(/\n/g, "\r") : startupAnswer
+        console.log(describeD3PromptPattern())
+        const promptDefault = localDefaults?.promptPattern ?? D3_TCL_PROMPT_PATTERN
+        const promptPattern = normalizeD3PromptPattern(await rl.question(`D3 prompt regex [${promptDefault}]: `)) || promptDefault
+        renderChoices("D3 runtime session", [
+          { id: "persistent", label: "Keep connected", hint: "best for the IDE and agent" },
+          { id: "oneshot", label: "One command at a time", hint: "safer but less interactive" },
+        ])
+        const sessionModeAnswer = resolveSetupChoice(await rl.question("Session 1-2 [1 Keep connected]: "), [
+          { id: "persistent", label: "Keep connected" },
+          { id: "oneshot", label: "One command at a time" },
+        ], "persistent").toLowerCase()
+        const sessionMode = sessionModeAnswer === "oneshot" ? "oneshot" : "persistent"
+        profile = { name: profileName, type: "local", account, entryCommand, startupInput, promptPattern, sessionMode, safetyDefault: config.defaultSafety }
       }
       config.profiles = [...config.profiles.filter((item) => item.name !== profile.name), profile]
       config.defaultProfile = profile.name
