@@ -31,19 +31,16 @@ test("active turn echo keeps submitted input in the prompt well while work runs"
   assert.deepEqual(formatActiveTurnEcho(inputRoleForLine("build order app", "chat")), {
     glyph: "›",
     content: "build order app",
-    label: "You",
     color: "cyan",
   })
   assert.deepEqual(formatActiveTurnEcho(inputRoleForLine("! npm test", "chat")), {
     glyph: "› !",
     content: "npm test",
-    label: "Unix shell",
     color: "cyan",
   })
   assert.deepEqual(formatActiveTurnEcho(inputRoleForLine("LIST MD", "d3")), {
     glyph: ":",
     content: "LIST MD",
-    label: "D3 TCL",
     color: "yellow",
   })
 })

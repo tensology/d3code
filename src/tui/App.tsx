@@ -975,7 +975,6 @@ export function App(props: AppProps) {
             <Text color={activeTurnEcho.color} bold>{activeTurnEcho.glyph}</Text>
             <Text> </Text>
             <Text>{activeTurnEcho.content}</Text>
-            <Text dimColor>{`  ${activeTurnEcho.label}`}</Text>
           </Box>
         ) : null}
         <Box flexDirection="row">

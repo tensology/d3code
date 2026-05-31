@@ -16,7 +16,6 @@ export interface SubmittedTurnView extends SubmittedTurn {
 export interface ActiveTurnEcho {
   glyph: string
   content: string
-  label: string
   color: "cyan" | "yellow"
 }
 
@@ -47,10 +46,9 @@ export function formatSubmittedTurn(turn: SubmittedTurn): SubmittedTurnView {
 }
 
 export function formatActiveTurnEcho(turn: SubmittedTurn): ActiveTurnEcho {
-  const view = formatSubmittedTurn(turn)
-  if (turn.kind === "shell") return { glyph: "› !", content: turn.content, label: view.label, color: "cyan" }
-  if (turn.kind === "d3") return { glyph: ":", content: turn.content, label: view.label, color: "yellow" }
-  return { glyph: "›", content: turn.content, label: view.label, color: "cyan" }
+  if (turn.kind === "shell") return { glyph: "› !", content: turn.content, color: "cyan" }
+  if (turn.kind === "d3") return { glyph: ":", content: turn.content, color: "yellow" }
+  return { glyph: "›", content: turn.content, color: "cyan" }
 }
 
 export function formatLiveTurnLabel(input: { kind: SubmittedTurnKind; detail: string }): string {
