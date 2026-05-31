@@ -30,6 +30,7 @@ export function compactTranscriptContent(content: string, maxLines = 8): string[
 export function transcriptPrefix(role: string): string {
   if (role === "user") return "› "
   if (role === "shell-input") return "› ! "
+  if (role === "d3-input") return "› : "
   if (role === "assistant") return "d3code: "
   if (role === "assistant-stream") return "  ⎿ "
   if (role === "assistant-interrupted") return "  ⎿ "
@@ -53,11 +54,28 @@ export function transcriptColor(role: string): string {
   if (role === "pending") return "yellow"
   if (role === "queued") return "cyan"
   if (role === "shell-input") return "white"
+  if (role === "d3-input") return "white"
   if (role === "user") return "white"
   if (role === "file-change-live") return "yellow"
   if (role === "tool-live") return "yellow"
   if (role === "tool-start" || role === "file-change" || role === "shell-output") return "cyan"
   return "gray"
+}
+
+function InputBlock({ content, role }: { content: string; role: "user" | "shell-input" | "d3-input" }) {
+  const prefix = transcriptPrefix(role)
+  const lines = content.split(/\r?\n/).flatMap((line) => wrapTranscriptLine(line, 72 - prefix.length))
+  const prefixColor = role === "shell-input" ? "cyan" : role === "d3-input" ? "yellow" : "white"
+  return (
+    <Box flexDirection="column">
+      {lines.map((line, index) => (
+        <Box key={`${index}-${line}`} flexDirection="row">
+          <Text color={prefixColor}>{index === 0 ? prefix : " ".repeat(prefix.length)}</Text>
+          <Text color="white">{line}</Text>
+        </Box>
+      ))}
+    </Box>
+  )
 }
 
 function ResponseBlock({ content, titleColor = "cyan", maxLines = 8 }: { content: string; titleColor?: string; maxLines?: number }) {
@@ -131,6 +149,7 @@ function QueuedBlock({ content }: { content: string }) {
 }
 
 export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
+  if (entry.role === "user" || entry.role === "shell-input" || entry.role === "d3-input") return <InputBlock content={entry.content} role={entry.role} />
   if (entry.role === "pending") return <PendingBlock content={entry.content} />
   if (entry.role === "queued") return <QueuedBlock content={entry.content} />
   if (entry.role === "assistant" || entry.role === "assistant-stream") return <ResponseBlock content={`d3code\n${entry.content}`} titleColor="green" maxLines={14} />
