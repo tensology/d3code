@@ -8,6 +8,7 @@ SKIP_NPM_LINK="${D3CODE_SKIP_NPM_LINK:-0}"
 NODE_DIST_BASE="${D3CODE_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v20.x}"
 LOCAL_NODE_DIR="$ROOT_DIR/.local/node"
 LOCAL_NODE_BIN="$LOCAL_NODE_DIR/bin"
+GLOBAL_BIN_DIR="${D3CODE_GLOBAL_BIN_DIR:-/usr/local/bin}"
 
 if [ -x "$LOCAL_NODE_BIN/node" ]; then
   export PATH="$LOCAL_NODE_BIN:$PATH"
@@ -172,6 +173,35 @@ detect_d3() {
   warn "D3 Code can still run, but live local profiles need a server where the d3 command is available."
 }
 
+install_global_command_links() {
+  if [ ! -x "$LOCAL_NODE_BIN/node" ]; then
+    return
+  fi
+
+  if [ ! -d "$GLOBAL_BIN_DIR" ]; then
+    warn "Global bin directory $GLOBAL_BIN_DIR does not exist; leaving commands in $LOCAL_NODE_BIN."
+    return
+  fi
+
+  local link_cmd="ln"
+  if [ ! -w "$GLOBAL_BIN_DIR" ]; then
+    if need_cmd sudo; then
+      link_cmd="sudo ln"
+    else
+      warn "Cannot write to $GLOBAL_BIN_DIR. Add this to your shell instead:"
+      warn "  export PATH=\"$LOCAL_NODE_BIN:\$PATH\""
+      return
+    fi
+  fi
+
+  info "Installing durable command links in $GLOBAL_BIN_DIR..."
+  $link_cmd -sfn "$LOCAL_NODE_BIN/node" "$GLOBAL_BIN_DIR/node"
+  $link_cmd -sfn "$LOCAL_NODE_BIN/npm" "$GLOBAL_BIN_DIR/npm"
+  $link_cmd -sfn "$LOCAL_NODE_BIN/npx" "$GLOBAL_BIN_DIR/npx"
+  $link_cmd -sfn "$LOCAL_NODE_BIN/d3code" "$GLOBAL_BIN_DIR/d3code"
+  ok "d3code command is available at $GLOBAL_BIN_DIR/d3code."
+}
+
 main() {
   info "D3 Code setup"
   cd "$ROOT_DIR"
@@ -191,10 +221,12 @@ main() {
     warn "Skipping npm link because D3CODE_SKIP_NPM_LINK=1."
   fi
 
+  install_global_command_links
+
   detect_d3
 
   ok "D3 Code setup complete."
-  if [[ ":$PATH:" = *":$LOCAL_NODE_BIN:"* ]]; then
+  if ! need_cmd d3code && [[ ":$PATH:" != *":$LOCAL_NODE_BIN:"* ]]; then
     printf '\nShell note:\n'
     printf '  export PATH="%s:$PATH"\n' "$LOCAL_NODE_BIN"
   fi
