@@ -128,6 +128,7 @@ export function App(props: AppProps) {
   const [streamingAssistant, setStreamingAssistant] = useState("")
   const [streamingShellOutput, setStreamingShellOutput] = useState("")
   const [streamingD3Output, setStreamingD3Output] = useState("")
+  const [streamingToolLabel, setStreamingToolLabel] = useState("")
   const [project, setProject] = useState<ProjectContext | undefined>()
   const [caretOn, setCaretOn] = useState(true)
   const [busyFrame, setBusyFrame] = useState(0)
@@ -535,6 +536,7 @@ export function App(props: AppProps) {
       setStreamingAssistant("")
       setStreamingShellOutput("")
       setStreamingD3Output("")
+      setStreamingToolLabel("")
       setTranscript((current) => [...current, { role: "user", content: line }, { role: "system", content: "Goodbye." }])
       await record({ type: "user", content: line, metadata: { mode, model, safety, profile } })
       await record({ type: "system", content: "Goodbye.", metadata: { command: line } })
@@ -547,6 +549,7 @@ export function App(props: AppProps) {
     setBusy(true)
     setStreamingShellOutput("")
     setStreamingD3Output("")
+    setStreamingToolLabel("")
     setWorkspaceChanges(undefined)
     workspaceBaselineRef.current = undefined
     streamSuppressRef.current = false
@@ -640,6 +643,7 @@ export function App(props: AppProps) {
           }
           if (event.type === "tool_start") {
             setStreamingAssistant("")
+            setStreamingToolLabel(event.name)
             setActiveTask(`running ${event.name}`)
             setTranscript((current) => [
               ...current,
@@ -658,6 +662,7 @@ export function App(props: AppProps) {
         signal: abortController.signal,
       })
       setStreamingAssistant("")
+      setStreamingToolLabel("")
       setMessages(response.messages)
       setUsage(response.usage)
       for (const event of response.toolEvents) {
@@ -671,6 +676,7 @@ export function App(props: AppProps) {
       setStreamingAssistant("")
       setStreamingShellOutput("")
       setStreamingD3Output("")
+      setStreamingToolLabel("")
       setTranscript((current) => [
         ...current,
         ...(abortController.signal.aborted && interruptedAssistant ? [{ role: "assistant-interrupted", content: interruptedAssistant }] : []),
@@ -734,6 +740,7 @@ export function App(props: AppProps) {
       return
     }
     setActiveTask(`running ! ${command.split(/\s+/)[0]}`)
+    setStreamingToolLabel(`Bash: ${command}`)
     setTranscript((current) => [...current, { role: "tool-start", content: `Bash: ${command}` }])
     const result = await runLocalShellCommand(command, {
       signal,
@@ -742,6 +749,7 @@ export function App(props: AppProps) {
     })
     const output = renderLocalShellResult(result)
     setStreamingShellOutput("")
+    setStreamingToolLabel("")
     setTranscript((current) => [...current, { role: "shell-output", content: output || "exit 0" }])
     await record({ type: "tool", content: `shell\n$ ${command}\n${output}`, metadata: { tool: "local_shell", command, exitCode: result.exitCode, signal: result.signal } })
   }
@@ -755,6 +763,7 @@ export function App(props: AppProps) {
     if (!d3Session.current) d3Session.current = createD3Session(selected)
     assertD3Allowed(safety, line, safety === "trust")
     setActiveTask(`running D3 ${line.split(/\s+/)[0] ?? "command"}`)
+    setStreamingToolLabel(`D3 TCL: ${line}`)
     setTranscript((current) => [...current, { role: "tool-start", content: `D3 TCL: ${line}` }])
     const capture = await captureD3Terminal(d3Session.current, line, {
       width: 80,
@@ -766,6 +775,7 @@ export function App(props: AppProps) {
       ? renderTuiD3Screen(capture.screen)
       : capture.result.stdout || capture.result.stderr || "(no D3 output)"
     setStreamingD3Output("")
+    setStreamingToolLabel("")
     setTranscript((current) => [...current, { role: "tool", content: `exit ${capture.result.exitCode ?? "unknown"} in ${formatDurationMs(capture.result.durationMs)}\n${output}` }])
   }
 
@@ -831,8 +841,8 @@ export function App(props: AppProps) {
         ))}
         {pendingTurn ? <TranscriptEntryView entry={{ role: "pending", content: pendingTurn }} /> : null}
         {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: pacedAssistant }} /> : null}
-        {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `running\n${pacedShellOutput.trimEnd()}` }} /> : null}
-        {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `D3 running\n${pacedD3Output.trimEnd()}` }} /> : null}
+        {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `${streamingToolLabel || "Bash running"}\n${pacedShellOutput.trimEnd()}` }} /> : null}
+        {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `${streamingToolLabel || "D3 running"}\n${pacedD3Output.trimEnd()}` }} /> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
