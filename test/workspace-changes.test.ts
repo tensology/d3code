@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { formatWorkspaceChangeFooter, parseGitNumstat, parseGitStatus, renderWorkspaceChangeSummary, renderWorkspaceChangeWithDiff, summarizeWorkspaceChanges, type WorkspaceSnapshot } from "../src/tui/workspace-changes.js"
+import { formatWorkspaceChangeFooter, parseGitNumstat, parseGitStatus, renderLiveWorkspaceChangeSummary, renderWorkspaceChangeSummary, renderWorkspaceChangeWithDiff, summarizeWorkspaceChanges, type WorkspaceSnapshot } from "../src/tui/workspace-changes.js"
 
 function snapshot(raw: string, numstat = ""): WorkspaceSnapshot {
   return { available: true, files: parseGitStatus(raw, parseGitNumstat(numstat)) }
@@ -36,6 +36,19 @@ test("workspace change summary detects additional edits to an already modified f
   assert.equal(renderWorkspaceChangeSummary(summary!), [
     "Files changed: 1 (1 modified, +5, -1)",
     "modified src/app.ts +5/-1",
+  ].join("\n"))
+})
+
+test("live workspace change summary reads like active file activity", () => {
+  const summary = summarizeWorkspaceChanges(
+    snapshot(""),
+    snapshot(" M src/app.ts\n?? generated/ORDERS.md\n", "5\t1\tsrc/app.ts\n"),
+  )!
+
+  assert.equal(renderLiveWorkspaceChangeSummary(summary), [
+    "Editing files: 2 changed (+5/-1)",
+    "modified src/app.ts +5/-1",
+    "added    generated/ORDERS.md",
   ].join("\n"))
 })
 

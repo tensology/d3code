@@ -110,6 +110,22 @@ export function renderWorkspaceChangeSummary(summary: WorkspaceChangeSummary): s
   ].filter(Boolean).join("\n")
 }
 
+export function renderLiveWorkspaceChangeSummary(summary: WorkspaceChangeSummary): string {
+  const totalAdditions = summary.files.reduce((sum, file) => sum + (file.additions ?? 0), 0)
+  const totalDeletions = summary.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)
+  const stat = totalAdditions || totalDeletions ? ` (+${totalAdditions}/-${totalDeletions})` : ""
+  return [
+    `Editing files: ${summary.filesChanged} changed${stat}`,
+    ...summary.files.slice(0, 6).map((file) => {
+      const fileStat = file.additions !== undefined || file.deletions !== undefined
+        ? ` +${file.additions ?? 0}/-${file.deletions ?? 0}`
+        : ""
+      return `${workspaceStatusLabel(file.code).padEnd(8)} ${file.path}${fileStat}`
+    }),
+    summary.files.length > 6 ? `... ${summary.files.length - 6} more files` : undefined,
+  ].filter(Boolean).join("\n")
+}
+
 export function renderWorkspaceChangeWithDiff(summary: WorkspaceChangeSummary, diff: string, maxDiffLines = 60): string {
   const base = renderWorkspaceChangeSummary(summary)
   const compact = diff.split(/\r?\n/)

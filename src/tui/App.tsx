@@ -18,7 +18,7 @@ import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
-import { renderWorkspaceChangeDetails, renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary, type WorkspaceSnapshot } from "./workspace-changes.js"
+import { renderLiveWorkspaceChangeSummary, renderWorkspaceChangeDetails, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary, type WorkspaceSnapshot } from "./workspace-changes.js"
 import { appendLiveTerminalChunk, estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
 import { TranscriptEntryView, visibleTranscriptEntries, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
@@ -881,7 +881,7 @@ export function App(props: AppProps) {
   const suggestions = commandSuggestions(draft.text)
   const queuedPreview = queuedLines.slice(0, 3)
   const queuedOverflow = queuedLines.length - queuedPreview.length
-  const liveWorkspaceChange = busy && activeTask !== "checking files" && workspaceChanges ? renderWorkspaceChangeSummary(workspaceChanges) : ""
+  const liveWorkspaceChange = busy && activeTask !== "checking files" && workspaceChanges ? renderLiveWorkspaceChangeSummary(workspaceChanges) : ""
   const liveToolLabel = activeTask || streamingToolLabel || "Tool running"
   const sessionHasStarted = transcript.length > 0 || busy || hasStreamingBlock || queuedLines.length > 0
   const providerStatus = welcome?.providerStatus ?? "checking"
