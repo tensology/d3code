@@ -6,6 +6,12 @@ MIN_NODE_MAJOR=20
 SKIP_NODE_INSTALL="${D3CODE_SKIP_NODE_INSTALL:-0}"
 SKIP_NPM_LINK="${D3CODE_SKIP_NPM_LINK:-0}"
 NODE_DIST_BASE="${D3CODE_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v20.x}"
+LOCAL_NODE_DIR="$ROOT_DIR/.local/node"
+LOCAL_NODE_BIN="$LOCAL_NODE_DIR/bin"
+
+if [ -x "$LOCAL_NODE_BIN/node" ]; then
+  export PATH="$LOCAL_NODE_BIN:$PATH"
+fi
 
 info() { printf '\033[1;34m%s\033[0m\n' "$*"; }
 ok() { printf '\033[1;32m%s\033[0m\n' "$*"; }
@@ -107,27 +113,33 @@ install_node_tarball() {
     *) return 1 ;;
   esac
 
-  local tmp_dir shasums archive install_root node_dir archive_path
+  local tmp_dir shasums archive node_dir archive_path
   tmp_dir="$(mktemp -d)"
-  install_root="$ROOT_DIR/.local/node"
-  trap 'rm -rf "$tmp_dir"' RETURN
 
   info "Installing Node.js 20 from official Node.js binary archive..."
-  shasums="$(fetch_url "$NODE_DIST_BASE/SHASUMS256.txt")" || return 1
+  shasums="$(fetch_url "$NODE_DIST_BASE/SHASUMS256.txt")" || {
+    rm -rf "$tmp_dir"
+    return 1
+  }
   archive="$(printf '%s\n' "$shasums" | awk '{print $2}' | grep "linux-${node_arch}\.tar\.xz$" | head -n 1)"
   if [ -z "$archive" ]; then
+    rm -rf "$tmp_dir"
     return 1
   fi
   archive_path="$tmp_dir/$archive"
-  fetch_url "$NODE_DIST_BASE/$archive" "$archive_path" || return 1
+  fetch_url "$NODE_DIST_BASE/$archive" "$archive_path" || {
+    rm -rf "$tmp_dir"
+    return 1
+  }
 
-  mkdir -p "$(dirname "$install_root")"
-  rm -rf "$install_root"
-  mkdir -p "$install_root"
-  tar -xJf "$archive_path" -C "$install_root" --strip-components=1
-  export PATH="$install_root/bin:$PATH"
+  mkdir -p "$(dirname "$LOCAL_NODE_DIR")"
+  rm -rf "$LOCAL_NODE_DIR"
+  mkdir -p "$LOCAL_NODE_DIR"
+  tar -xJf "$archive_path" -C "$LOCAL_NODE_DIR" --strip-components=1
+  export PATH="$LOCAL_NODE_BIN:$PATH"
 
-  node_dir="$install_root/bin/node"
+  node_dir="$LOCAL_NODE_BIN/node"
+  rm -rf "$tmp_dir"
   [ -x "$node_dir" ]
 }
 
@@ -182,6 +194,10 @@ main() {
   detect_d3
 
   ok "D3 Code setup complete."
+  if [[ ":$PATH:" = *":$LOCAL_NODE_BIN:"* ]]; then
+    printf '\nShell note:\n'
+    printf '  export PATH="%s:$PATH"\n' "$LOCAL_NODE_BIN"
+  fi
   printf '\nNext steps:\n'
   printf '  d3code setup\n'
   printf '  d3code profile-add-local --name prod --account DM --entry "d3" --prompt ":" --session persistent\n'
