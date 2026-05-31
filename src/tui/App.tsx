@@ -16,7 +16,7 @@ import type { ChatRuntimeContext } from "./context.js"
 import { createD3AgentSystemPrompt, runD3AgentTurn } from "./agent.js"
 import { createWelcomeSummary, type WelcomeSummary } from "./welcome.js"
 import { loadProjectContext, type ProjectContext } from "./project-context.js"
-import { applyRawPromptInput, backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
+import { applyRawPromptControlInput, applyRawPromptInput, backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderLiveWorkspaceChangeSummary, renderWorkspaceChangeDetails, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary, type WorkspaceSnapshot } from "./workspace-changes.js"
 import { appendLiveTerminalChunk, estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
@@ -162,7 +162,9 @@ export function App(props: AppProps) {
   const streamSuppressRef = useRef(false)
   const streamIterationRef = useRef<number | undefined>()
   const rawBusyInputSuppressUntilRef = useRef(0)
+  const rawIdleInputSuppressUntilRef = useRef(0)
   const lastRawBusyInputRef = useRef<{ value: string; until: number }>({ value: "", until: 0 })
+  const lastRawIdleInputRef = useRef<{ value: string; until: number }>({ value: "", until: 0 })
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
   const pacedAssistant = usePacedText(streamingAssistant, busy && Boolean(streamingAssistant))
@@ -271,11 +273,20 @@ export function App(props: AppProps) {
   }, [busy])
 
   useEffect(() => {
-    const onBusyChunk = (chunk: Buffer | string) => {
-      if (!busyRef.current) return
+    const onRawChunk = (chunk: Buffer | string) => {
       const value = typeof chunk === "string" ? chunk : chunk.toString("utf8")
       if (!value) return
       const now = Date.now()
+      if (!busyRef.current) {
+        const nextDraft = applyRawPromptControlInput(draftRef.current, value)
+        if (!nextDraft) return
+        if (lastRawIdleInputRef.current.value === value && now < lastRawIdleInputRef.current.until) return
+        lastRawIdleInputRef.current = { value, until: now + 15 }
+        rawIdleInputSuppressUntilRef.current = now + 80
+        setDraft(nextDraft)
+        setHistoryIndex(undefined)
+        return
+      }
       if (lastRawBusyInputRef.current.value === value && now < lastRawBusyInputRef.current.until) return
       lastRawBusyInputRef.current = { value, until: now + 80 }
       const count = standaloneEscapeCount(value)
@@ -287,12 +298,12 @@ export function App(props: AppProps) {
       rawBusyInputSuppressUntilRef.current = Date.now() + 200
       handleBusyRawInput(value)
     }
-    const onData = (chunk: Buffer | string) => onBusyChunk(chunk)
+    const onData = (chunk: Buffer | string) => onRawChunk(chunk)
     const onReadable = () => {
       if (!busyRef.current) return
       let chunk: Buffer | string | null
       while ((chunk = input.read() as Buffer | string | null) !== null) {
-        onBusyChunk(chunk)
+        onRawChunk(chunk)
       }
     }
     const input = stdinContext.stdin
@@ -368,6 +379,13 @@ export function App(props: AppProps) {
 
   useInput((value, key) => {
     if (busy && Date.now() < rawBusyInputSuppressUntilRef.current) return
+    if (!busy && Date.now() < rawIdleInputSuppressUntilRef.current && (
+      key.backspace ||
+      key.delete ||
+      key.leftArrow ||
+      key.rightArrow ||
+      applyRawPromptControlInput(draftRef.current, value)
+    )) return
     if ((key.ctrl && value === "c") || value === "\u0003") {
       if (busy) {
         interruptActiveTurn("Interrupted. Finishing any already-returned cleanup.")

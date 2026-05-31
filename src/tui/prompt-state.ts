@@ -39,6 +39,16 @@ export function applyRawPromptInput(draft: PromptDraft, value: string): PromptDr
   return insertText(draft, value)
 }
 
+export function applyRawPromptControlInput(draft: PromptDraft, value: string): PromptDraft | undefined {
+  if (value === "\u007F" || value === "\b") return backspace(draft)
+  if (value === "\u001B[3~") return deleteForward(draft)
+  if (value === "\u001B[D") return moveLeft(draft)
+  if (value === "\u001B[C") return moveRight(draft)
+  if (value === "\u001B[H" || value === "\u001B[1~") return moveHome(draft)
+  if (value === "\u001B[F" || value === "\u001B[4~") return moveEnd(draft)
+  return undefined
+}
+
 export function moveLeft(draft: PromptDraft): PromptDraft {
   return { ...draft, cursor: clampCursor(draft.text, draft.cursor - 1) }
 }
