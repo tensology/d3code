@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { execFile, spawn } from "node:child_process"
-import { hostname, platform } from "node:os"
+import { platform } from "node:os"
 import { agents } from "../agents/registry.js"
 import { renderDelegationPlan } from "../agents/delegation.js"
 import { renderAgentRunReport, runAgentTask } from "../agents/run.js"
@@ -64,6 +64,7 @@ import { createSetupProofReport, renderSetupProofReport } from "../setup/proof.j
 import { listSessions, loadSession } from "../sessions/store.js"
 import { checkGeneratedWebApp } from "../migration/webapp-check.js"
 import { startIdeServer, stopIdeServers } from "../ide/server.js"
+import { displayUrlForIdeBind, ideAccessNotes } from "../ide/access.js"
 
 export interface RuntimeState {
   model: string
@@ -140,25 +141,6 @@ async function closeTemporaryFirewallPorts(): Promise<string[]> {
     temporaryFirewallPorts.delete(port)
   }
   return notes
-}
-
-function ideAccessNotes(host: string, port: number): string[] {
-  if (host === "127.0.0.1" || host === "localhost") {
-    return [
-      "Access: local-only on this machine.",
-      `From your laptop, use an SSH tunnel: ssh -L ${port}:127.0.0.1:${port} <user>@<server>`,
-      `Then open: http://127.0.0.1:${port}`,
-      "For a deliberate network bind, restart with: /ide stop then /ide --host 0.0.0.0",
-    ]
-  }
-  if (host === "0.0.0.0" || host === "::") {
-    return [
-      "Access: listening on all server interfaces.",
-      `Open from another machine if the firewall allows it: http://${hostname()}:${port}`,
-      "Only expose this on a trusted network or behind an SSH/VPN tunnel.",
-    ]
-  }
-  return [`Access: listening on ${host}.`, `Open: http://${host}:${port}`]
 }
 
 function commandStdout(raw: unknown): string {
@@ -260,12 +242,14 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       const server = await startIdeServer(config, state, { host, port })
       if (port !== 0) openBrowserBestEffort(server.url)
       const firewallNotes = publicMode ? await openTemporaryFirewallPort(server.port) : []
+      const displayUrl = displayUrlForIdeBind(host, server.port)
       return {
         output: [
-          `D3 Code IDE started: ${server.url}`,
+          `D3 Code IDE started: ${displayUrl}`,
+          ...(displayUrl !== server.url ? [`Bound: ${server.host}:${server.port}`] : []),
           `Profile: ${state.profile ?? config.defaultProfile ?? "default"}`,
           `Safety: ${state.safety}`,
-          ...ideAccessNotes(host, server.port),
+          ...ideAccessNotes(host, server.port, undefined, { publicCommand: "/ide public" }),
           ...firewallNotes,
           "Opened in your browser if the terminal allows it.",
           "Use /ide stop to stop the server.",

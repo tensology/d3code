@@ -253,7 +253,7 @@ test("slash /ide starts the IDE server and returns a browser URL", async () => {
   assert.doesNotMatch(result.output, /\/api\/terminal\/send/)
   assert.match(result.output, /Access: local-only/)
   assert.match(result.output, /ssh -L \d+:127\.0\.0\.1:\d+ <user>@<server>/)
-  assert.match(result.output, /\/ide --host 0\.0\.0\.0/)
+  assert.match(result.output, /\/ide public/)
   assert.match(result.output, /\/ide stop/)
 })
 
@@ -261,7 +261,8 @@ test("slash /ide explains public network binding when requested", async () => {
   const result = await handleSlashCommand("/ide public --port 0", config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
 
   assert.match(result.output, /D3 Code IDE started/)
-  assert.match(result.output, /http:\/\/0\.0\.0\.0:\d+/)
+  assert.doesNotMatch(result.output, /http:\/\/0\.0\.0\.0:\d+/)
+  assert.match(result.output, /Bound: 0\.0\.0\.0:\d+/)
   assert.match(result.output, /Access: listening on all server interfaces/)
   assert.match(result.output, /Firewall:/)
   assert.match(result.output, /Only expose this on a trusted network/)

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { execFile } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -13,6 +13,32 @@ async function cli(args: string[]) {
     cwd: process.cwd(),
     env: { ...process.env, D3CODE_HOME: join(tmpdir(), `d3code-test-${Date.now()}`) },
   })
+}
+
+async function runBlockingCliUntilReady(args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
+  const child = spawn("node", ["dist/src/cli.js", ...args], {
+    cwd: process.cwd(),
+    env: { ...process.env, D3CODE_HOME: join(tmpdir(), `d3code-test-${Date.now()}`) },
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  let stdout = ""
+  let stderr = ""
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString()
+    if (stdout.includes("Press Ctrl+C to stop.")) child.kill("SIGTERM")
+  })
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString()
+  })
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject)
+    child.once("close", resolve)
+    setTimeout(() => {
+      child.kill("SIGKILL")
+      reject(new Error(`CLI did not become ready. stdout=${stdout} stderr=${stderr}`))
+    }, 5000).unref()
+  })
+  return { stdout, stderr, code }
 }
 
 test("CLI lists baked-in modes and skills", async () => {
@@ -220,6 +246,16 @@ test("CLI renders baked workflow", async () => {
   const result = await cli(["workflow", "migrate"])
   assert.match(result.stdout, /D3-to-Web Migration Workflow/)
   assert.match(result.stdout, /Baked Skills/)
+})
+
+test("CLI ide accepts public visibility and prints reachable access notes", async () => {
+  const result = await runBlockingCliUntilReady(["ide", "public", "--port", "0"])
+
+  assert.ok(result.code === 0 || result.code === null)
+  assert.match(result.stdout, /D3 Code IDE running:/)
+  assert.match(result.stdout, /Bound: 0\.0\.0\.0:\d+/)
+  assert.match(result.stdout, /Access: listening on all server interfaces/)
+  assert.doesNotMatch(result.stderr, /too many arguments/)
 })
 
 test("CLI renders baked runbooks and skill info", async () => {

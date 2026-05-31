@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { Command } from "commander"
 import { render } from "ink"
 import React from "react"
+import { createInterface } from "node:readline/promises"
 import { agents } from "./agents/registry.js"
 import { renderDelegationPlan } from "./agents/delegation.js"
 import { renderAgentRunReport, runAgentTask } from "./agents/run.js"
@@ -92,6 +93,7 @@ import { createModernizationProof, renderModernizationProof } from "./app/modern
 import { captureBundleFromSession } from "./capture/capture.js"
 import { listSessions, loadSession } from "./sessions/store.js"
 import { startIdeServer } from "./ide/server.js"
+import { displayUrlForIdeBind, ideAccessNotes, shouldPromptForPublicIde, terminalLink } from "./ide/access.js"
 
 const safetyValues = ["ask", "plan", "trust"] as const
 
@@ -114,6 +116,20 @@ async function bodyFromOptions(parts: string[] | undefined, bodyFile?: string): 
 function commandStdout(raw: unknown): string {
   if (raw && typeof raw === "object" && "stdout" in raw && typeof (raw as { stdout?: unknown }).stdout === "string") return (raw as { stdout: string }).stdout
   return typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)
+}
+
+async function askPublicIdeBind(): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await rl.question("Make D3 Code IDE public on this server? [y/N] ")
+    return /^(y|yes)$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+function closeServer(server: Awaited<ReturnType<typeof startIdeServer>>): Promise<void> {
+  return new Promise((resolve, reject) => server.server.close((error) => error ? reject(error) : resolve()))
 }
 
 function renderSimpleDiff(label: string, before: string, after: string): string {
@@ -1235,24 +1251,34 @@ program.command("bundle-artifacts").argument("<bundle-json-file>").requiredOptio
   console.log(JSON.stringify(await writeBundleArtifacts(options.out, createBundleArtifacts(bundle), bundle), null, 2))
 })
 
-program.command("ide").alias("id").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host", "127.0.0.1").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (options: { port: number; host: string; profile?: string; model?: string; safety?: string; mode: string }) => {
+program.command("ide").alias("id").argument("[visibility]", "use public to bind on server interfaces").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host").option("--public", "bind on server interfaces").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (visibility: string | undefined, options: { port: number; host?: string; public?: boolean; profile?: string; model?: string; safety?: string; mode: string }) => {
+  if (visibility && visibility !== "public") throw new Error("Unknown IDE visibility. Use `d3code ide`, `d3code ide public`, or `d3code ide --host <host>`.")
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const mode = getMode(options.mode) ?? getMode("chat")!
   const safety = options.safety ? parseSafety(options.safety) : mode.safetyBias ?? effectiveSafety(config, undefined, profile)
+  let publicMode = Boolean(options.public || visibility === "public")
+  if (shouldPromptForPublicIde({ hostExplicit: Boolean(options.host), visibility, stdinIsTTY: process.stdin.isTTY, stdoutIsTTY: process.stdout.isTTY })) {
+    publicMode = await askPublicIdeBind()
+  }
+  const host = options.host ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
   const server = await startIdeServer(config, {
     model: options.model ?? config.defaultModel,
     safety,
     profile: options.profile ?? profile?.name,
     mode: mode.id,
-  }, { host: options.host, port: options.port })
-  console.log(`D3 Code IDE running: ${server.url}`)
+  }, { host, port: options.port })
+  const displayUrl = displayUrlForIdeBind(host, server.port)
+  console.log(`D3 Code IDE running: ${terminalLink(displayUrl, displayUrl)}`)
+  if (displayUrl !== server.url) console.log(`Bound: ${server.host}:${server.port}`)
   console.log(`Profile: ${options.profile ?? profile?.name ?? "none"}`)
+  for (const note of ideAccessNotes(host, server.port)) console.log(note)
   console.log("Press Ctrl+C to stop.")
   await new Promise<void>((resolve) => {
     process.once("SIGINT", () => resolve())
     process.once("SIGTERM", () => resolve())
   })
+  await closeServer(server)
 })
 
 program
