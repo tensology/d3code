@@ -26,6 +26,10 @@ function isAppBuildIntent(input: string): boolean {
   return /\b(build|create|generate|scaffold|start)\b/i.test(input) && /\b(app|application|screen|screens|ui|frontend|web)\b/i.test(input)
 }
 
+function isPlainGreeting(input: string): boolean {
+  return /^(hi|hello|hey|howdy|yo|sup)[!. ]*$/i.test(input.trim())
+}
+
 function outputDir(tokens: string[]): string {
   return valueAfter(tokens, ["to", "out", "output", "--out"]) ?? "./d3code-app"
 }
@@ -144,6 +148,10 @@ export async function handleNaturalIntent(input: string, config: D3CodeConfig, s
   const trimmed = input.trim()
   if (!trimmed || trimmed.startsWith("/")) return undefined
   const tokens = words(trimmed)
+
+  if (isPlainGreeting(trimmed)) {
+    return { output: "Hello. Tell me what you want to inspect, change, or ask about this D3 project." }
+  }
 
   if (isAppBuildIntent(trimmed)) {
     return await buildFromBundle(tokens, config) ?? await buildFromLiveProfile(trimmed, tokens, config, state)

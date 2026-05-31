@@ -12,17 +12,7 @@ export function visibleTranscriptEntries(
   activeToolLabel?: string,
 ): TranscriptEntry[] {
   let visible = entries
-  if (activeInput) {
-    let index = -1
-    for (let position = visible.length - 1; position >= 0; position--) {
-      const entry = visible[position]!
-      if (entry.role === activeInput.role && entry.content === activeInput.content) {
-        index = position
-        break
-      }
-    }
-    if (index !== -1) visible = [...visible.slice(0, index), ...visible.slice(index + 1)]
-  }
+  void activeInput
   if (activeToolLabel) {
     let index = -1
     for (let position = visible.length - 1; position >= 0; position--) {

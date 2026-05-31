@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import type { ConnectionProfile, D3CommandResult, D3RunOptions, D3Session } from "../domain/types.js"
+import { normalizeD3PromptPattern } from "./prompts.js"
 
 function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number, options: D3RunOptions = {}): Promise<D3CommandResult> {
   const started = Date.now()
@@ -86,7 +87,7 @@ export class PersistentLocalD3Session implements D3Session {
     this.start()
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
-    const promptPattern = this.profile.promptPattern ? new RegExp(this.profile.promptPattern) : undefined
+    const promptPattern = this.profile.promptPattern ? new RegExp(normalizeD3PromptPattern(this.profile.promptPattern) ?? this.profile.promptPattern) : undefined
     if (promptPattern && !promptPattern.test(this.stdout)) await absorbStartupPrompt(() => {
       if (this.closedError) throw this.closedError
       return promptPattern.test(this.stdout)

@@ -86,11 +86,29 @@ test("persistent local D3 session streams prompted output without startup prompt
 })
 
 test("persistent local D3 session can send D3 login startup input before waiting for TCL prompt", async () => {
+  const loginScript = `
+    let b = "";
+    let authed = false;
+    process.stdout.write("user id:");
+    process.stdin.on("data", d => {
+      b += d;
+      if (!authed && b.includes("dm\\ndm\\n")) {
+        authed = true;
+        b = b.slice(b.indexOf("dm\\ndm\\n") + "dm\\ndm\\n".length);
+        process.stdout.write("\\n:");
+      }
+      if (authed && b.includes("WHO\\n")) {
+        b = b.slice(b.indexOf("WHO\\n") + "WHO\\n".length);
+        process.stdout.write("1 dm dm\\n:");
+      }
+    });
+  `
+  const compactLoginScript = loginScript.replace(/\s+/g, " ").trim()
   const session = new PersistentLocalD3Session({
     name: "d3-login",
     type: "local",
     sessionMode: "persistent",
-    entryCommand: "node -e \"let b='';let authed=false;process.stdout.write('user id:');process.stdin.on('data',d=>{b+=d;if(!authed&&b==='dm\\\\ndm\\\\n'){authed=true;process.stdout.write('\\\\n:');return}if(authed&&b.endsWith('WHO\\\\n')){process.stdout.write('1 dm dm\\\\n:')}})\"",
+    entryCommand: `node -e '${compactLoginScript}'`,
     startupInput: "dm\ndm\n",
     promptPattern: ":",
   })

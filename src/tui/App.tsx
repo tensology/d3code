@@ -26,7 +26,7 @@ import { commandSuggestions } from "./command-suggestions.js"
 import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
 import { createBusyInputHandler } from "./busy-input.js"
 import { formatComposerHint, formatComposerPrompt, formatComposerTitle } from "./prompt-composer.js"
-import { formatActiveTurnEcho, formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine, type SubmittedTurn } from "./turn-surface.js"
+import { formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine, type SubmittedTurn } from "./turn-surface.js"
 import { formatToolActivity, formatToolResultTitle } from "./tool-activity.js"
 import { canEnableRawMode } from "./raw-mode.js"
 
@@ -216,16 +216,11 @@ export function App(props: AppProps) {
   useEffect(() => {
     if (!busy) return
     stdinContext.stdin.resume()
-    const timer = setInterval(() => setBusyFrame((current) => current + 1), 500)
-    return () => clearInterval(timer)
   }, [busy, stdinContext.stdin])
 
   useEffect(() => {
     if (!busy) return
     setBusySeconds(0)
-    const started = Date.now()
-    const timer = setInterval(() => setBusySeconds(Math.floor((Date.now() - started) / 1000)), 1000)
-    return () => clearInterval(timer)
   }, [busy])
 
   useEffect(() => {
@@ -899,7 +894,6 @@ export function App(props: AppProps) {
   const prompt = formatComposerPrompt({ mode, busy })
   const composerTitle = formatComposerTitle({ mode, busy })
   const composerHint = formatComposerHint({ busy, draftText: draft.text, queuedCount: queuedLines.length })
-  const activeTurnEcho = busy && activeSubmittedTurn ? formatActiveTurnEcho(activeSubmittedTurn) : undefined
   const visibleTranscript = visibleTranscriptEntries(transcript, activeSubmittedTurn, hasStreamingBlock ? liveToolLabel : undefined)
 
   return (
@@ -974,13 +968,6 @@ export function App(props: AppProps) {
         {composerTitle ? (
           <Box flexDirection="row">
             <Text color={busy ? "cyan" : "gray"}>{composerTitle}</Text>
-          </Box>
-        ) : null}
-        {activeTurnEcho ? (
-          <Box flexDirection="row">
-            <Text color={activeTurnEcho.color} bold>{activeTurnEcho.glyph}</Text>
-            <Text> </Text>
-            <Text>{activeTurnEcho.content}</Text>
           </Box>
         ) : null}
         <Box flexDirection="row">

@@ -52,17 +52,14 @@ test("transcript wraps long logical lines before compacting", () => {
   assert.match(compacted.at(-1) ?? "", /more lines/)
 })
 
-test("visible transcript hides only the active submitted input while a turn is running", () => {
+test("visible transcript keeps active submitted input in history while a turn is running", () => {
   const transcript = [
     { role: "user", content: "previous" },
     { role: "assistant", content: "done" },
     { role: "shell-input", content: "npm test" },
   ]
 
-  assert.deepEqual(visibleTranscriptEntries(transcript, { role: "shell-input", content: "npm test" }), [
-    { role: "user", content: "previous" },
-    { role: "assistant", content: "done" },
-  ])
+  assert.deepEqual(visibleTranscriptEntries(transcript, { role: "shell-input", content: "npm test" }), transcript)
   assert.deepEqual(visibleTranscriptEntries(transcript, undefined), transcript)
   assert.deepEqual(visibleTranscriptEntries(transcript, { role: "shell-input", content: "npm run build" }), transcript)
 })

@@ -46,3 +46,11 @@ test("natural app build intent asks for a profile when live capture is requested
   assert.match(result.output, /No D3 profile is selected/)
   assert.match(result.output, /d3code setup/)
 })
+
+test("plain greetings stay in chat and do not trigger D3 tools", async () => {
+  const result = await handleNaturalIntent("hello", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "chat" })
+
+  assert.ok(result)
+  assert.match(result.output, /Hello/)
+  assert.doesNotMatch(result.output, /D3 TCL|VERSION/)
+})
