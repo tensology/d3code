@@ -180,6 +180,7 @@ test("agent system prompt is D3-only and names reference-manual grounding", () =
   assert.match(prompt, /D-pointers/)
   assert.match(prompt, /master-dictionary environment/)
   assert.match(prompt, /Do not start general-purpose coding/)
+  assert.match(prompt, /After D3 tool output, explain the practical meaning/)
   assert.match(prompt, /<d3_tool>/)
 })
 
