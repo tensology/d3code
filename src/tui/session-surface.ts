@@ -127,7 +127,8 @@ export function summarizeLiveOutput(output: string, elapsedSeconds: number, maxL
 
 export function formatBusyStatus(task: string, elapsedSeconds: number, progress?: string, interruptHint = "esc to interrupt"): string {
   const progressText = progress ? ` · ${progress}` : ""
-  return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}${progressText}  ${interruptHint.replace(" to ", " ")}`
+  const hint = interruptHint.charAt(0).toUpperCase() + interruptHint.slice(1)
+  return `${task || "agent"}… ${formatElapsedSeconds(elapsedSeconds)}${progressText}  ${hint}`
 }
 
 export function formatTimelineProgress(frame: string, task: string, elapsedSeconds: number): string {
