@@ -136,7 +136,7 @@ export function App(props: AppProps) {
   const [historyIndex, setHistoryIndex] = useState<number | undefined>()
   const [abortMessage, setAbortMessage] = useState("")
   const [activeTask, setActiveTask] = useState("")
-  const [queuedLine, setQueuedLine] = useState("")
+  const [queuedLines, setQueuedLines] = useState<string[]>([])
   const [usage, setUsage] = useState<ChatUsage | undefined>()
   const [workspaceChanges, setWorkspaceChanges] = useState<WorkspaceChangeSummary | undefined>()
   const d3Session = useRef<D3Session | undefined>()
@@ -147,7 +147,7 @@ export function App(props: AppProps) {
   const interruptTimerRef = useRef<NodeJS.Timeout | undefined>()
   const rawEscapeSuppressUntilRef = useRef(0)
   const workspaceBaselineRef = useRef<WorkspaceSnapshot | undefined>()
-  const queuedLineRef = useRef("")
+  const queuedLinesRef = useRef<string[]>([])
   const streamSuppressRef = useRef(false)
   const streamIterationRef = useRef<number | undefined>()
   const secrets = useMemo(() => defaultSecretStore(), [])
@@ -306,9 +306,10 @@ export function App(props: AppProps) {
       setHistoryIndex(undefined)
       return
     }
-    if (queuedLineRef.current) {
-      queuedLineRef.current = ""
-      setQueuedLine("")
+    if (queuedLinesRef.current.length > 0) {
+      const nextQueue = queuedLinesRef.current.slice(0, -1)
+      queuedLinesRef.current = nextQueue
+      setQueuedLines(nextQueue)
       return
     }
     if (interruptArmedRef.current || count > 1) {
@@ -399,14 +400,8 @@ export function App(props: AppProps) {
         const beforeTab = value.slice(0, tabIndex)
         const afterTab = value.slice(tabIndex + 1)
         const draftAtTab = completeDraftCommand(beforeTab ? insertText(draft, beforeTab) : draft)
-        const newlineIndex = afterTab.search(/[\r\n]/)
-        if (newlineIndex !== -1) {
-          const beforeReturn = afterTab.slice(0, newlineIndex)
-          const afterReturn = afterTab.slice(newlineIndex).replace(/^[\r\n]+/, "")
-          const submitDraft = beforeReturn ? insertText(draftAtTab, beforeReturn) : draftAtTab
-          submitLine(submitDraft.text.trim())
-          setDraft({ text: afterReturn, cursor: afterReturn.length })
-          setHistoryIndex(undefined)
+        if (afterTab.search(/[\r\n]/) !== -1) {
+          submitDraftWithInput(draftAtTab, afterTab)
           return
         }
         const nextDraft = afterTab ? insertText(draftAtTab, afterTab) : draftAtTab
@@ -414,14 +409,8 @@ export function App(props: AppProps) {
         setHistoryIndex(undefined)
         return
       }
-      const newlineIndex = value.search(/[\r\n]/)
-      if (newlineIndex !== -1) {
-        const beforeReturn = value.slice(0, newlineIndex)
-        const afterReturn = value.slice(newlineIndex).replace(/^[\r\n]+/, "")
-        const nextDraft = beforeReturn ? insertText(draft, beforeReturn) : draft
-        submitLine(nextDraft.text.trim())
-        setDraft({ text: afterReturn, cursor: afterReturn.length })
-        setHistoryIndex(undefined)
+      if (value.search(/[\r\n]/) !== -1) {
+        submitDraftWithInput(draft, value)
         return
       }
       if (value.includes("\u001B")) {
@@ -440,11 +429,31 @@ export function App(props: AppProps) {
     submitLine(line)
   }
 
+  function submitDraftWithInput(baseDraft: PromptDraft, value: string) {
+    const hasTrailingDraft = !/[\r\n]$/.test(value)
+    const parts = value.split(/\r\n|\r|\n/)
+    const completeLines = hasTrailingDraft ? parts.slice(0, -1) : parts
+    const trailingDraft = hasTrailingDraft ? parts.at(-1) ?? "" : ""
+    if (completeLines.length === 0) {
+      setDraft({ text: trailingDraft, cursor: trailingDraft.length })
+      setHistoryIndex(undefined)
+      return
+    }
+    const firstDraft = completeLines[0] ? insertText(baseDraft, completeLines[0]) : baseDraft
+    submitLine(firstDraft.text.trim())
+    for (const line of completeLines.slice(1)) {
+      submitLine(line.trim())
+    }
+    setDraft({ text: trailingDraft, cursor: trailingDraft.length })
+    setHistoryIndex(undefined)
+  }
+
   function submitLine(line: string, force = false) {
     if (!line) return
-    if (busy && !force) {
-      queuedLineRef.current = line
-      setQueuedLine(line)
+    if ((busy || busyRef.current) && !force) {
+      const nextQueue = [...queuedLinesRef.current, line]
+      queuedLinesRef.current = nextQueue
+      setQueuedLines(nextQueue)
       setDraft({ text: "", cursor: 0 })
       setHistoryIndex(undefined)
       return
@@ -521,6 +530,7 @@ export function App(props: AppProps) {
     if (line === "/exit" || line === "/quit") {
       setAbortMessage("")
       setActiveTask("")
+      busyRef.current = false
       setBusy(false)
       setStreamingAssistant("")
       setStreamingShellOutput("")
@@ -533,6 +543,7 @@ export function App(props: AppProps) {
     }
     setAbortMessage("")
     setActiveTask(initialTaskForLine(line, mode))
+    busyRef.current = true
     setBusy(true)
     setStreamingShellOutput("")
     setStreamingD3Output("")
@@ -677,14 +688,16 @@ export function App(props: AppProps) {
       }
       if (abortRef.current === abortController) abortRef.current = undefined
       workspaceBaselineRef.current = undefined
-      setBusy(false)
       setActiveTask("")
-      const nextQueuedLine = queuedLineRef.current
+      const [nextQueuedLine, ...remainingQueuedLines] = queuedLinesRef.current
       if (nextQueuedLine) {
-        queuedLineRef.current = ""
-        setQueuedLine("")
+        queuedLinesRef.current = remainingQueuedLines
+        setQueuedLines(remainingQueuedLines)
         setTimeout(() => submitLine(nextQueuedLine, true), 0)
+      } else {
+        busyRef.current = false
       }
+      setBusy(false)
     }
   }
 
@@ -765,7 +778,7 @@ export function App(props: AppProps) {
     streamingShellOutput ? `${streamingShellOutput.length} chars` : "",
     streamingD3Output ? `${streamingD3Output.length} chars` : "",
     workspaceChanges ? `${workspaceChanges.filesChanged} files` : "",
-    queuedLine ? "queued" : "",
+    queuedLines.length ? `${queuedLines.length} queued` : "",
   ].filter(Boolean).join(" · ")
   const interruptHint = abortMessage === "Esc again to interrupt." ? "esc again to interrupt" : "esc to interrupt"
   const suggestions = commandSuggestions(draft.text)
@@ -837,10 +850,11 @@ export function App(props: AppProps) {
         </Box>
         {busy ? (
           <Box flexDirection="row">
-            {queuedLine ? (
+            {queuedLines.length ? (
               <>
-                <Text color="cyan">queued › </Text>
-                <Text>{queuedLine}</Text>
+                <Text color="cyan">{queuedLines.length === 1 ? "queued" : `${queuedLines.length} queued`} › </Text>
+                <Text>{queuedLines[0]}</Text>
+                {queuedLines.length > 1 ? <Text dimColor>{`  +${queuedLines.length - 1} more`}</Text> : null}
               </>
             ) : (
               <>
