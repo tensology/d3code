@@ -258,6 +258,19 @@ test("CLI ide accepts public visibility and prints reachable access notes", asyn
   assert.doesNotMatch(result.stderr, /too many arguments/)
 })
 
+test("CLI ide setup-auth saves IDE credentials", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-ide-auth-"))
+  const result = await execFileAsync("node", ["dist/src/cli.js", "ide", "setup-auth", "paul", "secret123"], {
+    cwd: process.cwd(),
+    env: { ...process.env, D3CODE_HOME: home },
+  })
+  const raw = await readFile(join(home, "config.jsonc"), "utf8")
+  const saved = JSON.parse(raw) as { ideAuth?: { username: string; password: string } }
+
+  assert.match(result.stdout, /IDE auth updated for user paul/)
+  assert.deepEqual(saved.ideAuth, { username: "paul", password: "secret123" })
+})
+
 test("CLI renders baked runbooks and skill info", async () => {
   const runbook = await cli(["runbook", "migrate"])
   assert.match(runbook.stdout, /Migration Mode Runbook/)

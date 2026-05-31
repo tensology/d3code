@@ -9,6 +9,8 @@ import { runToolByName } from "../tools/runner.js"
 import { runD3AgentTurn, type AgentChatFunction } from "../tui/agent.js"
 import type { ChatMessage } from "../llm/client.js"
 import { normalizeD3PromptPattern } from "../d3/prompts.js"
+import { isPublicIdeHost } from "./access.js"
+import { isBasicAuthValid, resolveIdeAuth } from "./auth.js"
 
 export interface IdeRuntimeState {
   model: string
@@ -22,6 +24,7 @@ export interface IdeServerOptions {
   host?: string
   port?: number
   agentChatFn?: AgentChatFunction
+  requireAuth?: boolean
 }
 
 export interface IdeServerHandle {
@@ -40,6 +43,15 @@ function send(res: ServerResponse, status: number, body: string, contentType = "
 
 function sendJson(res: ServerResponse, status: number, value: unknown): void {
   send(res, status, `${JSON.stringify(value, null, 2)}\n`, "application/json; charset=utf-8")
+}
+
+function sendAuthRequired(res: ServerResponse): void {
+  res.writeHead(401, {
+    "content-type": "text/plain; charset=utf-8",
+    "cache-control": "no-store",
+    "www-authenticate": "Basic realm=\"D3 Code IDE\"",
+  })
+  res.end("Authentication required.\n")
 }
 
 function startSse(res: ServerResponse): void {
@@ -329,7 +341,13 @@ export async function startIdeServer(config: D3CodeConfig, state: IdeRuntimeStat
   const key = `${host}:${requestedPort}:${state.profile ?? config.defaultProfile ?? "default"}`
   const existing = running.get(key)
   if (existing) return existing
+  const requireAuth = options.requireAuth ?? isPublicIdeHost(host)
+  const credentials = resolveIdeAuth(config)
   const server = createServer((req, res) => {
+    if (requireAuth && !isBasicAuthValid(req.headers.authorization, credentials)) {
+      sendAuthRequired(res)
+      return
+    }
     route(req, res, config, state, options).catch((error) => sendJson(res, 500, { error: (error as Error).message }))
   })
   await new Promise<void>((resolve, reject) => {

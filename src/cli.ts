@@ -94,6 +94,7 @@ import { captureBundleFromSession } from "./capture/capture.js"
 import { listSessions, loadSession } from "./sessions/store.js"
 import { startIdeServer } from "./ide/server.js"
 import { displayUrlForIdeBind, ideAccessNotes, shouldPromptForPublicIde, terminalLink } from "./ide/access.js"
+import { resolveIdeAuth, setIdeAuth } from "./ide/auth.js"
 
 const safetyValues = ["ask", "plan", "trust"] as const
 
@@ -123,6 +124,18 @@ async function askPublicIdeBind(): Promise<boolean> {
   try {
     const answer = await rl.question("Make D3 Code IDE public on this server? [y/N] ")
     return /^(y|yes)$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+async function askIdeAuthCredentials(currentUsername: string): Promise<{ username: string; password: string }> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const usernameAnswer = await rl.question(`IDE username [${currentUsername}]: `)
+    const username = usernameAnswer.trim() || currentUsername
+    const password = await rl.question("IDE password: ")
+    return { username, password }
   } finally {
     rl.close()
   }
@@ -1251,9 +1264,17 @@ program.command("bundle-artifacts").argument("<bundle-json-file>").requiredOptio
   console.log(JSON.stringify(await writeBundleArtifacts(options.out, createBundleArtifacts(bundle), bundle), null, 2))
 })
 
-program.command("ide").alias("id").argument("[visibility]", "use public to bind on server interfaces").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host").option("--public", "bind on server interfaces").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (visibility: string | undefined, options: { port: number; host?: string; public?: boolean; profile?: string; model?: string; safety?: string; mode: string }) => {
-  if (visibility && visibility !== "public") throw new Error("Unknown IDE visibility. Use `d3code ide`, `d3code ide public`, or `d3code ide --host <host>`.")
+program.command("ide").alias("id").argument("[visibility]", "use public to bind on server interfaces, or setup-auth").argument("[username]").argument("[password]").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host").option("--public", "bind on server interfaces").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (visibility: string | undefined, username: string | undefined, password: string | undefined, options: { port: number; host?: string; public?: boolean; profile?: string; model?: string; safety?: string; mode: string }) => {
+  if (visibility && visibility !== "public" && visibility !== "setup-auth") throw new Error("Unknown IDE visibility. Use `d3code ide`, `d3code ide public`, `d3code ide setup-auth`, or `d3code ide --host <host>`.")
   const config = await loadConfig()
+  if (visibility === "setup-auth") {
+    const current = resolveIdeAuth(config)
+    const credentials = username && password ? { username, password } : await askIdeAuthCredentials(current.username)
+    const saved = setIdeAuth(config, credentials.username, credentials.password)
+    await saveConfig(config)
+    console.log(`IDE auth updated for user ${saved.username}. Restart any running public IDE server for the new credentials to take effect.`)
+    return
+  }
   const profile = selectProfile(config, options.profile)
   const mode = getMode(options.mode) ?? getMode("chat")!
   const safety = options.safety ? parseSafety(options.safety) : mode.safetyBias ?? effectiveSafety(config, undefined, profile)
@@ -1272,6 +1293,7 @@ program.command("ide").alias("id").argument("[visibility]", "use public to bind 
   console.log(`D3 Code IDE running: ${terminalLink(displayUrl, displayUrl)}`)
   if (displayUrl !== server.url) console.log(`Bound: ${server.host}:${server.port}`)
   console.log(`Profile: ${options.profile ?? profile?.name ?? "none"}`)
+  if (publicMode || host === "0.0.0.0" || host === "::") console.log(`Auth: Basic user ${resolveIdeAuth(config).username}`)
   for (const note of ideAccessNotes(host, server.port)) console.log(note)
   console.log("Press Ctrl+C to stop.")
   await new Promise<void>((resolve) => {

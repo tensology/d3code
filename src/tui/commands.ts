@@ -24,7 +24,7 @@ import { createBundleSubagentPlan, renderBundleSubagentPlan } from "../app/subag
 import { createWebUiPlan, renderWebUiPlan } from "../app/ui-plan.js"
 import { createModernizationProof, renderModernizationProof } from "../app/modernization-proof.js"
 import { refreshBundleProofArtifacts } from "../app/write.js"
-import type { D3CodeConfig } from "../config/config.js"
+import { saveConfig, type D3CodeConfig } from "../config/config.js"
 import { defaultD3ReferenceManual, defaultD3UserGuide, defaultReferenceDir } from "../config/paths.js"
 import { createD3Session } from "../d3/adapter.js"
 import { detectLocalD3 } from "../d3/detect.js"
@@ -65,6 +65,7 @@ import { listSessions, loadSession } from "../sessions/store.js"
 import { checkGeneratedWebApp } from "../migration/webapp-check.js"
 import { startIdeServer, stopIdeServers } from "../ide/server.js"
 import { displayUrlForIdeBind, ideAccessNotes } from "../ide/access.js"
+import { resolveIdeAuth, setIdeAuth } from "../ide/auth.js"
 
 export interface RuntimeState {
   model: string
@@ -234,6 +235,14 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
         const firewallNotes = await closeTemporaryFirewallPorts()
         return { output: ["D3 Code IDE stopped.", ...firewallNotes].join("\n") }
       }
+      if (args[0] === "setup-auth") {
+        const username = args[1]
+        const password = args[2]
+        if (!username || !password) return { output: "Usage: /ide setup-auth <username> <password>" }
+        const credentials = setIdeAuth(config, username, password)
+        await saveConfig(config)
+        return { output: `IDE auth updated for user ${credentials.username}. Restart any running public IDE server for the new credentials to take effect.` }
+      }
       const publicMode = args.includes("public")
       const portValue = flagValue(args, "--port") ?? args.find((arg) => /^\d+$/.test(arg))
       const port = portValue ? Number(portValue) : 3737
@@ -249,6 +258,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
           ...(displayUrl !== server.url ? [`Bound: ${server.host}:${server.port}`] : []),
           `Profile: ${state.profile ?? config.defaultProfile ?? "default"}`,
           `Safety: ${state.safety}`,
+          ...(publicMode ? [`Auth: Basic user ${resolveIdeAuth(config).username}`] : []),
           ...ideAccessNotes(host, server.port, undefined, { publicCommand: "/ide public" }),
           ...firewallNotes,
           "Opened in your browser if the terminal allows it.",

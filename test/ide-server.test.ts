@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
+import { basicAuthHeader, defaultIdeAuth } from "../src/ide/auth.js"
 import { startIdeServer, stopIdeServers } from "../src/ide/server.js"
 import { handleSlashCommand } from "../src/tui/commands.js"
 
@@ -57,6 +58,19 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
 
   const profiles = await fetch(`${server.url}/api/profiles`).then((response) => response.json()) as { profiles: Array<{ name: string }> }
   assert.deepEqual(profiles.profiles.map((profile) => profile.name), ["fake", "alt"])
+})
+
+test("IDE server requires basic auth when public", async () => {
+  const server = await startIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { host: "0.0.0.0", port: 0 })
+  const url = `http://127.0.0.1:${server.port}`
+
+  const denied = await fetch(url)
+  assert.equal(denied.status, 401)
+  assert.match(denied.headers.get("www-authenticate") ?? "", /Basic realm="D3 Code IDE"/)
+
+  const allowed = await fetch(url, { headers: { authorization: basicAuthHeader(defaultIdeAuth) } })
+  assert.equal(allowed.status, 200)
+  assert.match(await allowed.text(), /D3 Code IDE/)
 })
 
 test("IDE server normalizes browser-created D3 profiles for terminal emulation", async () => {

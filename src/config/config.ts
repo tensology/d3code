@@ -31,6 +31,10 @@ const ConfigSchema = z.object({
   defaultProfile: z.string().optional(),
   profiles: z.array(ProfileSchema).default([]),
   modelSecrets: z.record(z.string()).default({}),
+  ideAuth: z.object({
+    username: z.string().min(1),
+    password: z.string().min(1),
+  }).optional(),
 })
 
 export type D3CodeConfig = z.infer<typeof ConfigSchema>
