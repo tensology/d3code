@@ -64,7 +64,7 @@ import { createSetupProofReport, renderSetupProofReport } from "../setup/proof.j
 import { listSessions, loadSession } from "../sessions/store.js"
 import { checkGeneratedWebApp } from "../migration/webapp-check.js"
 import { startIdeServer, stopIdeServers } from "../ide/server.js"
-import { displayUrlForIdeBind, ideAccessNotes } from "../ide/access.js"
+import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes } from "../ide/access.js"
 import { resolveIdeAuth, setIdeAuth } from "../ide/auth.js"
 
 export interface RuntimeState {
@@ -263,7 +263,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       const displayUrl = displayUrlForIdeBind(host, server.port)
       return {
         output: [
-          `D3 Code IDE started: ${displayUrl}`,
+          `D3 Code IDE started (${displayUrlLabelForIdeBind(host)}): ${displayUrl}`,
           ...(displayUrl !== server.url ? [`Bound: ${server.host}:${server.port}`] : []),
           `Profile: ${state.profile ?? config.defaultProfile ?? "default"}`,
           `Safety: ${state.safety}`,

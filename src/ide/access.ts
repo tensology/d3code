@@ -20,6 +20,13 @@ export function localNetworkAddress(interfaces: NetworkMap = networkInterfaces()
   return undefined
 }
 
+export function isPrivateIpv4(address: string): boolean {
+  const parts = address.split(".").map((part) => Number(part))
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false
+  const [first, second] = parts as [number, number, number, number]
+  return first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168) || first === 127
+}
+
 export function displayHostForIdeBind(host: string, interfaces: NetworkMap = networkInterfaces()): string {
   if (host === "0.0.0.0" || host === "::") return localNetworkAddress(interfaces) ?? hostname()
   return host
@@ -27,6 +34,11 @@ export function displayHostForIdeBind(host: string, interfaces: NetworkMap = net
 
 export function displayUrlForIdeBind(host: string, port: number, interfaces: NetworkMap = networkInterfaces()): string {
   return `http://${displayHostForIdeBind(host, interfaces)}:${port}`
+}
+
+export function displayUrlLabelForIdeBind(host: string, interfaces: NetworkMap = networkInterfaces()): string {
+  if (!isPublicIdeHost(host)) return "URL"
+  return isPrivateIpv4(displayHostForIdeBind(host, interfaces)) ? "LAN/VPN URL" : "Interface URL"
 }
 
 export function shouldPromptForPublicIde(options: { hostExplicit: boolean; visibility?: string; stdinIsTTY?: boolean; stdoutIsTTY?: boolean; platformName?: NodeJS.Platform }): boolean {
@@ -48,9 +60,15 @@ export function ideAccessNotes(host: string, port: number, interfaces: NetworkMa
     ]
   }
   if (isPublicIdeHost(host)) {
+    const displayHost = displayHostForIdeBind(host, interfaces)
+    const privateLan = isPrivateIpv4(displayHost)
     return [
       "Access: listening on all server interfaces.",
-      `Open from another machine if the firewall allows it: ${terminalLink(displayUrl, displayUrl)}`,
+      `${displayUrlLabelForIdeBind(host, interfaces)}: ${terminalLink(displayUrl, displayUrl)}`,
+      ...(privateLan ? [
+        "Public/WAN URL: not known from inside this server. 192.168/10/172.16-31 addresses are private LAN addresses.",
+        `If you need internet access, use your public DNS/IP with this port, or use an SSH/VPN tunnel instead.`,
+      ] : []),
       "Only expose this on a trusted network or behind an SSH/VPN tunnel.",
     ]
   }

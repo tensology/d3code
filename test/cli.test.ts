@@ -252,9 +252,11 @@ test("CLI ide accepts public visibility and prints reachable access notes", asyn
   const result = await runBlockingCliUntilReady(["ide", "public", "--port", "0"])
 
   assert.ok(result.code === 0 || result.code === null)
-  assert.match(result.stdout, /D3 Code IDE running:/)
+  assert.match(result.stdout, /D3 Code IDE running \((LAN\/VPN URL|Interface URL)\):/)
   assert.match(result.stdout, /Bound: 0\.0\.0\.0:\d+/)
   assert.match(result.stdout, /Access: listening on all server interfaces/)
+  assert.match(result.stdout, /(LAN\/VPN URL|Interface URL):/)
+  assert.match(result.stdout, /http:\/\//)
   assert.doesNotMatch(result.stderr, /too many arguments/)
 })
 

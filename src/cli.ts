@@ -94,7 +94,7 @@ import { createModernizationProof, renderModernizationProof } from "./app/modern
 import { captureBundleFromSession } from "./capture/capture.js"
 import { listSessions, loadSession } from "./sessions/store.js"
 import { startIdeServer } from "./ide/server.js"
-import { displayUrlForIdeBind, ideAccessNotes, shouldPromptForPublicIde, terminalLink } from "./ide/access.js"
+import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes, shouldPromptForPublicIde, terminalLink } from "./ide/access.js"
 import { resolveIdeAuth, setIdeAuth } from "./ide/auth.js"
 
 const safetyValues = ["ask", "plan", "trust"] as const
@@ -1289,7 +1289,7 @@ program.command("ide").alias("id").argument("[visibility]", "use public to bind 
     mode: mode.id,
   }, { host, port: options.port })
   const displayUrl = displayUrlForIdeBind(host, server.port)
-  console.log(`D3 Code IDE running: ${terminalLink(displayUrl, displayUrl)}`)
+  console.log(`D3 Code IDE running (${displayUrlLabelForIdeBind(host)}): ${terminalLink(displayUrl, displayUrl)}`)
   if (displayUrl !== server.url) console.log(`Bound: ${server.host}:${server.port}`)
   console.log(`Profile: ${options.profile ?? profile?.name ?? "none"}`)
   if (publicMode || host === "0.0.0.0" || host === "::") console.log(`Auth: Basic user ${resolveIdeAuth(config).username}`)
