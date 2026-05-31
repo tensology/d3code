@@ -27,7 +27,7 @@ import { commandSuggestions } from "./command-suggestions.js"
 import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
 import { createBusyInputHandler } from "./busy-input.js"
 import { formatComposerHint, formatComposerTitle } from "./prompt-composer.js"
-import { formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine } from "./turn-surface.js"
+import { formatActiveTurnEcho, formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine, type SubmittedTurn } from "./turn-surface.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -135,6 +135,7 @@ export function App(props: AppProps) {
   const [streamingShellOutput, setStreamingShellOutput] = useState("")
   const [streamingD3Output, setStreamingD3Output] = useState("")
   const [streamingToolLabel, setStreamingToolLabel] = useState("")
+  const [activeSubmittedTurn, setActiveSubmittedTurn] = useState<SubmittedTurn>()
   const [project, setProject] = useState<ProjectContext | undefined>()
   const [caretOn, setCaretOn] = useState(true)
   const [busyFrame, setBusyFrame] = useState(0)
@@ -337,6 +338,7 @@ export function App(props: AppProps) {
     setStreamingAssistant("")
     setStreamingShellOutput("")
     setStreamingD3Output("")
+    setActiveSubmittedTurn(undefined)
   }
 
   function handleBusyEscape(count = 1): void {
@@ -610,6 +612,7 @@ export function App(props: AppProps) {
     const abortController = new AbortController()
     abortRef.current = abortController
     const submittedTurn = inputRoleForLine(line, mode)
+    setActiveSubmittedTurn(submittedTurn)
     setTranscript((current) => [...current, { role: submittedTurn.role, content: submittedTurn.content }])
     const beforeWorkspace = await snapshotWorkspace()
     workspaceBaselineRef.current = beforeWorkspace
@@ -765,6 +768,7 @@ export function App(props: AppProps) {
       if (abortRef.current === abortController) abortRef.current = undefined
       workspaceBaselineRef.current = undefined
       setActiveTask("")
+      setActiveSubmittedTurn(undefined)
       if (abortController.signal.aborted) {
         clearQueuedLines()
         busyRef.current = false
@@ -890,6 +894,7 @@ export function App(props: AppProps) {
   const promptColor = mode === "d3" ? "yellow" : busy ? "gray" : "cyan"
   const composerTitle = formatComposerTitle({ mode, busy })
   const composerHint = formatComposerHint({ busy, draftText: draft.text, queuedCount: queuedLines.length })
+  const activeTurnEcho = busy && activeSubmittedTurn ? formatActiveTurnEcho(activeSubmittedTurn) : undefined
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -963,6 +968,14 @@ export function App(props: AppProps) {
         <Box flexDirection="row">
           <Text color={busy ? "cyan" : "gray"}>{composerTitle}</Text>
         </Box>
+        {activeTurnEcho ? (
+          <Box flexDirection="row">
+            <Text color={activeTurnEcho.color} bold>{activeTurnEcho.glyph}</Text>
+            <Text> </Text>
+            <Text>{activeTurnEcho.content}</Text>
+            <Text dimColor>{`  ${activeTurnEcho.label}`}</Text>
+          </Box>
+        ) : null}
         <Box flexDirection="row">
           <Text color={promptColor} bold>{promptGlyph}</Text>
           <Text> </Text>

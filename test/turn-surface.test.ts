@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { formatLiveTurnLabel, formatSubmittedTurn, inputRoleForLine, toolStartEntryForLine } from "../src/tui/turn-surface.js"
+import { formatActiveTurnEcho, formatLiveTurnLabel, formatSubmittedTurn, inputRoleForLine, toolStartEntryForLine } from "../src/tui/turn-surface.js"
 
 test("turn surface classifies submitted input consistently across chat, Unix, D3, and slash commands", () => {
   assert.deepEqual(inputRoleForLine("inspect ORDERS", "chat"), { role: "user", content: "inspect ORDERS", kind: "chat" })
@@ -25,4 +25,25 @@ test("turn surface creates one tool-start label for work that actually runs", ()
   assert.deepEqual(toolStartEntryForLine("LIST MD", "d3"), { role: "tool-start", content: "D3 TCL: LIST MD" })
   assert.deepEqual(toolStartEntryForLine("/status --json", "chat"), { role: "tool-start", content: "Command: /status" })
   assert.equal(toolStartEntryForLine("show me files", "chat"), undefined)
+})
+
+test("active turn echo keeps submitted input in the prompt well while work runs", () => {
+  assert.deepEqual(formatActiveTurnEcho(inputRoleForLine("build order app", "chat")), {
+    glyph: "›",
+    content: "build order app",
+    label: "You",
+    color: "cyan",
+  })
+  assert.deepEqual(formatActiveTurnEcho(inputRoleForLine("! npm test", "chat")), {
+    glyph: "› !",
+    content: "npm test",
+    label: "Unix shell",
+    color: "cyan",
+  })
+  assert.deepEqual(formatActiveTurnEcho(inputRoleForLine("LIST MD", "d3")), {
+    glyph: ":",
+    content: "LIST MD",
+    label: "D3 TCL",
+    color: "yellow",
+  })
 })

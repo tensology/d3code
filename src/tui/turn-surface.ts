@@ -13,6 +13,13 @@ export interface SubmittedTurnView extends SubmittedTurn {
   label: string
 }
 
+export interface ActiveTurnEcho {
+  glyph: string
+  content: string
+  label: string
+  color: "cyan" | "yellow"
+}
+
 function compactTaskLabel(label: string, maxLength = 30): string {
   if (label.length <= maxLength) return label
   return `${label.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
@@ -37,6 +44,13 @@ export function formatSubmittedTurn(turn: SubmittedTurn): SubmittedTurnView {
     slash: "Slash command",
   }
   return { ...turn, label: labels[turn.kind] }
+}
+
+export function formatActiveTurnEcho(turn: SubmittedTurn): ActiveTurnEcho {
+  const view = formatSubmittedTurn(turn)
+  if (turn.kind === "shell") return { glyph: "› !", content: turn.content, label: view.label, color: "cyan" }
+  if (turn.kind === "d3") return { glyph: ":", content: turn.content, label: view.label, color: "yellow" }
+  return { glyph: "›", content: turn.content, label: view.label, color: "cyan" }
 }
 
 export function formatLiveTurnLabel(input: { kind: SubmittedTurnKind; detail: string }): string {
