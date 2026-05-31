@@ -1277,23 +1277,25 @@ program.command("ide").alias("id").argument("[visibility]", "use public to bind 
   const profile = selectProfile(config, options.profile)
   const mode = getMode(options.mode) ?? getMode("chat")!
   const safety = options.safety ? parseSafety(options.safety) : mode.safetyBias ?? effectiveSafety(config, undefined, profile)
-  let publicMode = Boolean(options.public || visibility === "public")
-  if (shouldPromptForPublicIde({ hostExplicit: Boolean(options.host), visibility, stdinIsTTY: process.stdin.isTTY, stdoutIsTTY: process.stdout.isTTY })) {
+  const configuredHost = config.ideBindHost
+  let publicMode = Boolean(options.public || visibility === "public" || configuredHost === "0.0.0.0" || configuredHost === "::")
+  if (shouldPromptForPublicIde({ hostExplicit: Boolean(options.host || configuredHost), visibility, stdinIsTTY: process.stdin.isTTY, stdoutIsTTY: process.stdout.isTTY })) {
     publicMode = await askPublicIdeBind()
   }
-  const host = options.host ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
+  const host = options.host ?? configuredHost ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
   const server = await startIdeServer(config, {
     model: options.model ?? config.defaultModel,
     safety,
     profile: options.profile ?? profile?.name,
     mode: mode.id,
   }, { host, port: options.port })
-  const displayUrl = displayUrlForIdeBind(host, server.port)
-  console.log(`D3 Code IDE running (${displayUrlLabelForIdeBind(host)}): ${terminalLink(displayUrl, displayUrl)}`)
+  const displayOptions = { publicHost: config.idePublicHost }
+  const displayUrl = displayUrlForIdeBind(host, server.port, undefined, displayOptions)
+  console.log(`D3 Code IDE running (${displayUrlLabelForIdeBind(host, undefined, displayOptions)}): ${terminalLink(displayUrl, displayUrl)}`)
   if (displayUrl !== server.url) console.log(`Bound: ${server.host}:${server.port}`)
   console.log(`Profile: ${options.profile ?? profile?.name ?? "none"}`)
   if (publicMode || host === "0.0.0.0" || host === "::") console.log(`Auth: Basic user ${resolveIdeAuth(config).username}`)
-  for (const note of ideAccessNotes(host, server.port)) console.log(note)
+  for (const note of ideAccessNotes(host, server.port, undefined, displayOptions)) console.log(note)
   console.log("Press Ctrl+C to stop.")
   await new Promise<void>((resolve) => {
     process.once("SIGINT", () => resolve())

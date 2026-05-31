@@ -31,6 +31,8 @@ const ConfigSchema = z.object({
   defaultProfile: z.string().optional(),
   profiles: z.array(ProfileSchema).default([]),
   modelSecrets: z.record(z.string()).default({}),
+  ideBindHost: z.string().optional(),
+  idePublicHost: z.string().optional(),
   ideAuth: z.object({
     username: z.string().min(1),
     password: z.string().min(1),

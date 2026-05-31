@@ -256,19 +256,20 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       const portValue = flagValue(args, "--port") ?? args.find((arg) => /^\d+$/.test(arg))
       const port = portValue ? Number(portValue) : 3737
       if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [public|stop] [--port 3737] [--host 127.0.0.1|0.0.0.0]" }
-      const host = flagValue(args, "--host") ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
+      const host = flagValue(args, "--host") ?? config.ideBindHost ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
       const server = await startIdeServer(config, state, { host, port })
       if (port !== 0) openBrowserBestEffort(server.url)
       const firewallNotes = publicMode ? await openTemporaryFirewallPort(server.port) : []
-      const displayUrl = displayUrlForIdeBind(host, server.port)
+      const displayOptions = { publicHost: config.idePublicHost }
+      const displayUrl = displayUrlForIdeBind(host, server.port, undefined, displayOptions)
       return {
         output: [
-          `D3 Code IDE started (${displayUrlLabelForIdeBind(host)}): ${displayUrl}`,
+          `D3 Code IDE started (${displayUrlLabelForIdeBind(host, undefined, displayOptions)}): ${displayUrl}`,
           ...(displayUrl !== server.url ? [`Bound: ${server.host}:${server.port}`] : []),
           `Profile: ${state.profile ?? config.defaultProfile ?? "default"}`,
           `Safety: ${state.safety}`,
           ...(publicMode ? [`Auth: Basic user ${resolveIdeAuth(config).username}`] : []),
-          ...ideAccessNotes(host, server.port, undefined, { publicCommand: "/ide public" }),
+          ...ideAccessNotes(host, server.port, undefined, { publicCommand: "/ide public", publicHost: config.idePublicHost }),
           ...firewallNotes,
           "Opened in your browser if the terminal allows it.",
           "Use /ide stop to stop the server.",

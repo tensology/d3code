@@ -21,6 +21,17 @@ test("IDE public bind displays a reachable LAN URL instead of 0.0.0.0", () => {
   assert.doesNotMatch(notes, /http:\/\/0\.0\.0\.0:3737/)
 })
 
+test("IDE public bind can display a configured DNS host", () => {
+  assert.equal(displayHostForIdeBind("0.0.0.0", networks, { publicHost: "http://office.crystallogic.org/" }), "office.crystallogic.org")
+  assert.equal(displayUrlForIdeBind("0.0.0.0", 3737, networks, { publicHost: "office.crystallogic.org" }), "http://office.crystallogic.org:3737")
+  assert.equal(displayUrlLabelForIdeBind("0.0.0.0", networks, { publicHost: "office.crystallogic.org" }), "Public URL")
+
+  const notes = ideAccessNotes("0.0.0.0", 3737, networks, { publicHost: "office.crystallogic.org" }).join("\n")
+  assert.match(notes, /Public URL:/)
+  assert.match(notes, /http:\/\/office\.crystallogic\.org:3737/)
+  assert.doesNotMatch(notes, /Public\/WAN URL: not known/)
+})
+
 test("IDE detects private IPv4 interface addresses", () => {
   assert.equal(isPrivateIpv4("10.1.2.3"), true)
   assert.equal(isPrivateIpv4("172.16.0.1"), true)
