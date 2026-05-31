@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIN_NODE_MAJOR=20
 SKIP_NODE_INSTALL="${D3CODE_SKIP_NODE_INSTALL:-0}"
 SKIP_NPM_LINK="${D3CODE_SKIP_NPM_LINK:-0}"
+NODE_DIST_BASE="${D3CODE_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v20.x}"
 
 info() { printf '\033[1;34m%s\033[0m\n' "$*"; }
 ok() { printf '\033[1;32m%s\033[0m\n' "$*"; }
@@ -72,6 +73,64 @@ install_node_macos() {
   brew install node
 }
 
+fetch_url() {
+  local url="$1"
+  local out="${2:-}"
+  if need_cmd curl; then
+    if [ -n "$out" ]; then
+      curl -fsSL "$url" -o "$out"
+    else
+      curl -fsSL "$url"
+    fi
+    return
+  fi
+  if need_cmd wget; then
+    if [ -n "$out" ]; then
+      wget -qO "$out" "$url"
+    else
+      wget -qO- "$url"
+    fi
+    return
+  fi
+  return 1
+}
+
+install_node_tarball() {
+  if ! need_cmd tar; then
+    return 1
+  fi
+  local machine node_arch
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64|amd64) node_arch="x64" ;;
+    aarch64|arm64) node_arch="arm64" ;;
+    *) return 1 ;;
+  esac
+
+  local tmp_dir shasums archive install_root node_dir archive_path
+  tmp_dir="$(mktemp -d)"
+  install_root="$ROOT_DIR/.local/node"
+  trap 'rm -rf "$tmp_dir"' RETURN
+
+  info "Installing Node.js 20 from official Node.js binary archive..."
+  shasums="$(fetch_url "$NODE_DIST_BASE/SHASUMS256.txt")" || return 1
+  archive="$(printf '%s\n' "$shasums" | awk '{print $2}' | grep "linux-${node_arch}\.tar\.xz$" | head -n 1)"
+  if [ -z "$archive" ]; then
+    return 1
+  fi
+  archive_path="$tmp_dir/$archive"
+  fetch_url "$NODE_DIST_BASE/$archive" "$archive_path" || return 1
+
+  mkdir -p "$(dirname "$install_root")"
+  rm -rf "$install_root"
+  mkdir -p "$install_root"
+  tar -xJf "$archive_path" -C "$install_root" --strip-components=1
+  export PATH="$install_root/bin:$PATH"
+
+  node_dir="$install_root/bin/node"
+  [ -x "$node_dir" ]
+}
+
 ensure_node() {
   if have_node_20; then
     ok "Node.js $(node --version) and npm $(npm --version) found."
@@ -82,7 +141,7 @@ ensure_node() {
     fail "Node.js 20+ and npm are required. Install them, then rerun setup.sh."
   fi
 
-  install_node_rhel || install_node_debian || install_node_macos || true
+  install_node_rhel || install_node_debian || install_node_macos || install_node_tarball || true
 
   if ! have_node_20; then
     fail "Node.js 20+ and npm are still missing. Install Node.js 20+ manually, then rerun setup.sh."
