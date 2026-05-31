@@ -26,6 +26,7 @@ import { nextPacedText } from "./paced-text.js"
 import { commandSuggestions } from "./command-suggestions.js"
 import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
 import { createBusyInputHandler } from "./busy-input.js"
+import { formatComposerHint, formatComposerTitle } from "./prompt-composer.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -897,6 +898,8 @@ export function App(props: AppProps) {
   const d3StatusColor = d3Attached ? "green" : profile ? "yellow" : d3Status === "connected" ? "green" : "yellow"
   const promptGlyph = mode === "d3" ? ":" : "›"
   const promptColor = mode === "d3" ? "yellow" : busy ? "gray" : "cyan"
+  const composerTitle = formatComposerTitle({ mode, busy })
+  const composerHint = formatComposerHint({ busy, draftText: draft.text, queuedCount: queuedLines.length })
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -968,6 +971,9 @@ export function App(props: AppProps) {
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
         <Box flexDirection="row">
+          <Text color={busy ? "cyan" : "gray"}>{composerTitle}</Text>
+        </Box>
+        <Box flexDirection="row">
           <Text color={promptColor} bold>{promptGlyph}</Text>
           <Text> </Text>
           <Text>{renderedDraft.before}</Text>
@@ -982,16 +988,14 @@ export function App(props: AppProps) {
               <Text>{formatBusyStatus(activeTask, busySeconds, busyProgress, interruptHint)}</Text>
             </Box>
             <Box flexDirection="row">
-              {queuedLines.length ? (
-                <>
-                  <Text color="cyan">{queuedLines.length === 1 ? "queued" : `${queuedLines.length} queued`}</Text>
-                  <Text dimColor>{`  next runs automatically unless you interrupt`}</Text>
-                </>
-              ) : (
-                <Text dimColor>enter queues this prompt while the current turn finishes</Text>
-              )}
+              <Text dimColor>{composerHint}</Text>
             </Box>
           </>
+        ) : null}
+        {!busy ? (
+          <Box flexDirection="row">
+            <Text dimColor>{composerHint}</Text>
+          </Box>
         ) : null}
         {suggestions.length > 0 ? (
           <Box flexDirection="column" marginTop={0}>
