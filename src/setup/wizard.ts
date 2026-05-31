@@ -4,7 +4,7 @@ import type { D3CodeConfig } from "../config/config.js"
 import { saveConfig } from "../config/config.js"
 import { normalizeProviderID, providers } from "../providers/catalog.js"
 import { discoverProviderModels } from "../providers/model-discovery.js"
-import type { SecretStore } from "../security/secrets.js"
+import { secretRefForProvider, type SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 import { D3_TCL_PROMPT_PATTERN, describeD3PromptPattern, normalizeD3PromptPattern } from "../d3/prompts.js"
 
@@ -77,7 +77,7 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     }
     const key = provider.id === "ollama" ? "" : await rl.question(`API key for ${provider.name} (blank to use env ${provider.env.join("/")}): `)
     if (key.trim()) {
-      const ref = `keychain:model:${provider.id}`
+      const ref = secretRefForProvider(provider.id)
       await secrets.set(ref, key.trim())
       config.modelSecrets[provider.id] = ref
     }
