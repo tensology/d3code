@@ -29,6 +29,7 @@ import { createBusyInputHandler } from "./busy-input.js"
 import { formatComposerHint, formatComposerPrompt, formatComposerTitle } from "./prompt-composer.js"
 import { formatActiveTurnEcho, formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine, type SubmittedTurn } from "./turn-surface.js"
 import { formatToolActivity, formatToolResultTitle } from "./tool-activity.js"
+import { canEnableRawMode } from "./raw-mode.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -117,6 +118,7 @@ export function App(props: AppProps) {
       removeListener(event: "input", listener: (chunk: Buffer | string) => void): void
     }
   }
+  const inputIsInteractive = canEnableRawMode(stdinContext.stdin)
   const [draft, setDraft] = useState<PromptDraft>({ text: "", cursor: 0 })
   const initialMode = props.mode ?? "chat"
   const initialSession = props.session ?? newSession(props.model, props.safety, props.profile)
@@ -294,7 +296,7 @@ export function App(props: AppProps) {
       }
     }
     const input = stdinContext.stdin
-    stdinContext.setRawMode?.(true)
+    if (canEnableRawMode(input)) stdinContext.setRawMode?.(true)
     input.on("data", onData)
     input.prependListener("readable", onReadable)
     stdinContext.internal_eventEmitter?.on("input", onData)
@@ -466,7 +468,7 @@ export function App(props: AppProps) {
       setDraft((current) => insertText(current, value))
       setHistoryIndex(undefined)
     }
-  })
+  }, { isActive: inputIsInteractive })
 
   function handleBusyRawInput(value: string): void {
     createBusyInputHandler({
