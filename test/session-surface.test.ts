@@ -61,3 +61,10 @@ test("live shell output summary reports running state before output", () => {
   assert.equal(summary.progress, "")
   assert.equal(formatByteCount(1536), "1.5 KB")
 })
+
+test("live shell output summary renders carriage-return progress like a terminal", () => {
+  const summary = summarizeLiveOutput("download 10%\rdownload 40%\rdownload 100%", 2)
+
+  assert.equal(summary.preview, "download 100%")
+  assert.equal(summary.progress, "1 line")
+})

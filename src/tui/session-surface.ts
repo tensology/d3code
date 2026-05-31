@@ -71,6 +71,13 @@ function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "")
 }
 
+function normalizeTerminalProgress(value: string): string {
+  return value.split(/\n/).map((line) => {
+    const frames = line.split("\r")
+    return frames.at(-1) ?? ""
+  }).join("\n")
+}
+
 export function formatByteCount(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`
@@ -86,7 +93,7 @@ export interface LiveOutputSummary {
 }
 
 export function summarizeLiveOutput(output: string, elapsedSeconds: number, maxLines = 5): LiveOutputSummary {
-  const clean = stripAnsi(output).trimEnd()
+  const clean = normalizeTerminalProgress(stripAnsi(output)).trimEnd()
   const byteCount = Buffer.byteLength(output)
   const lines = clean.split(/\r?\n/).filter((line) => line.length > 0)
   if (lines.length === 0) {
