@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
-import { spawn } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
+import { hostname, platform } from "node:os"
 import { agents } from "../agents/registry.js"
 import { renderDelegationPlan } from "../agents/delegation.js"
 import { renderAgentRunReport, runAgentTask } from "../agents/run.js"
@@ -100,6 +101,66 @@ function flagValue(args: string[], flag: string): string | undefined {
   return inline?.slice(flag.length + 1)
 }
 
+function runSystemCommand(command: string, args: string[], timeoutMs = 2500): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    execFile(command, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+      const errorCode = (error as NodeJS.ErrnoException | null)?.code
+      resolve({
+        code: typeof errorCode === "number" ? errorCode : error ? 1 : 0,
+        stdout: String(stdout ?? ""),
+        stderr: String(stderr ?? ""),
+      })
+    })
+  })
+}
+
+const temporaryFirewallPorts = new Set<number>()
+
+async function openTemporaryFirewallPort(port: number): Promise<string[]> {
+  if (port <= 0) return ["Firewall: skipped for ephemeral port."]
+  if (platform() !== "linux") return ["Firewall: not changed; this host is not Linux."]
+  const state = await runSystemCommand("firewall-cmd", ["--state"])
+  if (state.code !== 0) return ["Firewall: not changed; firewalld is not running or firewall-cmd is unavailable."]
+  const add = await runSystemCommand("firewall-cmd", [`--add-port=${port}/tcp`, "--timeout=2h"])
+  if (add.code !== 0) return [`Firewall: could not open ${port}/tcp temporarily (${add.stderr.trim() || add.stdout.trim() || "permission denied"}).`]
+  const query = await runSystemCommand("firewall-cmd", [`--query-port=${port}/tcp`])
+  if (query.code === 0) {
+    temporaryFirewallPorts.add(port)
+    return [`Firewall: opened ${port}/tcp temporarily for 2 hours.`]
+  }
+  return [`Firewall: attempted temporary open for ${port}/tcp, but the rule was not confirmed.`]
+}
+
+async function closeTemporaryFirewallPorts(): Promise<string[]> {
+  if (temporaryFirewallPorts.size === 0) return []
+  const notes: string[] = []
+  for (const port of [...temporaryFirewallPorts]) {
+    const result = await runSystemCommand("firewall-cmd", [`--remove-port=${port}/tcp`])
+    notes.push(result.code === 0 ? `Firewall: closed temporary ${port}/tcp rule.` : `Firewall: could not close temporary ${port}/tcp rule; it will expire automatically if firewalld accepted the timeout.`)
+    temporaryFirewallPorts.delete(port)
+  }
+  return notes
+}
+
+function ideAccessNotes(host: string, port: number): string[] {
+  if (host === "127.0.0.1" || host === "localhost") {
+    return [
+      "Access: local-only on this machine.",
+      `From your laptop, use an SSH tunnel: ssh -L ${port}:127.0.0.1:${port} <user>@<server>`,
+      `Then open: http://127.0.0.1:${port}`,
+      "For a deliberate network bind, restart with: /ide stop then /ide --host 0.0.0.0",
+    ]
+  }
+  if (host === "0.0.0.0" || host === "::") {
+    return [
+      "Access: listening on all server interfaces.",
+      `Open from another machine if the firewall allows it: http://${hostname()}:${port}`,
+      "Only expose this on a trusted network or behind an SSH/VPN tunnel.",
+    ]
+  }
+  return [`Access: listening on ${host}.`, `Open: http://${host}:${port}`]
+}
+
 function commandStdout(raw: unknown): string {
   if (raw && typeof raw === "object" && "stdout" in raw && typeof (raw as { stdout?: unknown }).stdout === "string") return (raw as { stdout: string }).stdout
   return typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)
@@ -144,7 +205,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [stop] [--port N] [--host 127.0.0.1], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [public|stop] [--port N] [--host 127.0.0.1|0.0.0.0], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -188,19 +249,24 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
     case "/id": {
       if (args[0] === "stop") {
         await stopIdeServers()
-        return { output: "D3 Code IDE stopped." }
+        const firewallNotes = await closeTemporaryFirewallPorts()
+        return { output: ["D3 Code IDE stopped.", ...firewallNotes].join("\n") }
       }
+      const publicMode = args.includes("public")
       const portValue = flagValue(args, "--port") ?? args.find((arg) => /^\d+$/.test(arg))
       const port = portValue ? Number(portValue) : 3737
-      if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [stop] [--port 3737] [--host 127.0.0.1]" }
-      const host = flagValue(args, "--host") ?? "127.0.0.1"
+      if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [public|stop] [--port 3737] [--host 127.0.0.1|0.0.0.0]" }
+      const host = flagValue(args, "--host") ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
       const server = await startIdeServer(config, state, { host, port })
       if (port !== 0) openBrowserBestEffort(server.url)
+      const firewallNotes = publicMode ? await openTemporaryFirewallPort(server.port) : []
       return {
         output: [
           `D3 Code IDE started: ${server.url}`,
           `Profile: ${state.profile ?? config.defaultProfile ?? "default"}`,
           `Safety: ${state.safety}`,
+          ...ideAccessNotes(host, server.port),
+          ...firewallNotes,
           "Opened in your browser if the terminal allows it.",
           "Use /ide stop to stop the server.",
         ].join("\n"),
