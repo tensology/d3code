@@ -110,6 +110,41 @@ export function renderWorkspaceChangeSummary(summary: WorkspaceChangeSummary): s
   ].filter(Boolean).join("\n")
 }
 
+export function renderWorkspaceChangeWithDiff(summary: WorkspaceChangeSummary, diff: string, maxDiffLines = 60): string {
+  const base = renderWorkspaceChangeSummary(summary)
+  const compact = diff.split(/\r?\n/)
+    .filter((line) => line.trim() && !line.startsWith("index ") && !line.startsWith("--- ") && !line.startsWith("+++ "))
+    .map((line) => {
+      const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line)
+      return match ? `diff ${match[2]}` : line
+    })
+  if (compact.length === 0) return base
+  const visible = compact.slice(0, maxDiffLines)
+  const overflow = compact.length - visible.length
+  const lines = [
+    base,
+    "",
+    "Diff preview:",
+    ...visible,
+  ]
+  if (overflow > 0) lines.push(`... ${overflow} more diff lines`)
+  return lines.join("\n")
+}
+
+export async function renderWorkspaceChangeDetails(summary: WorkspaceChangeSummary, cwd = process.cwd()): Promise<string> {
+  const diffablePaths = summary.files
+    .filter((file) => file.code !== "??")
+    .slice(0, 6)
+    .map((file) => file.path)
+  if (diffablePaths.length === 0) return renderWorkspaceChangeSummary(summary)
+  try {
+    const { stdout } = await execFileAsync("git", ["diff", "--no-ext-diff", "--unified=2", "HEAD", "--", ...diffablePaths], { cwd, maxBuffer: 1024 * 1024 })
+    return renderWorkspaceChangeWithDiff(summary, stdout)
+  } catch {
+    return renderWorkspaceChangeSummary(summary)
+  }
+}
+
 export function formatWorkspaceChangeFooter(summary: WorkspaceChangeSummary | undefined): string {
   if (!summary) return "files --"
   const additions = summary.files.reduce((sum, file) => sum + (file.additions ?? 0), 0)

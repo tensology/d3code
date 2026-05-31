@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { formatWorkspaceChangeFooter, parseGitNumstat, parseGitStatus, renderWorkspaceChangeSummary, summarizeWorkspaceChanges, type WorkspaceSnapshot } from "../src/tui/workspace-changes.js"
+import { formatWorkspaceChangeFooter, parseGitNumstat, parseGitStatus, renderWorkspaceChangeSummary, renderWorkspaceChangeWithDiff, summarizeWorkspaceChanges, type WorkspaceSnapshot } from "../src/tui/workspace-changes.js"
 
 function snapshot(raw: string, numstat = ""): WorkspaceSnapshot {
   return { available: true, files: parseGitStatus(raw, parseGitNumstat(numstat)) }
@@ -49,4 +49,33 @@ test("workspace change summary stays quiet when status did not change", () => {
 
 test("workspace change summary ignores non-git snapshots", () => {
   assert.equal(summarizeWorkspaceChanges({ available: false, files: new Map() }, snapshot(" M README.md\n")), undefined)
+})
+
+test("workspace change detail can include a compact diff preview", () => {
+  const summary = summarizeWorkspaceChanges(
+    snapshot(""),
+    snapshot(" M src/app.ts\n", "2\t1\tsrc/app.ts\n"),
+  )!
+  const rendered = renderWorkspaceChangeWithDiff(summary, [
+    "diff --git a/src/app.ts b/src/app.ts",
+    "index abc..def 100644",
+    "--- a/src/app.ts",
+    "+++ b/src/app.ts",
+    "@@ -1,3 +1,4 @@",
+    " const before = true",
+    "-oldLine()",
+    "+newLine()",
+  ].join("\n"))
+
+  assert.equal(rendered, [
+    "Files changed: 1 (1 modified, +2, -1)",
+    "modified src/app.ts +2/-1",
+    "",
+    "Diff preview:",
+    "diff src/app.ts",
+    "@@ -1,3 +1,4 @@",
+    " const before = true",
+    "-oldLine()",
+    "+newLine()",
+  ].join("\n"))
 })
