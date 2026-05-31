@@ -40,6 +40,7 @@ export function transcriptPrefix(role: string): string {
   if (role === "tool-start") return "⏺ "
   if (role === "tool") return "  ⎿ "
   if (role === "shell-output") return "  ⎿ "
+  if (role === "file-change-live") return "  ◆ "
   if (role === "file-change") return "  ◆ "
   return "  "
 }
@@ -52,6 +53,7 @@ export function transcriptColor(role: string): string {
   if (role === "queued") return "cyan"
   if (role === "shell-input") return "white"
   if (role === "user") return "white"
+  if (role === "file-change-live") return "yellow"
   if (role === "tool-start" || role === "file-change" || role === "shell-output") return "cyan"
   return "gray"
 }
@@ -76,6 +78,19 @@ function FileChangeBlock({ content }: { content: string }) {
       <Text color="cyan">{transcriptPrefix("file-change")}</Text>
       <Box flexDirection="column">
         <Text color="cyan">{summary}</Text>
+        {files.map((line, index) => <Text key={`${index}-${line}`} dimColor>{line}</Text>)}
+      </Box>
+    </Box>
+  )
+}
+
+function LiveFileChangeBlock({ content }: { content: string }) {
+  const [summary = "Files changing", ...files] = compactTranscriptContent(content, 6)
+  return (
+    <Box flexDirection="row">
+      <Text color="yellow">{transcriptPrefix("file-change-live")}</Text>
+      <Box flexDirection="column">
+        <Text color="yellow">{summary}</Text>
         {files.map((line, index) => <Text key={`${index}-${line}`} dimColor>{line}</Text>)}
       </Box>
     </Box>
@@ -108,6 +123,7 @@ export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
   if (entry.role === "tool") return <ResponseBlock content={entry.content} />
   if (entry.role === "shell-output") return <ResponseBlock content={entry.content} />
   if (entry.role === "system") return <ResponseBlock content={entry.content} titleColor="gray" maxLines={14} />
+  if (entry.role === "file-change-live") return <LiveFileChangeBlock content={entry.content} />
   if (entry.role === "file-change") return <FileChangeBlock content={entry.content} />
   return (
     <Text color={transcriptColor(entry.role)}>

@@ -802,6 +802,7 @@ export function App(props: AppProps) {
   const suggestions = commandSuggestions(draft.text)
   const queuedPreview = queuedLines.slice(0, 3)
   const queuedOverflow = queuedLines.length - queuedPreview.length
+  const liveWorkspaceChange = busy && workspaceChanges ? renderWorkspaceChangeSummary(workspaceChanges) : ""
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -853,6 +854,7 @@ export function App(props: AppProps) {
         {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: pacedAssistant }} /> : null}
         {streamingShellOutput ? <TranscriptEntryView entry={{ role: "shell-output", content: `${streamingToolLabel || "Bash running"}\n${pacedShellOutput.trimEnd()}` }} /> : null}
         {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool", content: `${streamingToolLabel || "D3 running"}\n${pacedD3Output.trimEnd()}` }} /> : null}
+        {liveWorkspaceChange ? <TranscriptEntryView entry={{ role: "file-change-live", content: liveWorkspaceChange }} /> : null}
         {busy && queuedPreview.map((line, index) => (
           <TranscriptEntryView key={`queued-${index}-${line}`} entry={{ role: "queued", content: line }} />
         ))}
