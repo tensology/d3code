@@ -69,10 +69,11 @@ export function renderEstateReport(report: Omit<D3EstateReport, "compact">): str
   return rows.join("\n")
 }
 
-export async function inspectD3Estate(session: D3Session, options: { limit?: number } = {}): Promise<D3EstateReport> {
+export async function inspectD3Estate(session: D3Session, options: { limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<D3EstateReport> {
   const profile = session.profile
-  const whoResult = await session.run("WHO", 10_000)
-  const filesResult = await session.run("LIST MD WITH A1 = \"D\" A0 A1 A2 (N", 20_000)
+  const timeoutMs = options.timeoutMs ?? 0
+  const whoResult = await session.run("WHO", timeoutMs, { signal: options.signal })
+  const filesResult = await session.run("LIST MD WITH A1 = \"D\" A0 A1 A2 (N", timeoutMs, { signal: options.signal })
   const who = outputOf(whoResult).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1)
   const filesOutput = outputOf(filesResult)
   const files = parseFileListing(filesOutput, options.limit ?? 40)

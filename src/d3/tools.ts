@@ -12,7 +12,7 @@ function requireSession(context: ToolContext) {
 
 async function runTcl(context: ToolContext, command: string, confirmed = false): Promise<D3CommandResult> {
   assertD3Allowed(context.safety, command, confirmed)
-  return requireSession(context).run(command)
+  return requireSession(context).run(command, context.commandTimeoutMs, { signal: context.signal })
 }
 
 function quoteTclArg(value: string): string {
@@ -173,7 +173,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { limit?: number }
-      return inspectD3Estate(requireSession(context), { limit: args.limit })
+      return inspectD3Estate(requireSession(context), { limit: args.limit, signal: context.signal, timeoutMs: context.commandTimeoutMs })
     },
   },
 ]

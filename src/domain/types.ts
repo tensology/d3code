@@ -31,6 +31,7 @@ export interface D3CommandResult {
 export interface D3RunOptions {
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  signal?: AbortSignal
 }
 
 export interface D3Session {
@@ -43,6 +44,8 @@ export interface ToolContext {
   safety: SafetyMode
   session?: D3Session
   profile?: ConnectionProfile
+  signal?: AbortSignal
+  commandTimeoutMs?: number
 }
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {

@@ -10,6 +10,8 @@ export interface ToolRunRequest {
   profile?: string
   safety: SafetyMode
   compact?: boolean
+  signal?: AbortSignal
+  commandTimeoutMs?: number
 }
 
 export interface ToolRunResult {
@@ -27,7 +29,7 @@ export async function runToolByName(config: D3CodeConfig, request: ToolRunReques
   if (needsSession && !profile) throw new Error("No D3 profile selected. Use /profile or configure one with profile-add-local/profile-add-ssh.")
   const session = needsSession && profile ? createD3Session(profile) : undefined
   try {
-    const raw = await tool.execute(request.input ?? {}, { safety: request.safety, profile, session })
+    const raw = await tool.execute(request.input ?? {}, { safety: request.safety, profile, session, signal: request.signal, commandTimeoutMs: request.commandTimeoutMs })
     return { name: request.name, raw, compact: request.compact === false ? JSON.stringify(raw, null, 2) : compactToolOutput(raw) }
   } finally {
     await session?.close()

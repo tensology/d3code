@@ -2,16 +2,48 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import type { ConnectionProfile, D3CommandResult, D3RunOptions, D3Session } from "../domain/types.js"
 import { normalizeD3PromptPattern } from "./prompts.js"
 
-function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number, options: D3RunOptions = {}, env?: NodeJS.ProcessEnv): Promise<D3CommandResult> {
+function timeoutEnabled(timeoutMs: number | undefined): timeoutMs is number {
+  return typeof timeoutMs === "number" && timeoutMs > 0
+}
+
+function interruptedError(): Error {
+  return new Error("Interrupted.")
+}
+
+function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number | undefined, options: D3RunOptions = {}, env?: NodeJS.ProcessEnv): Promise<D3CommandResult> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], env })
     let stdout = ""
     let stderr = ""
-    const timer = setTimeout(() => {
+    let settled = false
+    const finishReject = (error: Error) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      options.signal?.removeEventListener("abort", onAbort)
+      reject(error)
+    }
+    const finishResolve = (result: D3CommandResult) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      options.signal?.removeEventListener("abort", onAbort)
+      resolve(result)
+    }
+    const onAbort = () => {
       child.kill("SIGTERM")
-      reject(new Error(`Command timed out after ${timeoutMs}ms: ${command} ${args.join(" ")}`))
-    }, timeoutMs)
+      finishReject(interruptedError())
+    }
+    const timer = timeoutEnabled(timeoutMs) ? setTimeout(() => {
+      child.kill("SIGTERM")
+      finishReject(new Error(`Command timed out after ${timeoutMs}ms: ${command} ${args.join(" ")}`))
+    }, timeoutMs) : undefined
+    if (options.signal?.aborted) {
+      onAbort()
+      return
+    }
+    options.signal?.addEventListener("abort", onAbort, { once: true })
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString()
@@ -24,12 +56,10 @@ function runProcess(command: string, args: string[], input: string | undefined, 
       options.onStderr?.(text)
     })
     child.on("error", (error) => {
-      clearTimeout(timer)
-      reject(error)
+      finishReject(error)
     })
     child.on("close", (exitCode) => {
-      clearTimeout(timer)
-      resolve({ command: [command, ...args].join(" "), stdout, stderr, exitCode, durationMs: Date.now() - started })
+      finishResolve({ command: [command, ...args].join(" "), stdout, stderr, exitCode, durationMs: Date.now() - started })
     })
     if (input) child.stdin.write(input)
     child.stdin.end()
@@ -91,7 +121,7 @@ export class PersistentLocalD3Session implements D3Session {
     if (promptPattern && !promptPattern.test(normalizePromptOutput(this.stdout))) await absorbStartupPrompt(() => {
       if (this.closedError) throw this.closedError
       return promptPattern.test(normalizePromptOutput(this.stdout))
-    }, Math.min(timeoutMs, 2_000))
+    }, timeoutEnabled(timeoutMs) ? Math.min(timeoutMs, 2_000) : 2_000)
     const stdoutStart = this.stdout.length
     const stderrStart = this.stderr.length
     let streamedStdout = 0
@@ -118,7 +148,7 @@ export class PersistentLocalD3Session implements D3Session {
         streamedStderr = streamDelta(stderr, streamedStderr, options.onStderr)
         return output.includes(marker)
       }
-    await waitFor(wait, timeoutMs, `Command timed out after ${timeoutMs}ms: ${command}`)
+    await waitFor(wait, timeoutMs, `Command timed out after ${timeoutMs}ms: ${command}`, options.signal)
 
     const stdout = this.stdout.slice(stdoutStart)
     const stderr = this.stderr.slice(stderrStart)
@@ -156,26 +186,34 @@ function normalizePromptOutput(output: string): string {
   return output.replace(/\0/g, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
 }
 
-function waitFor(predicate: () => boolean, timeoutMs: number, timeoutMessage: string): Promise<void> {
+function waitFor(predicate: () => boolean, timeoutMs: number | undefined, timeoutMessage: string, signal?: AbortSignal): Promise<void> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      clearInterval(timer)
+      signal?.removeEventListener("abort", onAbort)
+      callback()
+    }
+    const onAbort = () => finish(() => reject(interruptedError()))
     const timer = setInterval(() => {
       try {
         if (predicate()) {
-          clearInterval(timer)
-          resolve()
+          finish(resolve)
           return
         }
       } catch (error) {
-        clearInterval(timer)
-        reject(error)
+        finish(() => reject(error))
         return
       }
-      if (Date.now() - started > timeoutMs) {
-        clearInterval(timer)
-        reject(new Error(timeoutMessage))
+      if (timeoutEnabled(timeoutMs) && Date.now() - started > timeoutMs) {
+        finish(() => reject(new Error(timeoutMessage)))
       }
     }, 10)
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener("abort", onAbort, { once: true })
   })
 }
 

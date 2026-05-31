@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
+import { createD3Session } from "../src/d3/adapter.js"
 import { compactText } from "../src/tools/compact.js"
 import { runToolByName } from "../src/tools/runner.js"
 
@@ -29,4 +30,20 @@ test("tool runner executes local TCL through shell-backed profile", async () => 
   })
   assert.match(result.compact, /D3CODE_OK/)
   assert.equal((result.raw as { exitCode: number }).exitCode, 0)
+})
+
+test("D3 session timeout 0 leaves the command running until completion", async () => {
+  const session = createD3Session({ name: "local", type: "local" })
+  const result = await session.run("sleep 0.05; printf D3CODE_STILL_RUNNING", 0)
+
+  assert.match(result.stdout, /D3CODE_STILL_RUNNING/)
+})
+
+test("D3 session timeout 0 can still be interrupted by AbortSignal", async () => {
+  const session = createD3Session({ name: "local", type: "local" })
+  const controller = new AbortController()
+  const run = session.run("sleep 5; printf SHOULD_NOT_PRINT", 0, { signal: controller.signal })
+  setTimeout(() => controller.abort(), 25)
+
+  await assert.rejects(run, /Interrupted/)
 })

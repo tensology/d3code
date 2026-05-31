@@ -188,6 +188,8 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
       input: toolRequest.input,
       profile: request.profile,
       safety: request.safety,
+      signal: request.signal,
+      commandTimeoutMs: 0,
     })
     request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: result.compact })
     toolEvents.push({ name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason, result })
