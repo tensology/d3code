@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { estimateStreamTokens, formatBusyStatus, formatByteCount, formatDurationMs, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTimelineProgress, formatTokenUsage, summarizeLiveOutput } from "../src/tui/session-surface.js"
+import { appendLiveTerminalChunk, estimateStreamTokens, formatBusyStatus, formatByteCount, formatDurationMs, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTimelineProgress, formatTokenUsage, summarizeLiveOutput } from "../src/tui/session-surface.js"
 
 test("session surface formats elapsed time for active work", () => {
   assert.equal(formatElapsedSeconds(0), "0s")
@@ -67,4 +67,16 @@ test("live shell output summary renders carriage-return progress like a terminal
 
   assert.equal(summary.preview, "download 100%")
   assert.equal(summary.progress, "1 line")
+})
+
+test("live terminal chunks preserve stderr text without synthetic labels", () => {
+  const output = [
+    ["", "stdout: ready\n"],
+    ["stdout: ready\n", "warning from stderr\n"],
+  ].reduce((current, [, chunk]) => appendLiveTerminalChunk(current, chunk), "")
+  const summary = summarizeLiveOutput(output, 1)
+
+  assert.equal(output, "stdout: ready\nwarning from stderr\n")
+  assert.equal(summary.preview, "stdout: ready\nwarning from stderr")
+  assert.equal(summary.preview.includes("stderr:"), false)
 })

@@ -19,7 +19,7 @@ import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeDetails, renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary, type WorkspaceSnapshot } from "./workspace-changes.js"
-import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
+import { appendLiveTerminalChunk, estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
 import { TranscriptEntryView, visibleTranscriptEntries, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
@@ -828,8 +828,8 @@ export function App(props: AppProps) {
     setTranscript((current) => [...current, { role: "tool-start", content: label }])
     const result = await runLocalShellCommand(command, {
       signal,
-      onStdout: (chunk) => setStreamingShellOutput((current) => `${current}${chunk}`),
-      onStderr: (chunk) => setStreamingShellOutput((current) => `${current}${current.endsWith("\n") || current.length === 0 ? "" : "\n"}stderr: ${chunk}`),
+      onStdout: (chunk) => setStreamingShellOutput((current) => appendLiveTerminalChunk(current, chunk)),
+      onStderr: (chunk) => setStreamingShellOutput((current) => appendLiveTerminalChunk(current, chunk)),
     })
     const output = renderLocalShellResult(result)
     setStreamingShellOutput("")
@@ -853,8 +853,8 @@ export function App(props: AppProps) {
     const capture = await captureD3Terminal(d3Session.current, line, {
       width: 80,
       height: 18,
-      onStdout: (chunk) => setStreamingD3Output((current) => `${current}${chunk}`),
-      onStderr: (chunk) => setStreamingD3Output((current) => `${current}${current.endsWith("\n") || current.length === 0 ? "" : "\n"}stderr: ${chunk}`),
+      onStdout: (chunk) => setStreamingD3Output((current) => appendLiveTerminalChunk(current, chunk)),
+      onStderr: (chunk) => setStreamingD3Output((current) => appendLiveTerminalChunk(current, chunk)),
     })
     const output = capture.screen.events.length > 0
       ? renderTuiD3Screen(capture.screen)

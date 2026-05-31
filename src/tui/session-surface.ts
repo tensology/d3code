@@ -78,6 +78,10 @@ function normalizeTerminalProgress(value: string): string {
   }).join("\n")
 }
 
+export function appendLiveTerminalChunk(current: string, chunk: string): string {
+  return `${current}${chunk}`
+}
+
 export function formatByteCount(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`
