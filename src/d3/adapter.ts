@@ -88,9 +88,9 @@ export class PersistentLocalD3Session implements D3Session {
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
     const promptPattern = this.profile.promptPattern ? new RegExp(normalizeD3PromptPattern(this.profile.promptPattern) ?? this.profile.promptPattern) : undefined
-    if (promptPattern && !promptPattern.test(this.stdout)) await absorbStartupPrompt(() => {
+    if (promptPattern && !promptPattern.test(normalizePromptOutput(this.stdout))) await absorbStartupPrompt(() => {
       if (this.closedError) throw this.closedError
-      return promptPattern.test(this.stdout)
+      return promptPattern.test(normalizePromptOutput(this.stdout))
     }, Math.min(timeoutMs, 2_000))
     const stdoutStart = this.stdout.length
     const stderrStart = this.stderr.length
@@ -108,7 +108,7 @@ export class PersistentLocalD3Session implements D3Session {
         const stderr = this.stderr.slice(stderrStart)
         streamedStdout = streamDelta(output, streamedStdout, options.onStdout)
         streamedStderr = streamDelta(stderr, streamedStderr, options.onStderr)
-        return promptPattern.test(output)
+        return promptPattern.test(normalizePromptOutput(output))
       }
       : () => {
         if (this.closedError) throw this.closedError
@@ -152,6 +152,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function normalizePromptOutput(output: string): string {
+  return output.replace(/\0/g, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+}
+
 function waitFor(predicate: () => boolean, timeoutMs: number, timeoutMessage: string): Promise<void> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
@@ -176,7 +180,7 @@ function waitFor(predicate: () => boolean, timeoutMs: number, timeoutMessage: st
 }
 
 function stripPrompt(output: string, promptPattern: RegExp): string {
-  return output
+  return normalizePromptOutput(output)
     .split(/\r?\n/)
     .filter((line) => !promptPattern.test(line))
     .join("\n")
