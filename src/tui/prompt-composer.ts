@@ -25,10 +25,10 @@ export function formatComposerPrompt(state: Pick<ComposerState, "mode" | "busy">
 
 export function formatComposerHint(state: Pick<ComposerState, "busy" | "draftText" | "queuedCount">): string {
   const queuedCount = state.queuedCount ?? 0
-  if (!state.busy) return "Enter sends; prefix Unix commands with !; /d3 attaches the D3 runtime"
+  if (!state.busy) return "Enter send · ! Unix · /d3 D3 terminal · /help"
   if (queuedCount > 0) {
-    return `${queuedCount} queued; they run automatically after this turn unless you interrupt`
+    return `${queuedCount} queued · runs after this turn · Esc interrupts`
   }
-  if ((state.draftText ?? "").trim()) return "Enter queues this prompt; Esc clears the draft first"
-  return "type the next instruction while this runs; Enter queues it, Esc interrupts"
+  if ((state.draftText ?? "").trim()) return "Enter queue · Esc clear draft"
+  return "Type the next instruction while this runs · Enter queues · Esc interrupts"
 }
