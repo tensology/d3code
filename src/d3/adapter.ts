@@ -97,7 +97,8 @@ export class PersistentLocalD3Session implements D3Session {
     let streamedStdout = 0
     let streamedStderr = 0
     const marker = `__D3CODE_DONE_${Date.now().toString(36)}_${this.sequence++}__`
-    const payload = promptPattern ? `${command}\n` : `${command}\nprintf '\\n${marker}:%s\\n' "$?"\n`
+    const d3Command = command.replace(/\r?\n/g, "\r")
+    const payload = promptPattern ? `${d3Command}\r` : `${command}\nprintf '\\n${marker}:%s\\n' "$?"\n`
     this.child.stdin.write(payload)
 
     const wait = promptPattern

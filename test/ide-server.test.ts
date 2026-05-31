@@ -99,7 +99,7 @@ test("IDE server normalizes browser-created D3 profiles for terminal emulation",
 
   const profiles = await fetch(`${server.url}/api/profiles`).then((res) => res.json()) as { profiles: Array<{ name: string; startupInput?: string; promptPattern?: string }> }
   const saved = profiles.profiles.find((profile) => profile.name === "browser-d3")
-  assert.equal(saved?.startupInput, "dm\ndm\n")
+  assert.equal(saved?.startupInput, "dm\rdm\r")
   assert.equal(saved?.promptPattern, "(^|\\n):\\s*$")
 })
 

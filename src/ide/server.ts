@@ -9,6 +9,7 @@ import { runToolByName } from "../tools/runner.js"
 import { runD3AgentTurn, type AgentChatFunction } from "../tui/agent.js"
 import type { ChatMessage } from "../llm/client.js"
 import { normalizeD3PromptPattern } from "../d3/prompts.js"
+import { createLocalD3Profile } from "../d3/profile-defaults.js"
 import { isPublicIdeHost } from "./access.js"
 import { isBasicAuthValid, resolveIdeAuth } from "./auth.js"
 
@@ -200,11 +201,22 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     const body = await readJson(req) as { profile?: D3CodeConfig["profiles"][number]; confirmed?: boolean }
     if (!body.confirmed) return sendJson(res, 409, { error: "profile edit requires confirmation" })
     if (!body.profile?.name) return sendJson(res, 400, { error: "profile.name is required" })
-    const nextProfile = {
-      ...body.profile,
-      startupInput: body.profile.startupInput?.replace(/\\n/g, "\n"),
-      promptPattern: normalizeD3PromptPattern(body.profile.promptPattern),
-    }
+    const nextProfile = body.profile.type === "local"
+      ? await createLocalD3Profile({
+        name: body.profile.name,
+        account: body.profile.account,
+        entry: body.profile.entryCommand,
+        startupInput: body.profile.startupInput,
+        prompt: body.profile.promptPattern,
+        session: body.profile.sessionMode,
+        safety: body.profile.safetyDefault,
+        allowedAccounts: body.profile.allowedAccounts,
+      })
+      : {
+          ...body.profile,
+          startupInput: body.profile.startupInput?.replace(/\\n/g, "\n"),
+          promptPattern: normalizeD3PromptPattern(body.profile.promptPattern),
+        }
     config.profiles = [...config.profiles.filter((profile) => profile.name !== nextProfile.name), nextProfile]
     config.defaultProfile ??= nextProfile.name
     state.profile = nextProfile.name

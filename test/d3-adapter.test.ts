@@ -92,13 +92,13 @@ test("persistent local D3 session can send D3 login startup input before waiting
     process.stdout.write("user id:");
     process.stdin.on("data", d => {
       b += d;
-      if (!authed && b.includes("dm\\ndm\\n")) {
+      if (!authed && /dm[\\r\\n]+dm[\\r\\n]+/.test(b)) {
         authed = true;
-        b = b.slice(b.indexOf("dm\\ndm\\n") + "dm\\ndm\\n".length);
+        b = b.replace(/^.*?dm[\\r\\n]+dm[\\r\\n]+/, "");
         process.stdout.write("\\n:");
       }
-      if (authed && b.includes("WHO\\n")) {
-        b = b.slice(b.indexOf("WHO\\n") + "WHO\\n".length);
+      if (authed && /WHO[\\r\\n]+/.test(b)) {
+        b = b.replace(/^.*?WHO[\\r\\n]+/, "");
         process.stdout.write("1 dm dm\\n:");
       }
     });

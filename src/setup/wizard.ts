@@ -124,8 +124,9 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
         .filter(Boolean)
       const defaultEntry = localDefaults?.entryCommand ?? ""
       const entryCommand = (await rl.question(`Command to enter D3/TCL on that server${defaultEntry ? ` [${defaultEntry}]` : " (blank if shell already lands there)"}: `)).trim() || defaultEntry || undefined
-      const defaultStartup = localDefaults?.startupInput?.replace(/\n/g, "\\n") ?? ""
-      const startupInput = (await rl.question(`Startup input after D3 opens (use \\n for newlines${defaultStartup ? `, default ${defaultStartup}` : ", blank for none"}): `)).trim().replace(/\\n/g, "\n") || localDefaults?.startupInput || undefined
+      const defaultStartup = localDefaults?.startupInput?.replace(/\r/g, "\\n").replace(/\n/g, "\\n") ?? ""
+      const startupAnswer = (await rl.question(`Startup input after D3 opens (use \\n for newlines${defaultStartup ? `, default ${defaultStartup}` : ", blank for none"}): `)).trim().replace(/\\n/g, "\n") || localDefaults?.startupInput || undefined
+      const startupInput = entryCommand && /(^|[\/\s])d3(\s|$)/i.test(entryCommand) ? startupAnswer?.replace(/\n/g, "\r") : startupAnswer
       console.log(describeD3PromptPattern())
       const promptDefault = localDefaults?.promptPattern ?? D3_TCL_PROMPT_PATTERN
       const promptPattern = normalizeD3PromptPattern(await rl.question(`D3 prompt regex [${promptDefault}]: `)) || promptDefault

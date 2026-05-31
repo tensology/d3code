@@ -4,7 +4,7 @@ import { D3_TCL_PROMPT_PATTERN, normalizeD3PromptPattern } from "./prompts.js"
 
 export const DEFAULT_D3_PROFILE_NAME = "prod"
 export const DEFAULT_D3_ACCOUNT = "DM"
-export const DEFAULT_D3_STARTUP_INPUT = "dm\ndm\n"
+export const DEFAULT_D3_STARTUP_INPUT = "dm\rdm\r"
 
 export interface LocalD3ProfileInput {
   name?: string
@@ -52,7 +52,10 @@ export async function createLocalD3Profile(input: LocalD3ProfileInput): Promise<
     ?? (input.entry ? defaultD3PromptPattern(input.entry) : defaults.entryCommand ? defaults.promptPattern : undefined)
   const sessionMode = input.session
     ?? (input.entry ? defaultD3SessionMode(input.entry) : defaults.entryCommand ? defaults.sessionMode : undefined)
-  const startupInput = input.startupInput?.replace(/\\n/g, "\n") ?? (shouldUseLoginDefaults ? defaults.startupInput : undefined)
+  const decodedStartupInput = input.startupInput?.replace(/\\r/g, "\r").replace(/\\n/g, "\n")
+  const startupInput = decodedStartupInput
+    ? shouldUseLoginDefaults ? decodedStartupInput.replace(/\n/g, "\r") : decodedStartupInput
+    : shouldUseLoginDefaults ? defaults.startupInput : undefined
   return {
     name: input.name ?? DEFAULT_D3_PROFILE_NAME,
     type: "local",

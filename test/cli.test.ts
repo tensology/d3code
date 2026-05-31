@@ -1024,7 +1024,7 @@ test("CLI local profile creation infers D3 defaults from the server command", as
   const config = JSON.parse(await readFile(join(home, "config.jsonc"), "utf8")) as { profiles: Array<{ account?: string; entryCommand?: string; startupInput?: string; promptPattern?: string; sessionMode?: string }> }
   assert.equal(config.profiles[0]?.account, "DM")
   assert.equal(config.profiles[0]?.entryCommand, "d3")
-  assert.equal(config.profiles[0]?.startupInput, "dm\ndm\n")
+  assert.equal(config.profiles[0]?.startupInput, "dm\rdm\r")
   assert.equal(config.profiles[0]?.promptPattern, "(^|\\n):\\s*$")
   assert.equal(config.profiles[0]?.sessionMode, "persistent")
 })
@@ -1120,7 +1120,7 @@ test("CLI setup can bootstrap a persistent D3 profile noninteractively", async (
   assert.match(profiles.stdout, /session=persistent/)
   assert.match(profiles.stdout, /allowed=SALES,DM/)
   const config = JSON.parse(await readFile(join(home, "config.jsonc"), "utf8")) as { profiles: Array<{ startupInput?: string }> }
-  assert.equal(config.profiles[0]?.startupInput, "dm\ndm\n")
+  assert.equal(config.profiles[0]?.startupInput, "dm\rdm\r")
 
   const readiness = await execFileAsync("node", ["dist/src/cli.js", "readiness"], {
     cwd: process.cwd(),
