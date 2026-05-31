@@ -27,6 +27,7 @@ import { commandSuggestions } from "./command-suggestions.js"
 import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
 import { createBusyInputHandler } from "./busy-input.js"
 import { formatComposerHint, formatComposerTitle } from "./prompt-composer.js"
+import { formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine } from "./turn-surface.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -89,26 +90,9 @@ function transcriptFromSession(session: StoredSession | undefined) {
   ]
 }
 
-function compactTaskLabel(label: string, maxLength = 26): string {
-  if (label.length <= maxLength) return label
-  return `${label.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
-}
-
-function actionLabel(kind: string, detail: string, fallback = "working"): string {
-  const clean = detail.trim()
-  return compactTaskLabel(clean ? `${kind}: ${clean}` : `${kind}: ${fallback}`)
-}
-
 function initialTaskForLine(line: string, mode: string): string {
-  if (line.startsWith("!")) {
-    return actionLabel("Bash", line.slice(1), "shell")
-  }
   if (line === "/d3" || line.startsWith("/d3 ")) return "attaching D3 terminal"
-  if (mode === "d3" && !line.startsWith("/")) {
-    return actionLabel("D3 TCL", line, "command")
-  }
-  if (line.startsWith("/")) return actionLabel("Command", line.split(/\s+/)[0] ?? line, "slash command")
-  return "thinking"
+  return initialTaskForSubmittedTurn(inputRoleForLine(line, mode))
 }
 
 function standaloneEscapeCount(value: string): number {
@@ -618,12 +602,8 @@ export function App(props: AppProps) {
     streamIterationRef.current = undefined
     const abortController = new AbortController()
     abortRef.current = abortController
-    const inputRole = line.startsWith("!")
-      ? "shell-input"
-      : mode === "d3" && !line.startsWith("/")
-        ? "d3-input"
-        : "user"
-    setTranscript((current) => [...current, { role: inputRole, content: line.startsWith("!") ? line.slice(1).trim() : line }])
+    const submittedTurn = inputRoleForLine(line, mode)
+    setTranscript((current) => [...current, { role: submittedTurn.role, content: submittedTurn.content }])
     const beforeWorkspace = await snapshotWorkspace()
     workspaceBaselineRef.current = beforeWorkspace
     let abortRecorded = false
@@ -652,8 +632,9 @@ export function App(props: AppProps) {
         return
       }
       if (line.startsWith("/")) {
-        setActiveTask(actionLabel("Command", line.split(/\s+/)[0] ?? line, "slash command"))
-        setTranscript((current) => [...current, { role: "tool-start", content: `Command: ${line.split(/\s+/)[0]}` }])
+        setActiveTask(formatLiveTurnLabel({ kind: "slash", detail: line }))
+        const toolStart = toolStartEntryForLine(line, mode)
+        if (toolStart) setTranscript((current) => [...current, toolStart])
         const result = await handleSlashCommand(line, props.config, { model, safety, profile, mode })
         if (result.clear) setTranscript([])
         const nextModel = result.state?.model ?? model
@@ -830,9 +811,10 @@ export function App(props: AppProps) {
       setTranscript((current) => [...current, { role: "error", content: "Usage: ! <unix command>" }])
       return
     }
-    setActiveTask(actionLabel("Bash", command, "shell"))
-    setStreamingToolLabel(`Bash: ${command}`)
-    setTranscript((current) => [...current, { role: "tool-start", content: `Bash: ${command}` }])
+    const label = formatLiveTurnLabel({ kind: "shell", detail: command })
+    setActiveTask(label)
+    setStreamingToolLabel(label)
+    setTranscript((current) => [...current, { role: "tool-start", content: label }])
     const result = await runLocalShellCommand(command, {
       signal,
       onStdout: (chunk) => setStreamingShellOutput((current) => `${current}${chunk}`),
@@ -853,9 +835,10 @@ export function App(props: AppProps) {
     }
     if (!d3Session.current) d3Session.current = createD3Session(selected)
     assertD3Allowed(safety, line, safety === "trust")
-    setActiveTask(actionLabel("D3 TCL", line, "command"))
-    setStreamingToolLabel(`D3 TCL: ${line}`)
-    setTranscript((current) => [...current, { role: "tool-start", content: `D3 TCL: ${line}` }])
+    const label = formatLiveTurnLabel({ kind: "d3", detail: line })
+    setActiveTask(label)
+    setStreamingToolLabel(label)
+    setTranscript((current) => [...current, { role: "tool-start", content: label }])
     const capture = await captureD3Terminal(d3Session.current, line, {
       width: 80,
       height: 18,
