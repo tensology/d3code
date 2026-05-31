@@ -416,7 +416,7 @@ program.command("login").description("Verify or switch into the selected D3 acco
 
 program.command("profile-doctor").description("Run read-only profile checks against WHO, VERSION, and LIST MD.").option("--profile <name>").option("--json").action(async (options: { profile?: string; json?: boolean }) => {
   const config = await loadConfig()
-  const profile = selectProfile(config, options.profile)
+  const profile = selectProfile(config, options.profile ?? optionValue("--profile"))
   if (!profile) throw new Error("No profile configured")
   const report = await diagnoseProfile(profile)
   console.log(options.json ? JSON.stringify(report, null, 2) : renderProfileDoctor(report))

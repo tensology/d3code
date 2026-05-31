@@ -920,6 +920,22 @@ test("CLI profile doctor runs read-only D3 smoke checks", async () => {
   assert.match(plan.stdout, /checks=who:ok,version:ok,md-list:ok/)
 })
 
+test("CLI profile doctor honors the selected profile option", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-profile-doctor-selected-"))
+  const first = join(home, "first.sh")
+  const second = join(home, "second.sh")
+  await writeFile(first, "#!/bin/sh\nprintf 'FIRST\\n'\n", { mode: 0o755 })
+  await writeFile(second, "#!/bin/sh\nprintf 'SECOND\\n'\n", { mode: 0o755 })
+  const env = { ...process.env, D3CODE_HOME: home }
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "first", "--entry", first], { cwd: process.cwd(), env })
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "second", "--entry", second], { cwd: process.cwd(), env })
+
+  const result = await execFileAsync("node", ["dist/src/cli.js", "profile-doctor", "--profile", "second", "--json"], { cwd: process.cwd(), env })
+  const parsed = JSON.parse(result.stdout) as { profile: string; checks: Array<{ output: string }> }
+  assert.equal(parsed.profile, "second")
+  assert.match(parsed.checks[0]?.output ?? "", /SECOND/)
+})
+
 test("CLI profiles are isolated under D3CODE_HOME", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-home-"))
   await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "local-test", "--account", "DM", "--session", "persistent"], {
