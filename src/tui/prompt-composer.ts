@@ -5,9 +5,22 @@ export interface ComposerState {
   queuedCount?: number
 }
 
+export interface ComposerPrompt {
+  glyph: string
+  color: "cyan" | "yellow"
+}
+
 export function formatComposerTitle(state: Pick<ComposerState, "mode" | "busy">): string {
   if (state.mode === "d3") return state.busy ? "D3 TCL queued input" : "D3 TCL"
   return state.busy ? "Queued input" : "Message D3 Code"
+}
+
+export function formatComposerPrompt(state: Pick<ComposerState, "mode" | "busy">): ComposerPrompt {
+  const glyph = state.mode === "d3" ? ":" : "›"
+  return {
+    glyph: state.busy ? `queued ${glyph}` : glyph,
+    color: state.mode === "d3" ? "yellow" : "cyan",
+  }
 }
 
 export function formatComposerHint(state: Pick<ComposerState, "busy" | "draftText" | "queuedCount">): string {

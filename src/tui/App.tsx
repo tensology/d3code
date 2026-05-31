@@ -26,7 +26,7 @@ import { nextPacedText } from "./paced-text.js"
 import { commandSuggestions } from "./command-suggestions.js"
 import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
 import { createBusyInputHandler } from "./busy-input.js"
-import { formatComposerHint, formatComposerTitle } from "./prompt-composer.js"
+import { formatComposerHint, formatComposerPrompt, formatComposerTitle } from "./prompt-composer.js"
 import { formatActiveTurnEcho, formatLiveTurnLabel, initialTaskForSubmittedTurn, inputRoleForLine, toolStartEntryForLine, type SubmittedTurn } from "./turn-surface.js"
 import { formatToolActivity, formatToolResultTitle } from "./tool-activity.js"
 
@@ -892,8 +892,7 @@ export function App(props: AppProps) {
     ? `D3 ${profile}${d3Account ? `/${d3Account}` : ""}`
     : profile ? `D3 ${profile}` : `D3 ${d3Status}`
   const d3StatusColor = d3Attached ? "green" : profile ? "yellow" : d3Status === "connected" ? "green" : "yellow"
-  const promptGlyph = mode === "d3" ? ":" : "›"
-  const promptColor = mode === "d3" ? "yellow" : busy ? "gray" : "cyan"
+  const prompt = formatComposerPrompt({ mode, busy })
   const composerTitle = formatComposerTitle({ mode, busy })
   const composerHint = formatComposerHint({ busy, draftText: draft.text, queuedCount: queuedLines.length })
   const activeTurnEcho = busy && activeSubmittedTurn ? formatActiveTurnEcho(activeSubmittedTurn) : undefined
@@ -980,7 +979,7 @@ export function App(props: AppProps) {
           </Box>
         ) : null}
         <Box flexDirection="row">
-          <Text color={promptColor} bold>{promptGlyph}</Text>
+          <Text color={prompt.color} bold>{prompt.glyph}</Text>
           <Text> </Text>
           <Text>{renderedDraft.before}</Text>
           <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { formatComposerHint, formatComposerTitle } from "../src/tui/prompt-composer.js"
+import { formatComposerHint, formatComposerPrompt, formatComposerTitle } from "../src/tui/prompt-composer.js"
 
 test("composer hint invites queued input while a turn is running", () => {
   assert.equal(formatComposerHint({ busy: true, draftText: "", queuedCount: 0 }), "type the next instruction while this runs; Enter queues it, Esc interrupts")
@@ -18,4 +18,11 @@ test("composer title names D3 terminal input separately from agent chat", () => 
   assert.equal(formatComposerTitle({ mode: "chat", busy: false }), "Message D3 Code")
   assert.equal(formatComposerTitle({ mode: "d3", busy: false }), "D3 TCL")
   assert.equal(formatComposerTitle({ mode: "d3", busy: true }), "D3 TCL queued input")
+})
+
+test("composer prompt glyph makes queued input explicit while busy", () => {
+  assert.deepEqual(formatComposerPrompt({ mode: "chat", busy: false }), { glyph: "›", color: "cyan" })
+  assert.deepEqual(formatComposerPrompt({ mode: "chat", busy: true }), { glyph: "queued ›", color: "cyan" })
+  assert.deepEqual(formatComposerPrompt({ mode: "d3", busy: false }), { glyph: ":", color: "yellow" })
+  assert.deepEqual(formatComposerPrompt({ mode: "d3", busy: true }), { glyph: "queued :", color: "yellow" })
 })
