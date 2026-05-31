@@ -167,6 +167,7 @@ export function App(props: AppProps) {
   const streamSuppressRef = useRef(false)
   const streamIterationRef = useRef<number | undefined>()
   const rawBusyInputSuppressUntilRef = useRef(0)
+  const lastRawBusyInputRef = useRef<{ value: string; until: number }>({ value: "", until: 0 })
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
   const pacedAssistant = usePacedText(streamingAssistant, busy && Boolean(streamingAssistant))
@@ -272,6 +273,9 @@ export function App(props: AppProps) {
       if (!busyRef.current) return
       const value = typeof chunk === "string" ? chunk : chunk.toString("utf8")
       if (!value) return
+      const now = Date.now()
+      if (lastRawBusyInputRef.current.value === value && now < lastRawBusyInputRef.current.until) return
+      lastRawBusyInputRef.current = { value, until: now + 80 }
       const count = standaloneEscapeCount(value)
       if (count > 0) {
         rawEscapeSuppressUntilRef.current = Date.now() + 1500
