@@ -40,15 +40,19 @@ export function formatProjectLocation(project: ProjectContext | undefined, fallb
 export function formatPromptMeta(input: {
   model: string
   profile?: string
+  d3Attached?: boolean
   mode: string
   safety: string
   usage?: ChatUsage
   workspaceChanges?: WorkspaceChangeSummary
   project?: ProjectContext
 }): string {
+  const d3State = input.profile
+    ? `D3 ${input.profile}${input.d3Attached ? " attached" : " profile"}`
+    : "D3 off"
   return [
     input.model,
-    input.profile ? `D3 ${input.profile}` : "D3 off",
+    d3State,
     `${input.mode}/${input.safety}`,
     formatTokenUsage(input.usage),
     formatWorkspaceChangeFooter(input.workspaceChanges),

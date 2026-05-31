@@ -28,6 +28,22 @@ test("session surface meta matches the compact prompt footer style", () => {
     workspaceChanges: { filesChanged: 2, added: 1, removed: 0, modified: 1, files: [] },
     project: { cwd: "/work/D3Code", root: "/work/D3Code", instructions: [] },
   }), "kilocode/kilo-auto/free | D3 off | chat/ask | tok -- | files 2 +1 | cwd D3Code | no instr")
+  assert.equal(formatPromptMeta({
+    model: "openai/gpt-5",
+    profile: "prod",
+    d3Attached: false,
+    mode: "chat",
+    safety: "ask",
+    project: { cwd: "/work/D3Code", root: "/work/D3Code", instructions: [] },
+  }), "openai/gpt-5 | D3 prod profile | chat/ask | tok -- | files -- | cwd D3Code | no instr")
+  assert.equal(formatPromptMeta({
+    model: "openai/gpt-5",
+    profile: "prod",
+    d3Attached: true,
+    mode: "d3",
+    safety: "ask",
+    project: { cwd: "/work/D3Code", root: "/work/D3Code", instructions: [] },
+  }), "openai/gpt-5 | D3 prod attached | d3/ask | tok -- | files -- | cwd D3Code | no instr")
 })
 
 test("live shell output summary mirrors Claude-style recent-line progress", () => {

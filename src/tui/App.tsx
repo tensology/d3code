@@ -136,6 +136,8 @@ export function App(props: AppProps) {
   const [safety, setSafety] = useState(props.session?.safety ?? props.safety)
   const [profile, setProfile] = useState(props.session?.profile ?? props.profile)
   const [mode, setMode] = useState(props.mode ?? "chat")
+  const [d3Attached, setD3Attached] = useState(false)
+  const [d3Account, setD3Account] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>(messagesFromSession(props.config, props.session, initialContext))
   const [transcript, setTranscript] = useState<TranscriptEntry[]>(transcriptFromSession(props.session))
@@ -655,6 +657,8 @@ export function App(props: AppProps) {
       if (line === "/chat") {
         await d3Session.current?.close()
         d3Session.current = undefined
+        setD3Attached(false)
+        setD3Account(undefined)
         setMode("chat")
         setTranscript((current) => [...current, { role: "system", content: "Back in agent chat. Use /d3 to attach to the D3 runtime again." }])
         return
@@ -680,8 +684,13 @@ export function App(props: AppProps) {
         if (result.state?.safety) setSafety(result.state.safety)
         if (result.state?.mode) {
           setMode(result.state.mode)
+          if (result.state.mode !== "d3") setD3Attached(false)
         }
-        if ("profile" in (result.state ?? {})) setProfile(result.state?.profile)
+        if ("profile" in (result.state ?? {})) {
+          setProfile(result.state?.profile)
+          setD3Attached(false)
+          setD3Account(undefined)
+        }
         if (result.state) setMessages([{ role: "system", content: createD3AgentSystemPrompt(props.config, { model: nextModel, safety: nextSafety, profile: nextProfile, mode: nextMode, project }) }])
         if (result.output) {
           setTranscript((current) => [...current, { role: "system", content: result.output }])
@@ -817,6 +826,8 @@ export function App(props: AppProps) {
     d3Session.current = createD3Session(selected)
     setProfile(selected.name)
     setMode("d3")
+    setD3Attached(true)
+    setD3Account(selected.account)
     const loginCommand = selected.account ? `LOGTO ${selected.account}\nWHO\nVERSION` : "WHO\nVERSION"
     const capture = await captureD3Terminal(d3Session.current, loginCommand, { width: 80, height: 18 })
     setTranscript((current) => [
@@ -880,7 +891,7 @@ export function App(props: AppProps) {
   }
 
   const renderedDraft = renderPromptDraft(draft, caretOn)
-  const promptMeta = formatPromptMeta({ model, profile, mode, safety, usage, workspaceChanges, project })
+  const promptMeta = formatPromptMeta({ model, profile, d3Attached, mode, safety, usage, workspaceChanges, project })
   const hasStreamingBlock = Boolean(streamingAssistant || streamingShellOutput || streamingD3Output)
   const shellLiveSummary = summarizeLiveOutput(streamingShellOutput, busySeconds)
   const d3LiveSummary = summarizeLiveOutput(streamingD3Output, busySeconds)
@@ -900,8 +911,13 @@ export function App(props: AppProps) {
   const liveToolLabel = activeTask || streamingToolLabel || "Tool running"
   const sessionHasStarted = transcript.length > 0 || busy || hasStreamingBlock || queuedLines.length > 0
   const providerStatus = welcome?.providerStatus ?? "checking"
-  const d3Status = welcome?.d3Status ?? "checking"
-  const d3Label = profile ? `D3 ${profile}` : `D3 ${d3Status}`
+  const d3Status = d3Attached ? "attached" : profile ? "profile" : welcome?.d3Status ?? "checking"
+  const d3Label = d3Attached
+    ? `D3 ${profile}${d3Account ? `/${d3Account}` : ""}`
+    : profile ? `D3 ${profile}` : `D3 ${d3Status}`
+  const d3StatusColor = d3Attached ? "green" : profile ? "yellow" : d3Status === "connected" ? "green" : "yellow"
+  const promptGlyph = mode === "d3" ? ":" : "›"
+  const promptColor = mode === "d3" ? "yellow" : busy ? "gray" : "cyan"
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -911,7 +927,7 @@ export function App(props: AppProps) {
           <Text dimColor>{`  ${welcome?.providerModel ?? model} | `}</Text>
           <Text color={providerStatus === "connected" ? "green" : "yellow"}>{providerStatus === "connected" ? "● AI" : "○ AI"}</Text>
           <Text dimColor>{" | "}</Text>
-          <Text color={d3Status === "connected" ? "green" : "yellow"}>{d3Status === "connected" ? "●" : "○"} {d3Label}</Text>
+          <Text color={d3StatusColor}>{d3Attached ? "●" : "○"} {d3Label}</Text>
           <Text dimColor>{` | ${mode}/${safety}`}</Text>
         </Box>
       ) : (
@@ -973,7 +989,7 @@ export function App(props: AppProps) {
       </Box>
       <Box marginTop={1} borderStyle="single" borderColor={busy ? "cyan" : "gray"} borderLeft={false} borderRight={false} paddingY={0} flexDirection="column">
         <Box flexDirection="row">
-          <Text color={busy ? "gray" : "cyan"} bold>›</Text>
+          <Text color={promptColor} bold>{promptGlyph}</Text>
           <Text> </Text>
           <Text>{renderedDraft.before}</Text>
           <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
