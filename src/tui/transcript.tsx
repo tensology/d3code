@@ -9,18 +9,34 @@ export interface TranscriptEntry {
 export function visibleTranscriptEntries(
   entries: TranscriptEntry[],
   activeInput?: Pick<TranscriptEntry, "role" | "content">,
+  activeToolLabel?: string,
 ): TranscriptEntry[] {
-  if (!activeInput) return entries
-  let index = -1
-  for (let position = entries.length - 1; position >= 0; position--) {
-    const entry = entries[position]!
-    if (entry.role === activeInput.role && entry.content === activeInput.content) {
-      index = position
-      break
+  let visible = entries
+  if (activeInput) {
+    let index = -1
+    for (let position = visible.length - 1; position >= 0; position--) {
+      const entry = visible[position]!
+      if (entry.role === activeInput.role && entry.content === activeInput.content) {
+        index = position
+        break
+      }
+    }
+    if (index !== -1) visible = [...visible.slice(0, index), ...visible.slice(index + 1)]
+  }
+  if (activeToolLabel) {
+    let index = -1
+    for (let position = visible.length - 1; position >= 0; position--) {
+      const entry = visible[position]!
+      if (entry.role === "tool-start" && entry.content === activeToolLabel) {
+        index = position
+        break
+      }
+    }
+    if (index !== -1) {
+      visible = [...visible.slice(0, index), ...visible.slice(index + 1)]
     }
   }
-  if (index === -1) return entries
-  return [...entries.slice(0, index), ...entries.slice(index + 1)]
+  return visible
 }
 
 export function wrapTranscriptLine(line: string, width = 74): string[] {
@@ -56,7 +72,7 @@ export function transcriptPrefix(role: string): string {
   if (role === "error") return "error: "
   if (role === "system") return "  ⎿ "
   if (role === "tool-start") return "⏺ "
-  if (role === "tool-live") return "  ⎿ "
+  if (role === "tool-live") return "⏺ "
   if (role === "tool") return "  ⎿ "
   if (role === "shell-output") return "  ⎿ "
   if (role === "file-change-live") return "  ◆ "

@@ -13,7 +13,7 @@ test("transcript prefixes make tool and file events first-class message blocks",
   assert.equal(transcriptPrefix("d3-input"), "› : ")
   assert.equal(transcriptPrefix("system"), "  ⎿ ")
   assert.equal(transcriptPrefix("tool"), "  ⎿ ")
-  assert.equal(transcriptPrefix("tool-live"), "  ⎿ ")
+  assert.equal(transcriptPrefix("tool-live"), "⏺ ")
   assert.equal(transcriptPrefix("shell-output"), "  ⎿ ")
   assert.equal(transcriptPrefix("file-change-live"), "  ◆ ")
   assert.equal(transcriptPrefix("file-change"), "  ◆ ")
@@ -55,4 +55,18 @@ test("visible transcript hides only the active submitted input while a turn is r
   ])
   assert.deepEqual(visibleTranscriptEntries(transcript, undefined), transcript)
   assert.deepEqual(visibleTranscriptEntries(transcript, { role: "shell-input", content: "npm run build" }), transcript)
+})
+
+test("visible transcript hides the matching tool-start row while live output owns the row", () => {
+  const transcript = [
+    { role: "user", content: "previous" },
+    { role: "tool-start", content: "Bash: npm test" },
+    { role: "tool-start", content: "D3 TCL: LIST MD" },
+  ]
+
+  assert.deepEqual(visibleTranscriptEntries(transcript, undefined, "D3 TCL: LIST MD"), [
+    { role: "user", content: "previous" },
+    { role: "tool-start", content: "Bash: npm test" },
+  ])
+  assert.deepEqual(visibleTranscriptEntries(transcript, undefined, "Bash: npm run build"), transcript)
 })

@@ -896,7 +896,7 @@ export function App(props: AppProps) {
   const composerTitle = formatComposerTitle({ mode, busy })
   const composerHint = formatComposerHint({ busy, draftText: draft.text, queuedCount: queuedLines.length })
   const activeTurnEcho = busy && activeSubmittedTurn ? formatActiveTurnEcho(activeSubmittedTurn) : undefined
-  const visibleTranscript = visibleTranscriptEntries(transcript, activeSubmittedTurn)
+  const visibleTranscript = visibleTranscriptEntries(transcript, activeSubmittedTurn, hasStreamingBlock ? liveToolLabel : undefined)
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
