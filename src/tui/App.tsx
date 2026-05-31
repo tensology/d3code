@@ -22,7 +22,6 @@ import { renderLiveWorkspaceChangeSummary, renderWorkspaceChangeDetails, snapsho
 import { appendLiveTerminalChunk, estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
 import { TranscriptEntryView, visibleTranscriptEntries, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
-import { nextPacedText } from "./paced-text.js"
 import { commandSuggestions } from "./command-suggestions.js"
 import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
 import { createBusyInputHandler } from "./busy-input.js"
@@ -47,24 +46,6 @@ function renderTuiD3Screen(buffer: D3ScreenBuffer): string {
     `D3 screen ${buffer.width}x${buffer.height} cursor row=${buffer.row} col=${buffer.col}`,
     ...buffer.lines.slice(0, visibleEnd).map((line) => `|${line.trimEnd()}|`),
   ].join("\n")
-}
-
-function usePacedText(source: string, live: boolean, delayMs = 24) {
-  const [shown, setShown] = useState(source)
-  useEffect(() => {
-    if (!live) {
-      setShown(source)
-      return
-    }
-    setShown((current) => source.startsWith(current) && current.length <= source.length ? current : source)
-  }, [source, live])
-  useEffect(() => {
-    if (!live) return
-    if (shown.length >= source.length) return
-    const timer = setTimeout(() => setShown((current) => nextPacedText(source, current.length)), delayMs)
-    return () => clearTimeout(timer)
-  }, [source, shown, live, delayMs])
-  return live ? shown : source
 }
 
 export interface AppProps {
@@ -167,7 +148,6 @@ export function App(props: AppProps) {
   const lastRawIdleInputRef = useRef<{ value: string; until: number }>({ value: "", until: 0 })
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
-  const pacedAssistant = usePacedText(streamingAssistant, busy && Boolean(streamingAssistant))
   busyRef.current = busy
   draftRef.current = draft
 
@@ -225,14 +205,18 @@ export function App(props: AppProps) {
   }, [])
 
   useEffect(() => {
+    if (busy) {
+      setCaretOn(true)
+      return
+    }
     const timer = setInterval(() => setCaretOn((current) => !current), 520)
     return () => clearInterval(timer)
-  }, [])
+  }, [busy])
 
   useEffect(() => {
     if (!busy) return
     stdinContext.stdin.resume()
-    const timer = setInterval(() => setBusyFrame((current) => current + 1), 140)
+    const timer = setInterval(() => setBusyFrame((current) => current + 1), 500)
     return () => clearInterval(timer)
   }, [busy, stdinContext.stdin])
 
@@ -976,7 +960,7 @@ export function App(props: AppProps) {
           <TranscriptEntryView key={`${entry.role}-${index}`} entry={entry} />
         ))}
         {pendingTurn ? <TranscriptEntryView entry={{ role: "pending", content: pendingTurn }} /> : null}
-        {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: pacedAssistant }} /> : null}
+        {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: streamingAssistant }} /> : null}
         {streamingShellOutput ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${shellLiveSummary.preview}\n${shellLiveSummary.status}` }} /> : null}
         {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${d3LiveSummary.preview}\n${d3LiveSummary.status}` }} /> : null}
         {liveWorkspaceChange ? <TranscriptEntryView entry={{ role: "file-change-live", content: liveWorkspaceChange }} /> : null}

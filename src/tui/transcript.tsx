@@ -60,6 +60,15 @@ export function compactTranscriptContent(content: string, maxLines = 8): string[
   return [...visible, `... ${lines.length - visible.length} more lines`]
 }
 
+export function transcriptMaxLines(role: string): number {
+  if (role === "assistant" || role === "assistant-stream" || role === "assistant-interrupted") return Number.POSITIVE_INFINITY
+  if (role === "system") return 14
+  if (role === "file-change") return 9
+  if (role === "file-change-live") return 6
+  if (role === "tool-live") return 10
+  return 8
+}
+
 export function transcriptPrefix(role: string): string {
   if (role === "user") return "› "
   if (role === "shell-input") return "› ! "
@@ -201,8 +210,8 @@ export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
   if (entry.role === "user" || entry.role === "shell-input" || entry.role === "d3-input") return <InputBlock content={entry.content} role={entry.role} />
   if (entry.role === "pending") return <PendingBlock content={entry.content} />
   if (entry.role === "queued") return <QueuedBlock content={entry.content} />
-  if (entry.role === "assistant" || entry.role === "assistant-stream") return <ResponseBlock content={`d3code\n${entry.content}`} titleColor="green" maxLines={14} />
-  if (entry.role === "assistant-interrupted") return <ResponseBlock content={`d3code interrupted\n${entry.content}`} titleColor="yellow" maxLines={14} />
+  if (entry.role === "assistant" || entry.role === "assistant-stream") return <ResponseBlock content={`d3code\n${entry.content}`} titleColor="green" maxLines={transcriptMaxLines(entry.role)} />
+  if (entry.role === "assistant-interrupted") return <ResponseBlock content={`d3code interrupted\n${entry.content}`} titleColor="yellow" maxLines={transcriptMaxLines(entry.role)} />
   if (entry.role === "tool-live") return <LiveToolBlock content={entry.content} />
   if (entry.role === "tool") return <ResponseBlock content={entry.content} />
   if (entry.role === "shell-output") return <ResponseBlock content={entry.content} />

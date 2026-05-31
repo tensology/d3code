@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { compactTranscriptContent, visibleTranscriptEntries, transcriptColor, transcriptPrefix, wrapTranscriptLine } from "../src/tui/transcript.js"
+import { compactTranscriptContent, transcriptMaxLines, visibleTranscriptEntries, transcriptColor, transcriptPrefix, wrapTranscriptLine } from "../src/tui/transcript.js"
 
 test("transcript prefixes make tool and file events first-class message blocks", () => {
   assert.equal(transcriptPrefix("user"), "› ")
@@ -32,6 +32,16 @@ test("transcript compacts noisy tool output", () => {
   const compacted = compactTranscriptContent(["d3_list_files", "one", "two", "three", "four"].join("\n"), 3)
 
   assert.deepEqual(compacted, ["d3_list_files", "one", "... 3 more lines"])
+})
+
+test("assistant transcript output is not collapsed like tool output", () => {
+  const content = Array.from({ length: 30 }, (_, index) => `assistant line ${index + 1}`).join("\n")
+  const rendered = compactTranscriptContent(`d3code\n${content}`, transcriptMaxLines("assistant"))
+
+  assert.equal(rendered.length, 31)
+  assert.equal(rendered.at(-1), "assistant line 30")
+  assert.ok(!rendered.some((line) => /more lines/.test(line)))
+  assert.equal(transcriptMaxLines("tool"), 8)
 })
 
 test("transcript wraps long logical lines before compacting", () => {
