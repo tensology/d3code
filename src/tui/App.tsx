@@ -31,6 +31,12 @@ import { formatToolActivity, formatToolResultTitle } from "./tool-activity.js"
 import { canEnableRawMode } from "./raw-mode.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
+const compactLogoLines = [
+  "╔╦╗╔═╗  ╔═╗╔═╗╔╦╗╔═╗",
+  " ║║╚═╗  ║  ║ ║ ║║║╣ ",
+  "═╩╝╚═╝  ╚═╝╚═╝═╩╝╚═╝",
+]
+
 function renderTuiD3Screen(buffer: D3ScreenBuffer): string {
   const visibleEnd = Math.max(1, ...buffer.lines.map((line, index) => line.trim().length ? index + 1 : 0))
   return [
@@ -890,12 +896,11 @@ export function App(props: AppProps) {
         </Box>
       ) : (
         <Box borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1} flexDirection="column">
-          <Box flexDirection="row" marginBottom={1}>
-            <Text color="cyan" bold>D3 Code</Text>
-            <Text dimColor> Rocket D3 agent shell</Text>
-          </Box>
           <Box flexDirection="row">
             <Box width="38%" flexDirection="column" paddingRight={2}>
+              <Box flexDirection="column">
+                {compactLogoLines.map((line) => <Text key={line} color="cyan" bold>{line}</Text>)}
+              </Box>
               <Text dimColor>Rocket D3 agent shell</Text>
               <Box marginTop={1} flexDirection="column">
                 <Text color={providerStatus === "connected" ? "green" : "yellow"}>{providerStatus === "connected" ? "●" : "○"} AI {providerStatus}</Text>
