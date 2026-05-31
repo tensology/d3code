@@ -35,7 +35,7 @@ export function transcriptPrefix(role: string): string {
   if (role === "assistant-stream") return "  ⎿ "
   if (role === "assistant-interrupted") return "  ⎿ "
   if (role === "pending") return "  ⎿ "
-  if (role === "queued") return "queued › "
+  if (role === "queued") return "QUEUED "
   if (role === "error") return "error: "
   if (role === "system") return "  ⎿ "
   if (role === "tool-start") return "⏺ "
@@ -139,12 +139,28 @@ function PendingBlock({ content }: { content: string }) {
   )
 }
 
+function queuedInputPrefix(content: string): string {
+  if (content.startsWith("!")) return transcriptPrefix("shell-input")
+  if (content.startsWith(":")) return transcriptPrefix("d3-input")
+  return transcriptPrefix("user")
+}
+
+function queuedInputContent(content: string): string {
+  if (content.startsWith("!")) return content.slice(1).trim()
+  if (content.startsWith(":")) return content.slice(1).trim()
+  return content
+}
+
 function QueuedBlock({ content }: { content: string }) {
+  const inputPrefix = queuedInputPrefix(content)
+  const inputContent = queuedInputContent(content)
   return (
-    <Text color="cyan">
-      {transcriptPrefix("queued")}
-      <Text dimColor>{content}</Text>
-    </Text>
+    <Box flexDirection="row">
+      <Text color="cyan" inverse bold>{transcriptPrefix("queued")}</Text>
+      <Text> </Text>
+      <Text color={inputPrefix === transcriptPrefix("d3-input") ? "yellow" : "cyan"}>{inputPrefix}</Text>
+      <Text dimColor>{inputContent}</Text>
+    </Box>
   )
 }
 

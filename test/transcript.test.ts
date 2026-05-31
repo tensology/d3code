@@ -8,7 +8,7 @@ test("transcript prefixes make tool and file events first-class message blocks",
   assert.equal(transcriptPrefix("assistant-stream"), "  ⎿ ")
   assert.equal(transcriptPrefix("assistant-interrupted"), "  ⎿ ")
   assert.equal(transcriptPrefix("pending"), "  ⎿ ")
-  assert.equal(transcriptPrefix("queued"), "queued › ")
+  assert.equal(transcriptPrefix("queued"), "QUEUED ")
   assert.equal(transcriptPrefix("shell-input"), "› ! ")
   assert.equal(transcriptPrefix("d3-input"), "› : ")
   assert.equal(transcriptPrefix("system"), "  ⎿ ")

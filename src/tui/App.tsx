@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
-import { Box, Text, useApp, useInput } from "ink"
+import { Box, Text, useApp, useInput, useStdin } from "ink"
 import { selectProfile } from "../config/config.js"
 import { assertD3Allowed } from "../core/permissions.js"
 import { createD3Session } from "../d3/adapter.js"
@@ -24,6 +24,7 @@ import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
 import { commandSuggestions } from "./command-suggestions.js"
+import { clearQueuedLines, dequeueQueuedLine, dropLastQueuedLine, enqueueQueuedLine, getQueuedLineCount, queuedTranscriptContent, useQueuedLines } from "./command-queue.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const logoLines = [
@@ -120,6 +121,12 @@ function standaloneEscapeCount(value: string): number {
 
 export function App(props: AppProps) {
   const app = useApp()
+  const stdin = useStdin() as unknown as {
+    internal_eventEmitter?: {
+      on(event: "input", listener: (chunk: Buffer | string) => void): void
+      removeListener(event: "input", listener: (chunk: Buffer | string) => void): void
+    }
+  }
   const [draft, setDraft] = useState<PromptDraft>({ text: "", cursor: 0 })
   const initialMode = props.mode ?? "chat"
   const initialSession = props.session ?? newSession(props.model, props.safety, props.profile)
@@ -145,7 +152,7 @@ export function App(props: AppProps) {
   const [historyIndex, setHistoryIndex] = useState<number | undefined>()
   const [abortMessage, setAbortMessage] = useState("")
   const [activeTask, setActiveTask] = useState("")
-  const [queuedLines, setQueuedLines] = useState<string[]>([])
+  const queuedLines = useQueuedLines()
   const [usage, setUsage] = useState<ChatUsage | undefined>()
   const [workspaceChanges, setWorkspaceChanges] = useState<WorkspaceChangeSummary | undefined>()
   const d3Session = useRef<D3Session | undefined>()
@@ -156,10 +163,10 @@ export function App(props: AppProps) {
   const interruptTimerRef = useRef<NodeJS.Timeout | undefined>()
   const rawEscapeSuppressUntilRef = useRef(0)
   const workspaceBaselineRef = useRef<WorkspaceSnapshot | undefined>()
-  const queuedLinesRef = useRef<string[]>([])
   const interruptNoticeRef = useRef("")
   const streamSuppressRef = useRef(false)
   const streamIterationRef = useRef<number | undefined>()
+  const rawBusyInputSuppressUntilRef = useRef(0)
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
   const pacedAssistant = usePacedText(streamingAssistant, busy && Boolean(streamingAssistant))
@@ -261,21 +268,27 @@ export function App(props: AppProps) {
   }, [busy])
 
   useEffect(() => {
-    const input = process.stdin
-    if (!input.isTTY) return
     const onData = (chunk: Buffer | string) => {
       if (!busyRef.current) return
       const value = typeof chunk === "string" ? chunk : chunk.toString("utf8")
+      if (!value) return
       const count = standaloneEscapeCount(value)
-      if (count <= 0) return
-      rawEscapeSuppressUntilRef.current = Date.now() + 1500
-      handleBusyEscape(count)
+      if (count > 0) {
+        rawEscapeSuppressUntilRef.current = Date.now() + 1500
+        handleBusyEscape(count)
+        return
+      }
+      rawBusyInputSuppressUntilRef.current = Date.now() + 200
+      handleBusyRawInput(value)
     }
-    input.on("data", onData)
+    const input = process.stdin
+    if (input.isTTY) input.on("data", onData)
+    stdin.internal_eventEmitter?.on("input", onData)
     return () => {
-      input.off("data", onData)
+      if (input.isTTY) input.off("data", onData)
+      stdin.internal_eventEmitter?.removeListener("input", onData)
     }
-  }, [])
+  }, [stdin.internal_eventEmitter])
 
   async function record(event: Parameters<typeof appendEvent>[1]) {
     const next = appendEvent(session, event)
@@ -300,11 +313,7 @@ export function App(props: AppProps) {
       clearTimeout(interruptTimerRef.current)
       interruptTimerRef.current = undefined
     }
-    const queuedCount = queuedLinesRef.current.length
-    if (queuedCount > 0) {
-      queuedLinesRef.current = []
-      setQueuedLines([])
-    }
+    const queuedCount = clearQueuedLines()
     const notice = queuedCount > 0
       ? `${message} Cleared ${queuedCount} queued ${queuedCount === 1 ? "turn" : "turns"}.`
       : message
@@ -332,16 +341,15 @@ export function App(props: AppProps) {
       armInterrupt()
       return
     }
-    if (queuedLinesRef.current.length > 0) {
-      const nextQueue = queuedLinesRef.current.slice(0, -1)
-      queuedLinesRef.current = nextQueue
-      setQueuedLines(nextQueue)
+    if (getQueuedLineCount() > 0) {
+      dropLastQueuedLine()
       return
     }
     armInterrupt()
   }
 
   useInput((value, key) => {
+    if (busy && Date.now() < rawBusyInputSuppressUntilRef.current) return
     if ((key.ctrl && value === "c") || value === "\u0003") {
       if (busy) {
         interruptActiveTurn("Interrupted. Finishing any already-returned cleanup.")
@@ -444,6 +452,54 @@ export function App(props: AppProps) {
     }
   })
 
+  function handleBusyRawInput(value: string): void {
+    if (value.includes("\u0003")) {
+      interruptActiveTurn("Interrupted. Finishing any already-returned cleanup.")
+      return
+    }
+    if (value.includes("\t")) {
+      const tabIndex = value.indexOf("\t")
+      const beforeTab = value.slice(0, tabIndex)
+      const afterTab = value.slice(tabIndex + 1)
+      const draftAtTab = completeDraftCommand(beforeTab ? insertText(draftRef.current, beforeTab) : draftRef.current)
+      if (afterTab.search(/[\r\n]/) !== -1) {
+        submitDraftWithInput(draftAtTab, afterTab)
+        return
+      }
+      setDraft(afterTab ? insertText(draftAtTab, afterTab) : draftAtTab)
+      setHistoryIndex(undefined)
+      return
+    }
+    if (value.search(/[\r\n]/) !== -1) {
+      submitDraftWithInput(draftRef.current, value)
+      return
+    }
+    if (value.includes("\u001B")) {
+      applyRawTerminalInput(value)
+      return
+    }
+    if (value === "\u007F" || value === "\b") {
+      setDraft(backspace)
+      setHistoryIndex(undefined)
+      return
+    }
+    if (value === "\u0015") {
+      setDraft({ text: "", cursor: 0 })
+      setHistoryIndex(undefined)
+      return
+    }
+    if (value === "\u0001") {
+      setDraft(moveHome)
+      return
+    }
+    if (value === "\u0005") {
+      setDraft(moveEnd)
+      return
+    }
+    setDraft((current) => insertText(current, value))
+    setHistoryIndex(undefined)
+  }
+
   function submitDraft() {
     const line = draft.text.trim()
     setDraft({ text: "", cursor: 0 })
@@ -473,9 +529,7 @@ export function App(props: AppProps) {
   function submitLine(line: string, force = false) {
     if (!line) return
     if ((busy || busyRef.current) && !force) {
-      const nextQueue = [...queuedLinesRef.current, line]
-      queuedLinesRef.current = nextQueue
-      setQueuedLines(nextQueue)
+      enqueueQueuedLine(line, mode)
       setDraft({ text: "", cursor: 0 })
       setHistoryIndex(undefined)
       return
@@ -731,22 +785,20 @@ export function App(props: AppProps) {
       workspaceBaselineRef.current = undefined
       setActiveTask("")
       if (abortController.signal.aborted) {
-        queuedLinesRef.current = []
-        setQueuedLines([])
+        clearQueuedLines()
         busyRef.current = false
         setBusy(false)
         interruptNoticeRef.current = ""
         return
       }
-      const [nextQueuedLine, ...remainingQueuedLines] = queuedLinesRef.current
+      const nextQueuedLine = dequeueQueuedLine()
       if (nextQueuedLine) {
-        queuedLinesRef.current = remainingQueuedLines
-        setQueuedLines(remainingQueuedLines)
-        setTimeout(() => submitLine(nextQueuedLine, true), 0)
+        setActiveTask("starting queued turn")
+        setTimeout(() => submitLine(nextQueuedLine.line, true), 0)
       } else {
         busyRef.current = false
+        setBusy(false)
       }
-      setBusy(false)
       interruptNoticeRef.current = ""
     }
   }
@@ -909,8 +961,8 @@ export function App(props: AppProps) {
         {streamingShellOutput ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${shellLiveSummary.preview}\n${shellLiveSummary.status}` }} /> : null}
         {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${d3LiveSummary.preview}\n${d3LiveSummary.status}` }} /> : null}
         {liveWorkspaceChange ? <TranscriptEntryView entry={{ role: "file-change-live", content: liveWorkspaceChange }} /> : null}
-        {busy && queuedPreview.map((line, index) => (
-          <TranscriptEntryView key={`queued-${index}-${line}`} entry={{ role: "queued", content: line }} />
+        {busy && queuedPreview.map((queued) => (
+          <TranscriptEntryView key={`queued-${queued.id}-${queued.line}`} entry={{ role: "queued", content: queuedTranscriptContent(queued) }} />
         ))}
         {busy && queuedOverflow > 0 ? <TranscriptEntryView entry={{ role: "queued", content: `+${queuedOverflow} more` }} /> : null}
         {abortMessage ? <Text color="yellow">{abortMessage}</Text> : null}
