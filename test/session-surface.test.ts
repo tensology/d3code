@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTimelineProgress, formatTokenUsage } from "../src/tui/session-surface.js"
+import { estimateStreamTokens, formatBusyStatus, formatByteCount, formatDurationMs, formatElapsedSeconds, formatProjectLocation, formatPromptMeta, formatTimelineProgress, formatTokenUsage, summarizeLiveOutput } from "../src/tui/session-surface.js"
 
 test("session surface formats elapsed time for active work", () => {
   assert.equal(formatElapsedSeconds(0), "0s")
@@ -28,4 +28,20 @@ test("session surface meta matches the compact prompt footer style", () => {
     workspaceChanges: { filesChanged: 2, added: 1, removed: 0, modified: 1, files: [] },
     project: { cwd: "/work/D3Code", root: "/work/D3Code", instructions: [] },
   }), "kilocode/kilo-auto/free | D3 off | chat/ask | tok -- | files 2 +1 | cwd D3Code | no instr")
+})
+
+test("live shell output summary mirrors Claude-style recent-line progress", () => {
+  const summary = summarizeLiveOutput("one\ntwo\nthree\nfour\nfive\nsix\n", 7)
+  assert.equal(summary.preview, "two\nthree\nfour\nfive\nsix")
+  assert.equal(summary.status, "+1 lines · 7s · 28 B")
+  assert.equal(summary.progress, "6 lines")
+  assert.equal(summary.lineCount, 6)
+})
+
+test("live shell output summary reports running state before output", () => {
+  const summary = summarizeLiveOutput("", 3)
+  assert.equal(summary.preview, "Running...")
+  assert.equal(summary.status, "3s")
+  assert.equal(summary.progress, "")
+  assert.equal(formatByteCount(1536), "1.5 KB")
 })

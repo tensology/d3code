@@ -19,7 +19,7 @@ import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import { backspace, deleteForward, insertText, moveEnd, moveHome, moveLeft, moveRight, renderPromptDraft, type PromptDraft } from "./prompt-state.js"
 import { appendPromptHistory, loadPromptHistory } from "./prompt-history.js"
 import { renderWorkspaceChangeDetails, renderWorkspaceChangeSummary, snapshotWorkspace, summarizeWorkspaceChanges, type WorkspaceChangeSummary, type WorkspaceSnapshot } from "./workspace-changes.js"
-import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatElapsedSeconds, formatPromptMeta, formatTimelineProgress } from "./session-surface.js"
+import { estimateStreamTokens, formatBusyStatus, formatDurationMs, formatPromptMeta, formatTimelineProgress, summarizeLiveOutput } from "./session-surface.js"
 import { TranscriptEntryView, type TranscriptEntry } from "./transcript.js"
 import { renderLocalShellResult, runLocalShellCommand } from "./local-shell.js"
 import { nextPacedText } from "./paced-text.js"
@@ -163,8 +163,6 @@ export function App(props: AppProps) {
   const secrets = useMemo(() => defaultSecretStore(), [])
   const spinnerFrames = ["·", "✢", "✣", "✦"]
   const pacedAssistant = usePacedText(streamingAssistant, busy && Boolean(streamingAssistant))
-  const pacedShellOutput = usePacedText(streamingShellOutput, busy && Boolean(streamingShellOutput), 16)
-  const pacedD3Output = usePacedText(streamingD3Output, busy && Boolean(streamingD3Output), 16)
   busyRef.current = busy
   draftRef.current = draft
 
@@ -823,11 +821,13 @@ export function App(props: AppProps) {
   const renderedDraft = renderPromptDraft(draft, caretOn)
   const promptMeta = formatPromptMeta({ model, profile, mode, safety, usage, workspaceChanges, project })
   const hasStreamingBlock = Boolean(streamingAssistant || streamingShellOutput || streamingD3Output)
+  const shellLiveSummary = summarizeLiveOutput(streamingShellOutput, busySeconds)
+  const d3LiveSummary = summarizeLiveOutput(streamingD3Output, busySeconds)
   const pendingTurn = busy && !hasStreamingBlock && activeTask ? formatTimelineProgress(spinnerFrames[busyFrame % spinnerFrames.length]!, activeTask, busySeconds) : ""
   const busyProgress = [
     streamingAssistant ? `↓ ${estimateStreamTokens(streamingAssistant)} tokens` : "",
-    streamingShellOutput ? `${streamingShellOutput.length} chars` : "",
-    streamingD3Output ? `${streamingD3Output.length} chars` : "",
+    streamingShellOutput ? shellLiveSummary.progress : "",
+    streamingD3Output ? d3LiveSummary.progress : "",
     workspaceChanges ? `${workspaceChanges.filesChanged} files` : "",
     queuedLines.length ? `${queuedLines.length} queued` : "",
   ].filter(Boolean).join(" · ")
@@ -836,7 +836,6 @@ export function App(props: AppProps) {
   const queuedPreview = queuedLines.slice(0, 3)
   const queuedOverflow = queuedLines.length - queuedPreview.length
   const liveWorkspaceChange = busy && activeTask !== "checking files" && workspaceChanges ? renderWorkspaceChangeSummary(workspaceChanges) : ""
-  const liveToolStatus = `running ${formatElapsedSeconds(busySeconds)}${busyProgress ? ` · ${busyProgress}` : ""}`
   const liveToolLabel = activeTask || streamingToolLabel || "Tool running"
   const sessionHasStarted = transcript.length > 0 || busy || hasStreamingBlock || queuedLines.length > 0
   const providerStatus = welcome?.providerStatus ?? "checking"
@@ -902,8 +901,8 @@ export function App(props: AppProps) {
         ))}
         {pendingTurn ? <TranscriptEntryView entry={{ role: "pending", content: pendingTurn }} /> : null}
         {streamingAssistant ? <TranscriptEntryView entry={{ role: "assistant-stream", content: pacedAssistant }} /> : null}
-        {streamingShellOutput ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${liveToolStatus}\n${pacedShellOutput.trimEnd()}` }} /> : null}
-        {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${liveToolStatus}\n${pacedD3Output.trimEnd()}` }} /> : null}
+        {streamingShellOutput ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${shellLiveSummary.preview}\n${shellLiveSummary.status}` }} /> : null}
+        {streamingD3Output ? <TranscriptEntryView entry={{ role: "tool-live", content: `${liveToolLabel}\n${d3LiveSummary.preview}\n${d3LiveSummary.status}` }} /> : null}
         {liveWorkspaceChange ? <TranscriptEntryView entry={{ role: "file-change-live", content: liveWorkspaceChange }} /> : null}
         {busy && queuedPreview.map((line, index) => (
           <TranscriptEntryView key={`queued-${index}-${line}`} entry={{ role: "queued", content: line }} />
@@ -919,7 +918,7 @@ export function App(props: AppProps) {
           <Text inverse={caretOn} dimColor={!caretOn}>{renderedDraft.cursor}</Text>
           <Text>{renderedDraft.after}</Text>
         </Box>
-        {busy ? (
+        {busy && activeTask ? (
           <>
             <Box flexDirection="row">
               <Text color="yellow" bold>{spinnerFrames[busyFrame % spinnerFrames.length]}</Text>

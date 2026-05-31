@@ -63,6 +63,53 @@ export function estimateStreamTokens(text: string): number {
   return Math.max(1, Math.ceil(trimmed.length / 4))
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "")
+}
+
+export function formatByteCount(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`
+}
+
+export interface LiveOutputSummary {
+  preview: string
+  status: string
+  progress: string
+  lineCount: number
+  byteCount: number
+}
+
+export function summarizeLiveOutput(output: string, elapsedSeconds: number, maxLines = 5): LiveOutputSummary {
+  const clean = stripAnsi(output).trimEnd()
+  const byteCount = Buffer.byteLength(output)
+  const lines = clean.split(/\r?\n/).filter((line) => line.length > 0)
+  if (lines.length === 0) {
+    return {
+      preview: "Running...",
+      status: `${formatElapsedSeconds(elapsedSeconds)}${byteCount ? ` · ${formatByteCount(byteCount)}` : ""}`,
+      progress: byteCount ? formatByteCount(byteCount) : "",
+      lineCount: 0,
+      byteCount,
+    }
+  }
+  const visibleLines = lines.slice(-maxLines)
+  const hiddenLines = Math.max(0, lines.length - visibleLines.length)
+  const status = [
+    hiddenLines ? `+${hiddenLines} lines` : "",
+    formatElapsedSeconds(elapsedSeconds),
+    formatByteCount(byteCount),
+  ].filter(Boolean).join(" · ")
+  return {
+    preview: visibleLines.join("\n"),
+    status,
+    progress: `${lines.length} ${lines.length === 1 ? "line" : "lines"}`,
+    lineCount: lines.length,
+    byteCount,
+  }
+}
+
 export function formatBusyStatus(task: string, elapsedSeconds: number, progress?: string, interruptHint = "esc to interrupt"): string {
   const progressText = progress ? ` · ${progress}` : ""
   return `working: ${task || "agent"} ${formatElapsedSeconds(elapsedSeconds)}${progressText}  ${interruptHint.replace(" to ", " ")}`
