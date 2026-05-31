@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { anthropicUsage, openAIUsage } from "../src/llm/client.js"
+import { anthropicUsage, chat, openAIUsage } from "../src/llm/client.js"
+import type { D3CodeConfig } from "../src/config/config.js"
 
 test("OpenAI-compatible usage normalizes prompt and completion tokens", () => {
   assert.deepEqual(openAIUsage({
@@ -42,4 +43,49 @@ test("Anthropic usage preserves cache token fields", () => {
     cacheReadInputTokens: 2,
     cacheCreationInputTokens: 1,
   })
+})
+
+test("Anthropic chat streams text deltas when token callback is provided", async () => {
+  const originalFetch = globalThis.fetch
+  const chunks = [
+    "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":7}}}\n\n",
+    "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n",
+    "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\" D3\"}}\n\n",
+    "data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\n",
+    "data: {\"type\":\"message_stop\"}\n\n",
+  ]
+  globalThis.fetch = (async (_url, init) => {
+    assert.match(String(init?.body), /"stream":true/)
+    return new Response(new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+        controller.close()
+      },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } })
+  }) as typeof fetch
+
+  try {
+    const streamed: string[] = []
+    const config: D3CodeConfig = {
+      version: 1,
+      defaultModel: "anthropic/claude-sonnet-4-5",
+      defaultSafety: "ask",
+      profiles: [],
+      modelSecrets: { anthropic: "env:ANTHROPIC_API_KEY" },
+    }
+    process.env.ANTHROPIC_API_KEY = "test-key"
+
+    const response = await chat(config, { get: async () => undefined, set: async () => undefined }, {
+      modelRef: "anthropic/claude-sonnet-4-5",
+      messages: [{ role: "user", content: "hello" }],
+      onToken: (token) => streamed.push(token),
+    })
+
+    assert.deepEqual(streamed, ["Hello", " D3"])
+    assert.equal(response.content, "Hello D3")
+    assert.deepEqual(response.usage, { inputTokens: 7, outputTokens: 2, totalTokens: 9 })
+  } finally {
+    globalThis.fetch = originalFetch
+    delete process.env.ANTHROPIC_API_KEY
+  }
 })

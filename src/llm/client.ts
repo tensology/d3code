@@ -55,7 +55,7 @@ async function providerKey(config: D3CodeConfig, secrets: SecretStore, provider:
 
 export async function chat(config: D3CodeConfig, secrets: SecretStore, request: ChatRequest): Promise<ChatResponse> {
   const { provider, model } = resolveModel(request.modelRef)
-  if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages, request.signal)
+  if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages, request.onToken, request.signal)
   return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages, provider.baseURL, provider.chatPath, request.onToken, request.signal)
 }
 
@@ -160,12 +160,63 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
   return { provider, model, content, usage: openAIUsage(raw), raw }
 }
 
-async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: string[], model: string, messages: ChatMessage[], signal?: AbortSignal): Promise<ChatResponse> {
+function mergeAnthropicUsage(current: ChatUsage | undefined, next: ChatUsage | undefined): ChatUsage | undefined {
+  if (!next) return current
+  const inputTokens = Math.max(current?.inputTokens ?? 0, next.inputTokens)
+  const outputTokens = Math.max(current?.outputTokens ?? 0, next.outputTokens)
+  const cacheReadInputTokens = Math.max(current?.cacheReadInputTokens ?? 0, next.cacheReadInputTokens ?? 0)
+  const cacheCreationInputTokens = Math.max(current?.cacheCreationInputTokens ?? 0, next.cacheCreationInputTokens ?? 0)
+  const totalTokens = inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    ...(cacheReadInputTokens ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens ? { cacheCreationInputTokens } : {}),
+  }
+}
+
+async function readAnthropicStream(response: Response, onToken: (token: string) => void): Promise<{ content: string; usage?: ChatUsage }> {
+  if (!response.body) return { content: "" }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let content = ""
+  let usage: ChatUsage | undefined
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split(/\r?\n/)
+    buffer = lines.pop() ?? ""
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith("data:")) continue
+      const data = trimmed.slice(5).trim()
+      if (!data || data === "[DONE]") continue
+      const parsed = JSON.parse(data) as {
+        type?: string
+        delta?: { type?: string; text?: string }
+        message?: { usage?: unknown }
+        usage?: unknown
+      }
+      usage = mergeAnthropicUsage(usage, anthropicUsage(parsed.message?.usage ? { usage: parsed.message.usage } : parsed.usage ? { usage: parsed.usage } : undefined))
+      const token = parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta" ? parsed.delta.text ?? "" : ""
+      if (!token) continue
+      content += token
+      onToken(token)
+    }
+  }
+  return { content, usage }
+}
+
+async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: string[], model: string, messages: ChatMessage[], onToken?: (token: string) => void, signal?: AbortSignal): Promise<ChatResponse> {
   const key = await providerKey(config, secrets, "anthropic", env)
   const system = messages.find((message) => message.role === "system")?.content
   const bodyMessages = messages
     .filter((message) => message.role !== "system")
     .map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content }))
+  const stream = Boolean(onToken)
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -173,9 +224,13 @@ async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: st
       "x-api-key": key,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({ model, max_tokens: 4096, system, messages: bodyMessages }),
+    body: JSON.stringify({ model, max_tokens: 4096, system, messages: bodyMessages, ...(stream ? { stream: true } : {}) }),
     signal,
   })
+  if (onToken && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+    const { content, usage } = await readAnthropicStream(response, onToken)
+    return { provider: "anthropic", model, content, usage, raw: { streamed: true, usage } }
+  }
   const raw = await readJsonResponse(response) as { content?: Array<{ text?: string }>; error?: { message?: string }; usage?: unknown }
   if (!response.ok) throw new Error(raw.error?.message ?? `Provider request failed with ${response.status}`)
   return { provider: "anthropic", model, content: raw.content?.map((part) => part.text ?? "").join("") ?? "", usage: anthropicUsage(raw), raw }
