@@ -121,7 +121,9 @@ function standaloneEscapeCount(value: string): number {
 
 export function App(props: AppProps) {
   const app = useApp()
-  const stdin = useStdin() as unknown as {
+  const stdinContext = useStdin() as unknown as {
+    stdin: NodeJS.ReadStream
+    setRawMode?: (isRawModeEnabled: boolean) => void
     internal_eventEmitter?: {
       on(event: "input", listener: (chunk: Buffer | string) => void): void
       removeListener(event: "input", listener: (chunk: Buffer | string) => void): void
@@ -230,9 +232,10 @@ export function App(props: AppProps) {
 
   useEffect(() => {
     if (!busy) return
+    stdinContext.stdin.resume()
     const timer = setInterval(() => setBusyFrame((current) => current + 1), 140)
     return () => clearInterval(timer)
-  }, [busy])
+  }, [busy, stdinContext.stdin])
 
   useEffect(() => {
     if (!busy) return
@@ -271,7 +274,7 @@ export function App(props: AppProps) {
   }, [busy])
 
   useEffect(() => {
-    const onData = (chunk: Buffer | string) => {
+    const onBusyChunk = (chunk: Buffer | string) => {
       if (!busyRef.current) return
       const value = typeof chunk === "string" ? chunk : chunk.toString("utf8")
       if (!value) return
@@ -287,14 +290,25 @@ export function App(props: AppProps) {
       rawBusyInputSuppressUntilRef.current = Date.now() + 200
       handleBusyRawInput(value)
     }
-    const input = process.stdin
-    if (input.isTTY) input.on("data", onData)
-    stdin.internal_eventEmitter?.on("input", onData)
-    return () => {
-      if (input.isTTY) input.off("data", onData)
-      stdin.internal_eventEmitter?.removeListener("input", onData)
+    const onData = (chunk: Buffer | string) => onBusyChunk(chunk)
+    const onReadable = () => {
+      if (!busyRef.current) return
+      let chunk: Buffer | string | null
+      while ((chunk = input.read() as Buffer | string | null) !== null) {
+        onBusyChunk(chunk)
+      }
     }
-  }, [stdin.internal_eventEmitter])
+    const input = stdinContext.stdin
+    stdinContext.setRawMode?.(true)
+    input.on("data", onData)
+    input.prependListener("readable", onReadable)
+    stdinContext.internal_eventEmitter?.on("input", onData)
+    return () => {
+      input.off("data", onData)
+      input.off("readable", onReadable)
+      stdinContext.internal_eventEmitter?.removeListener("input", onData)
+    }
+  }, [stdinContext.stdin, stdinContext.setRawMode, stdinContext.internal_eventEmitter])
 
   async function record(event: Parameters<typeof appendEvent>[1]) {
     const next = appendEvent(session, event)
