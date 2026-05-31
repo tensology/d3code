@@ -32,8 +32,9 @@ import { canEnableRawMode } from "./raw-mode.js"
 
 const terminalLink = (label: string, url: string) => `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`
 const compactLogoLines = [
-  "D3 CODE",
-  "▀▀▀▀▀▀▀",
+  "█▄  ███   ███  ███  █▄  ███",
+  "█ █   █   █    █ █  █ █ █  ",
+  "██  ███   ███  ███  ██  ███",
 ]
 
 function renderTuiD3Screen(buffer: D3ScreenBuffer): string {
