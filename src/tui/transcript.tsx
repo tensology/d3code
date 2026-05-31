@@ -38,6 +38,7 @@ export function transcriptPrefix(role: string): string {
   if (role === "error") return "error: "
   if (role === "system") return "  ⎿ "
   if (role === "tool-start") return "⏺ "
+  if (role === "tool-live") return "  ⎿ "
   if (role === "tool") return "  ⎿ "
   if (role === "shell-output") return "  ⎿ "
   if (role === "file-change-live") return "  ◆ "
@@ -54,6 +55,7 @@ export function transcriptColor(role: string): string {
   if (role === "shell-input") return "white"
   if (role === "user") return "white"
   if (role === "file-change-live") return "yellow"
+  if (role === "tool-live") return "yellow"
   if (role === "tool-start" || role === "file-change" || role === "shell-output") return "cyan"
   return "gray"
 }
@@ -97,6 +99,19 @@ function LiveFileChangeBlock({ content }: { content: string }) {
   )
 }
 
+function LiveToolBlock({ content }: { content: string }) {
+  const [title = "Tool running", ...rest] = compactTranscriptContent(content, 10)
+  return (
+    <Box flexDirection="row">
+      <Text color="yellow">{transcriptPrefix("tool-live")}</Text>
+      <Box flexDirection="column">
+        <Text color="yellow">{title}</Text>
+        {rest.map((line, index) => <Text key={`${index}-${line}`} dimColor>{line}</Text>)}
+      </Box>
+    </Box>
+  )
+}
+
 function PendingBlock({ content }: { content: string }) {
   return (
     <Box flexDirection="row">
@@ -120,6 +135,7 @@ export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
   if (entry.role === "queued") return <QueuedBlock content={entry.content} />
   if (entry.role === "assistant" || entry.role === "assistant-stream") return <ResponseBlock content={`d3code\n${entry.content}`} titleColor="green" maxLines={14} />
   if (entry.role === "assistant-interrupted") return <ResponseBlock content={`d3code interrupted\n${entry.content}`} titleColor="yellow" maxLines={14} />
+  if (entry.role === "tool-live") return <LiveToolBlock content={entry.content} />
   if (entry.role === "tool") return <ResponseBlock content={entry.content} />
   if (entry.role === "shell-output") return <ResponseBlock content={entry.content} />
   if (entry.role === "system") return <ResponseBlock content={entry.content} titleColor="gray" maxLines={14} />
