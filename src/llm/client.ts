@@ -104,6 +104,18 @@ async function readOpenAIStream(response: Response, onToken: (token: string) => 
   let buffer = ""
   let content = ""
   let usage: ChatUsage | undefined
+  const processLine = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith("data:")) return
+    const data = trimmed.slice(5).trim()
+    if (!data || data === "[DONE]") return
+    const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>; usage?: unknown }
+    usage = openAIUsage(parsed) ?? usage
+    const token = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content ?? ""
+    if (!token) return
+    content += token
+    onToken(token)
+  }
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
@@ -111,18 +123,10 @@ async function readOpenAIStream(response: Response, onToken: (token: string) => 
     const lines = buffer.split(/\r?\n/)
     buffer = lines.pop() ?? ""
     for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith("data:")) continue
-      const data = trimmed.slice(5).trim()
-      if (!data || data === "[DONE]") continue
-      const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>; usage?: unknown }
-      usage = openAIUsage(parsed) ?? usage
-      const token = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content ?? ""
-      if (!token) continue
-      content += token
-      onToken(token)
+      processLine(line)
     }
   }
+  if (buffer.trim()) processLine(buffer)
   return { content, usage }
 }
 
@@ -183,6 +187,23 @@ async function readAnthropicStream(response: Response, onToken: (token: string) 
   let buffer = ""
   let content = ""
   let usage: ChatUsage | undefined
+  const processLine = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith("data:")) return
+    const data = trimmed.slice(5).trim()
+    if (!data || data === "[DONE]") return
+    const parsed = JSON.parse(data) as {
+      type?: string
+      delta?: { type?: string; text?: string }
+      message?: { usage?: unknown }
+      usage?: unknown
+    }
+    usage = mergeAnthropicUsage(usage, anthropicUsage(parsed.message?.usage ? { usage: parsed.message.usage } : parsed.usage ? { usage: parsed.usage } : undefined))
+    const token = parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta" ? parsed.delta.text ?? "" : ""
+    if (!token) return
+    content += token
+    onToken(token)
+  }
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
@@ -190,23 +211,10 @@ async function readAnthropicStream(response: Response, onToken: (token: string) 
     const lines = buffer.split(/\r?\n/)
     buffer = lines.pop() ?? ""
     for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith("data:")) continue
-      const data = trimmed.slice(5).trim()
-      if (!data || data === "[DONE]") continue
-      const parsed = JSON.parse(data) as {
-        type?: string
-        delta?: { type?: string; text?: string }
-        message?: { usage?: unknown }
-        usage?: unknown
-      }
-      usage = mergeAnthropicUsage(usage, anthropicUsage(parsed.message?.usage ? { usage: parsed.message.usage } : parsed.usage ? { usage: parsed.usage } : undefined))
-      const token = parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta" ? parsed.delta.text ?? "" : ""
-      if (!token) continue
-      content += token
-      onToken(token)
+      processLine(line)
     }
   }
+  if (buffer.trim()) processLine(buffer)
   return { content, usage }
 }
 
