@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { inferSshD3Defaults, isFreeModelID, orderSetupModels, resolveSetupChoice, type Choice } from "../src/setup/wizard.js"
+import { configuredSetupModelForProvider, configuredSetupProviderID, inferSshD3Defaults, isFreeModelID, orderSetupModels, resolveSetupChoice, type Choice } from "../src/setup/wizard.js"
 
 const choices: Choice[] = [
   { id: "openai", label: "OpenAI" },
@@ -52,6 +52,20 @@ test("setup model list orders free models first", () => {
 
 test("setup choices preserve unknown typed values for validation elsewhere", () => {
   assert.equal(resolveSetupChoice("custom-provider", choices, "openai"), "custom-provider")
+})
+
+test("setup defaults preserve the currently configured provider and model", () => {
+  const config = {
+    version: 1 as const,
+    defaultModel: "kilocode/kilo-auto/free",
+    defaultSafety: "ask" as const,
+    profiles: [],
+    modelSecrets: { kilocode: "keychain:model:kilocode" },
+  }
+
+  assert.equal(configuredSetupProviderID(config), "kilocode")
+  assert.equal(configuredSetupModelForProvider(config, "kilocode"), "kilo-auto/free")
+  assert.equal(configuredSetupModelForProvider(config, "openai"), undefined)
 })
 
 test("SSH D3 setup defaults to standard D3 entry and login flow when probe cannot run", async () => {

@@ -1079,6 +1079,26 @@ test("CLI setup supports noninteractive model/key configuration", async () => {
   assert.match(proof.stdout, /Ready: yes/)
 })
 
+test("CLI setup without a provider preserves the configured model provider", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-setup-preserve-provider-"))
+  const env = { ...process.env, D3CODE_HOME: home }
+  await execFileAsync("node", ["dist/src/cli.js", "setup", "--provider", "kilocode", "--default-model", "kilo-auto/free", "--api-key-env", "KILO_API_KEY", "--skip-d3"], {
+    cwd: process.cwd(),
+    env,
+  })
+
+  await execFileAsync("node", ["dist/src/cli.js", "setup", "--skip-d3"], {
+    cwd: process.cwd(),
+    env,
+  })
+
+  const doctor = await execFileAsync("node", ["dist/src/cli.js", "doctor"], {
+    cwd: process.cwd(),
+    env,
+  })
+  assert.match(doctor.stdout, /Default model: kilocode\/kilo-auto\/free/)
+})
+
 test("CLI setup can bootstrap a persistent D3 profile noninteractively", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-setup-profile-"))
   const result = await execFileAsync("node", [

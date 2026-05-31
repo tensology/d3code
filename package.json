@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "node --loader ts-node/esm src/cli.ts",
     "start": "node dist/src/cli.js",
-    "test": "npm run build && node --test dist/**/*.test.js",
+    "test": "TEST_D3CODE_HOME=\"${TMPDIR:-/tmp}/d3code-node-test-home\"; TEST_PATH=$(printf '%s' \"$PATH\" | tr ':' '\\n' | grep -v \"^$HOME/.local/bin$\" | paste -sd ':' -); rm -rf \"$TEST_D3CODE_HOME\"; PATH=\"$TEST_PATH\" D3CODE_HOME=\"$TEST_D3CODE_HOME\" npm run build && PATH=\"$TEST_PATH\" D3CODE_HOME=\"$TEST_D3CODE_HOME\" node --test dist/**/*.test.js",
     "regression": "npm test && node dist/src/cli.js doctor && node dist/src/cli.js install-proof && node dist/src/cli.js manual-scope reference/d3_reference_manual_10.3.4_5-28-2026.pdf && node dist/src/cli.js manual-scope reference/d3_user_guide_version_10_3_4_2026-05-28-20-56-09.pdf && node dist/src/cli.js product-audit --with-acceptance --allow-incomplete && node dist/src/cli.js acceptance",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

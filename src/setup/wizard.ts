@@ -4,7 +4,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import type { D3CodeConfig } from "../config/config.js"
 import { saveConfig } from "../config/config.js"
-import { normalizeProviderID, providers } from "../providers/catalog.js"
+import { normalizeProviderID, parseModelRef, providers } from "../providers/catalog.js"
 import { discoverProviderModels } from "../providers/model-discovery.js"
 import { secretRefForProvider, type SecretStore } from "../security/secrets.js"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
@@ -63,6 +63,24 @@ function displayModelChoices(models: string[], limit = 50): string[] {
   return orderSetupModels(models).slice(0, limit)
 }
 
+export function configuredSetupProviderID(config: D3CodeConfig): string {
+  try {
+    const providerID = normalizeProviderID(parseModelRef(config.defaultModel).provider)
+    return providers.some((provider) => provider.id === providerID) ? providerID : "openai"
+  } catch {
+    return "openai"
+  }
+}
+
+export function configuredSetupModelForProvider(config: D3CodeConfig, providerID: string): string | undefined {
+  try {
+    const parsed = parseModelRef(config.defaultModel)
+    return normalizeProviderID(parsed.provider) === providerID ? parsed.model : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function inferSshD3Defaults(input: { host: string; username: string; port: number }): Promise<{ entryCommand: string; startupInput: string; promptPattern: string; detectionDetails: string }> {
   try {
     const result = await execFileAsync("ssh", ["-p", String(input.port), `${input.username}@${input.host}`, "command -v d3 || true"], { timeout: 5_000 })
@@ -95,7 +113,10 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
       hint: provider.id === "ollama" ? "local Ollama on this machine" : provider.id === "kilocode" ? "Kilo AI Gateway" : provider.id,
     }))
     renderChoices("Model provider", providerChoices)
-    const providerID = normalizeProviderID(resolveSetupChoice(await rl.question(`Provider 1-${providerChoices.length} [1 OpenAI]: `), providerChoices, "openai"))
+    const defaultProviderID = configuredSetupProviderID(config)
+    const defaultProviderIndex = providerChoices.findIndex((choice) => choice.id === defaultProviderID) + 1 || 1
+    const defaultProviderLabel = providerChoices[defaultProviderIndex - 1]?.label ?? "OpenAI"
+    const providerID = normalizeProviderID(resolveSetupChoice(await rl.question(`Provider 1-${providerChoices.length} [${defaultProviderIndex} ${defaultProviderLabel}]: `), providerChoices, defaultProviderID))
     const provider = providers.find((item) => item.id === providerID) ?? providers[0]
     if (provider.id === "ollama") {
       console.log("Ollama uses the local OpenAI-compatible endpoint at http://localhost:11434 by default.")
@@ -112,7 +133,8 @@ export async function runSetupWizard(config: D3CodeConfig, secrets: SecretStore)
     const models = modelChoices(visibleModels)
     renderChoices(`${provider.name} model${discovery.source === "provider" ? ` (${discovery.models.length} fetched)` : ""}`, models)
     if (discovery.models.length > visibleModels.length) console.log(`Showing first ${visibleModels.length}. Type any exact model id to use another fetched model.`)
-    const model = resolveSetupChoice(await rl.question(`Model 1-${models.length} [1 ${visibleModels[0] ?? provider.defaultModel}]: `), models, visibleModels[0] ?? provider.defaultModel)
+    const defaultModel = configuredSetupModelForProvider(config, provider.id) ?? visibleModels[0] ?? provider.defaultModel
+    const model = resolveSetupChoice(await rl.question(`Model 1-${models.length} [${defaultModel}]: `), models, defaultModel)
     config.defaultModel = `${provider.id}/${model}`
     renderChoices("Default approval mode", [
       { id: "ask", label: "Ask", hint: "confirm risky actions before they run" },

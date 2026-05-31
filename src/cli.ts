@@ -38,7 +38,7 @@ import { auditGoalAgainstBundle, renderGoalBundleAudit } from "./goal/audit.js"
 import { applyBundleEvidenceToGoal, renderAppliedGoalEvidence } from "./goal/evidence.js"
 import { renderGoalNext } from "./goal/next.js"
 import { listGoals, loadGoal, saveGoal } from "./goal/store.js"
-import { normalizeProviderID, providers, resolveModel } from "./providers/catalog.js"
+import { normalizeProviderID, parseModelRef, providers, resolveModel } from "./providers/catalog.js"
 import { createModelProofReport, renderModelProofReport } from "./providers/proof.js"
 import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBiasInput } from "./providers/routing.js"
 import { createReadinessReport, renderReadinessReport } from "./quality/readiness.js"
@@ -98,6 +98,14 @@ import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes, should
 import { resolveIdeAuth, setIdeAuth } from "./ide/auth.js"
 
 const safetyValues = ["ask", "plan", "trust"] as const
+
+function configuredProviderID(defaultModel: string): string {
+  try {
+    return normalizeProviderID(parseModelRef(defaultModel).provider)
+  } catch {
+    return "openai"
+  }
+}
 
 function parseSafety(value: string): SafetyMode {
   if (!safetyValues.includes(value as SafetyMode)) throw new Error(`Safety must be one of: ${safetyValues.join(", ")}`)
@@ -268,10 +276,10 @@ program
   }) => {
     if (options.provider || options.defaultModel || options.apiKeyEnv || options.defaultSafety || options.skipD3 || options.d3 !== "skip" || options.profileName || options.account || options.entry || options.prompt || options.session || options.host || options.user || options.allowedAccounts) {
       const config = await loadConfig()
-      const provider = normalizeProviderID(options.provider ?? "openai")
+      const provider = normalizeProviderID(options.provider ?? configuredProviderID(config.defaultModel))
       const providerInfo = providers.find((item) => item.id === provider)
       if (!providerInfo) throw new Error(`Unknown provider: ${options.provider ?? provider}`)
-      config.defaultModel = `${provider}/${options.defaultModel ?? providerInfo.defaultModel}`
+      if (options.provider || options.defaultModel) config.defaultModel = `${provider}/${options.defaultModel ?? providerInfo.defaultModel}`
       if (options.apiKeyEnv) config.modelSecrets[provider] = `env:${options.apiKeyEnv}`
       if (options.defaultSafety) config.defaultSafety = parseSafety(options.defaultSafety)
       const d3Mode = options.skipD3 ? "skip" : options.d3 ?? "skip"
