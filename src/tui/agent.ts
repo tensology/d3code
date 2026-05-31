@@ -107,7 +107,7 @@ export function parseD3ToolRequest(content: string): D3AgentToolRequest | undefi
     return { name: parsed.name, input: parsed.input, reason: typeof parsed.reason === "string" ? parsed.reason : undefined }
   }
 
-  const toolCallMatch = content.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/i)
+  const toolCallMatch = content.match(/<tool_call>\s*([\s\S]*?)\s*<\/(?:tool_call|d3_tool|d_value)>/i)
   if (!toolCallMatch) return undefined
   const body = toolCallMatch[1] ?? ""
   const name = body.split(/\r?\n/, 1)[0]?.trim()

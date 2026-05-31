@@ -204,6 +204,17 @@ test("parser accepts streamed tool_call blocks emitted by chat models", () => {
   assert.equal(request?.input, undefined)
 })
 
+test("parser accepts tool_call blocks closed as d3_tool", () => {
+  const request = parseD3ToolRequest([
+    "I'll inspect the account.",
+    "<tool_call>d3_estate_report",
+    "</d3_tool>",
+  ].join("\n"))
+
+  assert.equal(request?.name, "d3_estate_report")
+  assert.equal(request?.input, undefined)
+})
+
 test("parser accepts malformed d_value close emitted by chat models", () => {
   const request = parseD3ToolRequest([
     "I'll inspect the account.",
