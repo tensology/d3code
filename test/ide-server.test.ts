@@ -71,8 +71,17 @@ test("IDE server updates model and permission defaults from browser controls", a
   const providers = await fetch(`${server.url}/api/model-providers`).then((response) => response.json()) as { providers: Array<{ id: string }> }
   assert.ok(providers.providers.some((provider) => provider.id === "kilocode"))
 
-  const models = await fetch(`${server.url}/api/models?provider=kilocode`).then((response) => response.json()) as { models: string[] }
-  assert.ok(models.models.includes("kilo-auto/free") || models.models.includes("anthropic/claude-sonnet-4.5"))
+  const html = await fetch(server.url).then((response) => response.text())
+  assert.doesNotMatch(html, /modelExact/)
+
+  const openaiModels = await fetch(`${server.url}/api/models?provider=openai`).then((response) => response.json()) as { models: string[]; needsKey?: boolean }
+  if (!process.env.OPENAI_API_KEY) {
+    assert.equal(openaiModels.needsKey, true)
+    assert.deepEqual(openaiModels.models, [])
+  }
+
+  const models = await fetch(`${server.url}/api/models?provider=ollama`).then((response) => response.json()) as { models: string[] }
+  assert.ok(models.models.includes("llama3.1"))
 
   const safety = await fetch(`${server.url}/api/config/safety`, {
     method: "POST",

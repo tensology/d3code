@@ -59,7 +59,7 @@ test("discovers Ollama models from local tags response", async () => {
   assert.deepEqual(result.models, ["qwen2.5-coder:7b", "llama3.1"])
 })
 
-test("model discovery falls back when provider request fails", async () => {
+test("model discovery marks authentication failures", async () => {
   const result = await discoverProviderModels(provider("openai"), "bad-key", async () => ({
     ok: false,
     status: 401,
@@ -69,6 +69,7 @@ test("model discovery falls back when provider request fails", async () => {
   }))
 
   assert.equal(result.source, "fallback")
+  assert.equal(result.authFailed, true)
   assert.deepEqual(result.models, provider("openai").models)
   assert.match(result.warning ?? "", /using built-in fallback list/)
 })

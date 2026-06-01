@@ -4,6 +4,7 @@ export interface ModelDiscoveryResult {
   models: string[]
   source: "provider" | "fallback"
   warning?: string
+  authFailed?: boolean
 }
 
 type FetchLike = (url: string, init?: { headers?: Record<string, string> }) => Promise<{
@@ -78,6 +79,7 @@ export async function discoverProviderModels(provider: ProviderInfo, explicitKey
     return { models: provider.models, source: "fallback", warning: `${provider.name} returned no models; using built-in fallback list.` }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return { models: provider.models, source: "fallback", warning: `Could not fetch ${provider.name} models (${message}); using built-in fallback list.` }
+    const authFailed = /\b(?:401|403)\b/.test(message)
+    return { models: provider.models, source: "fallback", warning: `Could not fetch ${provider.name} models (${message}); using built-in fallback list.`, authFailed }
   }
 }
