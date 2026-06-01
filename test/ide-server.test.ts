@@ -64,6 +64,34 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.deepEqual(profiles.profiles.map((profile) => profile.name), ["fake", "alt"])
 })
 
+test("IDE server updates model and permission defaults from browser controls", async () => {
+  const editableConfig: D3CodeConfig = { ...config, profiles: config.profiles.map((profile) => ({ ...profile })) }
+  const server = await startTestIdeServer(editableConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+
+  const providers = await fetch(`${server.url}/api/model-providers`).then((response) => response.json()) as { providers: Array<{ id: string }> }
+  assert.ok(providers.providers.some((provider) => provider.id === "kilocode"))
+
+  const models = await fetch(`${server.url}/api/models?provider=kilocode`).then((response) => response.json()) as { models: string[] }
+  assert.ok(models.models.includes("kilo-auto/free") || models.models.includes("anthropic/claude-sonnet-4.5"))
+
+  const safety = await fetch(`${server.url}/api/config/safety`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ safety: "trust" }),
+  }).then((response) => response.json()) as { safety: string }
+  assert.equal(safety.safety, "trust")
+  assert.equal(editableConfig.defaultSafety, "trust")
+  assert.equal(editableConfig.profiles.find((profile) => profile.name === "fake")?.safetyDefault, "trust")
+
+  const model = await fetch(`${server.url}/api/config/model`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: "kilocode/kilo-auto/free" }),
+  }).then((response) => response.json()) as { model: string }
+  assert.equal(model.model, "kilocode/kilo-auto/free")
+  assert.equal(editableConfig.defaultModel, "kilocode/kilo-auto/free")
+})
+
 test("IDE server requires basic auth when public", async () => {
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { host: "0.0.0.0", port: 0 })
   const url = `http://127.0.0.1:${server.port}`
