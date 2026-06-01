@@ -54,6 +54,11 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.match(html, /Agent/)
   assert.match(html, /Compile BASIC/)
   assert.match(html, /Subroutine call/)
+  assert.match(html, /id="actionPopover"/)
+  assert.match(html, /id="fileUpload"/)
+  assert.match(html, /id="photoUpload"/)
+  assert.match(html, /id="planModeAction"/)
+  assert.match(html, /attachmentPromptPrefix/)
 
   const status = await fetch(`${server.url}/api/status`).then((response) => response.json()) as { profile: string; account: string; mode: string }
   assert.equal(status.profile, "fake")
