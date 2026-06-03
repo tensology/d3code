@@ -30,7 +30,7 @@ export async function runToolByName(config: D3CodeConfig, request: ToolRunReques
   const session = needsSession && profile ? createD3Session(profile) : undefined
   try {
     const raw = await tool.execute(request.input ?? {}, { safety: request.safety, profile, session, signal: request.signal, commandTimeoutMs: request.commandTimeoutMs })
-    return { name: request.name, raw, compact: request.compact === false ? JSON.stringify(raw, null, 2) : compactToolOutput(raw) }
+    return { name: request.name, raw, compact: request.compact === false ? JSON.stringify(raw, null, 2) : compactToolOutput(raw, request.name) }
   } finally {
     await session?.close()
   }
