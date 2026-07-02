@@ -32,6 +32,18 @@ test("tool runner executes local TCL through shell-backed profile", async () => 
   assert.equal((result.raw as { exitCode: number }).exitCode, 0)
 })
 
+test("tool runner enforces D3 scope when a mode contract is supplied", async () => {
+  await assert.rejects(
+    runToolByName({ ...config, profiles: [] }, {
+      name: "d3_write_item",
+      input: { file: "CUSTOMERS", item: "100", body: "X" },
+      safety: "ask",
+      mode: "chat",
+    }),
+    /Tool d3_write_item is blocked in chat mode/,
+  )
+})
+
 test("D3 session timeout 0 leaves the command running until completion", async () => {
   const session = createD3Session({ name: "local", type: "local" })
   const result = await session.run("sleep 0.05; printf D3CODE_STILL_RUNNING", 0)

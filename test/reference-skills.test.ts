@@ -7,6 +7,9 @@ import { getSkill, modeSystemPrompt } from "../src/skills/modes.js"
 
 test("reference skill families are mapped to baked product surfaces or explicit out-of-scope decisions", () => {
   assert.equal(referenceSkillCoverageReady(), true)
+  assert.ok(referenceSkillFamilies.some((family) => family.source === "jcode" && family.reference === "jcode harness patterns"))
+  assert.ok(referenceSkillFamilies.some((family) => family.source === "jcode" && family.productSkills.includes("harness-doctor")))
+  assert.ok(referenceSkillFamilies.some((family) => family.source === "jcode" && family.productSurfaces.includes("harness-doctor")))
   assert.ok(referenceSkillFamilies.some((family) => family.source === "gstack" && family.reference.includes("qa")))
   assert.ok(referenceSkillFamilies.some((family) => family.reference.includes("ship") && family.productSurfaces.includes("bundle-release-report")))
   assert.ok(referenceSkillFamilies.some((family) => family.reference.includes("health") && family.productSurfaces.includes("safety-guard")))
@@ -30,6 +33,7 @@ test("gstack and release-readiness skills are first-class D3 Code skills", () =>
 test("skill coverage includes the reference skill map gate", () => {
   const report = skillCoverageReport()
   assert.equal(report.ready, true)
+  assert.ok(report.items.some((item) => item.source === "jcode" && item.expected.includes("doctor") && item.covered))
   assert.ok(report.items.some((item) => item.expected.includes("model benchmarking") && item.evidence.includes("command:model-routing") && item.covered))
   assert.ok(report.items.some((item) => item.expected.includes("reference skill map") && item.covered))
   assert.ok(report.items.some((item) => item.expected.includes("subagent-driven") && item.evidence.includes("command:agent-run") && item.covered))

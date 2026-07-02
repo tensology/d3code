@@ -23,6 +23,7 @@ test("reference skills are productized as D3 Code skills", () => {
   assert.ok(skills.some((skill) => skill.source === "gstack"))
   assert.ok(skills.some((skill) => skill.source === "rtk"))
   assert.ok(skills.some((skill) => skill.source === "opencode"))
+  assert.ok(skills.some((skill) => skill.source === "jcode"))
 })
 
 test("superpowers reference workflow skills are baked into the catalog", () => {
@@ -69,6 +70,9 @@ test("skill coverage report proves reference skill families have product surface
   assert.ok(report.items.some((item) => item.source === "d3code" && item.evidence.includes("command:modernization-proof")))
   assert.ok(report.items.some((item) => item.source === "gstack" && item.evidence.includes("command:model-routing")))
   assert.ok(report.items.some((item) => item.source === "gstack" && item.evidence.includes("command:bundle-release-report")))
+  assert.ok(report.items.some((item) => item.source === "jcode" && item.evidence.includes("command:harness-doctor")))
+  assert.match(modeSystemPrompt("plan"), /scoped-reference-projection/)
+  assert.match(modeSystemPrompt("qa"), /safety-reporting/)
   assert.match(modeSystemPrompt("api"), /effect-service-patterns/)
   const rendered = renderSkillCoverage()
   assert.match(rendered, /D3 Code Baked Skill Coverage/)

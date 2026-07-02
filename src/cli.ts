@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs"
-import { execFile } from "node:child_process"
+import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { platform } from "node:os"
+import { delimiter } from "node:path"
+import { fileURLToPath } from "node:url"
+import { createServer as createNetServer } from "node:net"
 import { Command } from "commander"
 import { render } from "ink"
 import React from "react"
 import { createInterface } from "node:readline/promises"
 import { agents } from "./agents/registry.js"
 import { renderDelegationPlan } from "./agents/delegation.js"
-import { renderAgentRunReport, runAgentTask } from "./agents/run.js"
+import { createAgentRunEvents, renderAgentRunReport, runAgentTask, type AgentRunEvent } from "./agents/run.js"
 import { createSubagentPromptPack, renderSubagentPromptPack } from "./agents/tasks.js"
 import { defaultConfig, effectiveSafety, loadConfig, saveConfig, selectProfile } from "./config/config.js"
-import { configPath, defaultD3ReferenceManual, defaultD3UserGuide, defaultReferenceDir, defaultRocketMvBasicDir } from "./config/paths.js"
+import { configPath, defaultD3ReferenceManual, defaultD3UserGuide, defaultReferenceDir, defaultRocketMvBasicDir, memoryPath } from "./config/paths.js"
 import { assertD3Allowed, evaluateD3Permission, classifyD3Command } from "./core/permissions.js"
 import type { SafetyMode } from "./domain/types.js"
 import { createD3Session } from "./d3/adapter.js"
@@ -27,6 +30,7 @@ import { createIdeTerminalContract, renderIdeTerminalContract } from "./d3/ide-t
 import { parseD3ScreenTranscript, renderD3ScreenBuffer } from "./d3/screen-buffer.js"
 import { captureD3Terminal, renderD3TerminalCapture, writeD3TerminalCapture } from "./d3/terminal-capture.js"
 import { createD3TerminalBridgePlan, renderD3TerminalBridgePlan } from "./d3/terminal-plan.js"
+import { d3Capabilities, renderD3Capabilities } from "./d3/capabilities.js"
 import { d3Tools, getTool } from "./d3/tools.js"
 import { parseD3Uri } from "./d3/uri.js"
 import { indexD3Account, indexManualText, loadIndex, saveIndex, searchDocuments } from "./indexing/indexer.js"
@@ -44,6 +48,7 @@ import { normalizeProviderID, parseModelRef, providers, resolveModel } from "./p
 import { createModelProofReport, renderModelProofReport } from "./providers/proof.js"
 import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBiasInput } from "./providers/routing.js"
 import { createReadinessReport, renderReadinessReport } from "./quality/readiness.js"
+import { createHarnessDoctorReport, renderHarnessDoctorReport } from "./quality/harness-doctor.js"
 import { renderAcceptanceReport, runMockAcceptance } from "./quality/acceptance.js"
 import { createIdeStatusReport, renderIdeStatusReport } from "./quality/ide-status.js"
 import { createInstallProofReport, renderInstallProofReport } from "./quality/install-proof.js"
@@ -51,6 +56,10 @@ import { createProductCompletionAudit, renderProductCompletionAudit } from "./qu
 import { defaultSecretStore } from "./security/secrets.js"
 import { createSetupProofReport, renderSetupProofReport } from "./setup/proof.js"
 import { runSetupWizard } from "./setup/wizard.js"
+import { createSidecarProfileContext, createSidecarStatus, ensureSidecarStarted, renderSidecarStatus } from "./sidecar/client.js"
+import { assertD3Scope, classifyD3Scope, renderD3ScopeDecision } from "./scope/d3-scope.js"
+import { createScreenAudit, renderScreenAudit } from "./screens/audit.js"
+import { createSbplusScreenPlan, renderSbplusScreenPlan } from "./screens/sbplus-plan.js"
 import { App } from "./tui/App.js"
 import { consumeEarlyInput, startCapturingEarlyInput } from "./tui/early-input.js"
 import { createMigrationPlan } from "./migration/planner.js"
@@ -62,6 +71,7 @@ import { checkGeneratedWebApp, renderWebAppCheck, renderWebAppSmoke, runGenerate
 import { getMode, modeSystemPrompt, modes, renderModeRunbook, renderSkill, skills } from "./skills/modes.js"
 import { renderSkillCoverage, skillCoverageReport } from "./skills/coverage.js"
 import { auditReferenceSkillInventory, renderReferenceSkillAudit } from "./skills/reference-audit.js"
+import { renderReferenceSkillScout, scoutReferenceSkills, type ReferenceSkillScoutScope } from "./skills/reference-scout.js"
 import { referenceSkillCoverageReady, referenceSkillFamilies, renderReferenceSkillMap } from "./skills/reference-map.js"
 import { auditMvBasicReference, renderMvBasicReferenceAudit } from "./skills/mvbasic-reference.js"
 import { renderWorkflow } from "./skills/workflows.js"
@@ -98,6 +108,9 @@ import { listSessions, loadSession } from "./sessions/store.js"
 import { startIdeServer } from "./ide/server.js"
 import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes, shouldPromptForPublicIde, terminalLink } from "./ide/access.js"
 import { resolveIdeAuth, setIdeAuth } from "./ide/auth.js"
+import { appendOperatorMemory, createOperatorMemoryEntry, readOperatorMemory, type OperatorMemoryKind } from "./operator/memory.js"
+import { createHermesStatus, renderEccHermesImportMap, renderHermesStatus } from "./operator/ecc-hermes.js"
+import { buildRagIndex, formatRagIndexStatus, formatRagSearchResult, loadRagIndex, loadSystemBuilderManifest, ragIndexStatus, routeReferenceQuery, saveRagIndex, searchRagIndex } from "./rag/reference-rag.js"
 
 const safetyValues = ["ask", "plan", "trust"] as const
 
@@ -123,6 +136,48 @@ function runSystemCommand(command: string, args: string[], timeoutMs = 2500): Pr
         stdout: String(stdout ?? ""),
         stderr: String(stderr ?? ""),
       })
+    })
+  })
+}
+
+function pythonPackagePath(): string {
+  const candidates = [
+    fileURLToPath(new URL("../../python", import.meta.url)),
+    fileURLToPath(new URL("../python", import.meta.url)),
+    `${process.cwd()}/python`,
+  ]
+  const found = candidates.find((candidate) => existsSync(candidate))
+  if (!found) throw new Error("Could not find the D3 Code Python runtime directory.")
+  return found
+}
+
+function startFastApiProcess(options: { host: string; port: number; stdio?: "inherit" | "ignore"; env?: NodeJS.ProcessEnv }): ChildProcess {
+  const pythonPath = pythonPackagePath()
+  const env = {
+    ...process.env,
+    ...options.env,
+  }
+  env.PYTHONPATH = [pythonPath, env.PYTHONPATH].filter(Boolean).join(delimiter)
+  return spawn("python3", ["-m", "uvicorn", "d3code_api.server:app", "--host", options.host, "--port", String(options.port)], {
+    env,
+    stdio: options.stdio ?? "inherit",
+  })
+}
+
+function stopChildProcess(child: ChildProcess | undefined): void {
+  if (!child || child.killed) return
+  child.kill("SIGTERM")
+}
+
+function reservePort(host: string, requestedPort: number): Promise<number> {
+  if (requestedPort !== 0) return Promise.resolve(requestedPort)
+  return new Promise((resolve, reject) => {
+    const server = createNetServer()
+    server.once("error", reject)
+    server.listen(0, host, () => {
+      const address = server.address()
+      const port = typeof address === "object" && address ? address.port : 0
+      server.close((error) => error ? reject(error) : resolve(port))
     })
   })
 }
@@ -231,6 +286,20 @@ function collectOption(value: string, previous: string[] = []): string[] {
   return [...previous, value]
 }
 
+function registerSidecarCleanup(child: ChildProcess | undefined): void {
+  if (!child) return
+  const stop = () => stopChildProcess(child)
+  process.once("exit", stop)
+  process.once("SIGINT", () => {
+    stop()
+    process.exit(130)
+  })
+  process.once("SIGTERM", () => {
+    stop()
+    process.exit(143)
+  })
+}
+
 const program = new Command()
   .name("d3code")
   .description("Agentic terminal coding environment for Rocket D3.")
@@ -251,6 +320,8 @@ const program = new Command()
     const mode = getMode(options.mode ?? "chat") ?? getMode("chat")!
     const model = options.model ?? session?.model ?? config.defaultModel
     const safety = options.safety ? parseSafety(options.safety) : session?.safety ?? mode.safetyBias ?? effectiveSafety(config, undefined, profile)
+    const sidecar = await ensureSidecarStarted(config, { profileName: options.profile ?? session?.profile ?? profile?.name, mode: mode.id })
+    registerSidecarCleanup(sidecar.process)
     render(React.createElement(App, { model, safety, profile: options.profile ?? session?.profile ?? profile?.name, mode: mode.id, config, session, initialInput }))
   })
 
@@ -551,6 +622,14 @@ program.command("screen-parse").argument("<transcript-file>").description("Parse
   console.log(options.json ? JSON.stringify(buffer, null, 2) : renderD3ScreenBuffer(buffer))
 })
 
+program.command("screen-audit").argument("<basic-file>").description("Audit D3 BASIC/SB+ style screen evidence and produce a migration UI spec.").option("--name <name>", "screen/program name").option("--transcript <file>", "captured terminal transcript").option("--width <n>", "screen width", (value) => Number(value), 80).option("--height <n>", "screen height", (value) => Number(value), 24).option("--json").action(async (file: string, options: { name?: string; transcript?: string; width: number; height: number; json?: boolean }) => {
+  const fs = await import("node:fs/promises")
+  const basicSource = await fs.readFile(file, "utf8")
+  const transcript = options.transcript ? await fs.readFile(options.transcript, "utf8") : undefined
+  const report = createScreenAudit({ name: options.name ?? file, basicSource, transcript, width: options.width, height: options.height })
+  console.log(options.json ? JSON.stringify(report, null, 2) : renderScreenAudit(report))
+})
+
 program.command("terminal-capture").argument("<command...>").description("Run a D3 terminal command, capture the raw transcript, and parse it into a legacy screen buffer.").option("--profile <name>").option("--out <dir>", "write transcript, screen buffer, and capture artifacts").option("--width <n>", "screen width", (value) => Number(value), 80).option("--height <n>", "screen height", (value) => Number(value), 24).option("--timeout <ms>", "command timeout", (value) => Number(value), 30_000).option("--safety <mode>").option("--confirm", "confirm commands blocked by ask/trust safety").option("--json").action(async (parts: string[], options: { profile?: string; out?: string; width: number; height: number; timeout: number; safety?: string; confirm?: boolean; json?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
@@ -579,6 +658,52 @@ program.command("model-proof").description("Verify default model, provider secre
   const config = await loadConfig()
   const report = await createModelProofReport(config, defaultSecretStore(), { mode: options.mode, bias: options.bias })
   console.log(options.json ? JSON.stringify(report, null, 2) : renderModelProofReport(report))
+  if (!report.ready) process.exitCode = 1
+})
+
+program.command("sidecar-status").description("Show optional Rust sidecar readiness and TypeScript fallback status.").option("--profile <name>").option("--mode <mode>", "mode context", "chat").option("--binary <path>", "sidecar binary path").option("--json").action(async (options: { profile?: string; mode: string; binary?: string; json?: boolean }) => {
+  const config = await loadConfig()
+  const report = await createSidecarStatus(config, { binary: options.binary })
+  const context = createSidecarProfileContext(config, options.profile, options.mode)
+  const payload = { ...report, context }
+  console.log(options.json ? JSON.stringify(payload, null, 2) : `${renderSidecarStatus(report)}\n\nProfile context: ${context.profile?.name ?? "none"} (${context.mode}/${context.safety})`)
+})
+
+program.command("sidecar-health").description("Run a sidecar health check without failing when the TypeScript fallback is active.").option("--binary <path>", "sidecar binary path").option("--json").action(async (options: { binary?: string; json?: boolean }) => {
+  const config = await loadConfig()
+  const report = await createSidecarStatus(config, { binary: options.binary })
+  console.log(options.json ? JSON.stringify(report, null, 2) : renderSidecarStatus(report))
+})
+
+program.command("scope-check").argument("<request...>").description("Classify a request against D3Code's D3-only operating scope.").option("--mode <mode>", "D3Code mode contract", "chat").option("--tool <name>", "registered D3 tool to guard").option("--input <json>", "tool input JSON for scope guard", "{}").option("--json").action((requestParts: string[], options: { mode: string; tool?: string; input: string; json?: boolean }) => {
+  const text = requestParts.join(" ")
+  const input = options.tool ? JSON.parse(options.input) as unknown : undefined
+  try {
+    const decision = options.tool
+      ? assertD3Scope({ mode: options.mode, toolName: options.tool, input, text })
+      : classifyD3Scope(text)
+    console.log(options.json ? JSON.stringify(decision, null, 2) : renderD3ScopeDecision(decision))
+    if (!decision.allowed && !options.json) process.exitCode = 1
+  } catch (error) {
+    const payload = { allowed: false, scope: "out-of-scope", confidence: "high", reasons: [(error as Error).message] }
+    console.log(options.json ? JSON.stringify(payload, null, 2) : (error as Error).message)
+    if (!options.json) process.exitCode = 1
+  }
+})
+
+program.command("harness-doctor").description("Aggregate D3Code provider, profile, RAG, reference, skill, and Hermes/ECC readiness diagnostics.").option("--profile <name>").option("--reference-dir <dir>", "reference folder", defaultReferenceDir).option("--ecc-root <dir>", "path to local ECC checkout").option("--index <name>", "RAG cache index name", "reference-rag").option("--json").action(async (options: { profile?: string; referenceDir: string; eccRoot?: string; index: string; json?: boolean }) => {
+  const config = await loadConfig()
+  const selectedProfile = options.profile ? selectProfile(config, options.profile) : undefined
+  const profileDoctor = selectedProfile ? await diagnoseProfile(selectedProfile) : undefined
+  const report = await createHarnessDoctorReport(config, {
+    modelProof: await createModelProofReport(config, defaultSecretStore(), { mode: "migrate" }),
+    profileDoctor,
+    ragStatus: await ragIndexStatus(options.index, options.referenceDir, options.eccRoot ?? config.hermes?.eccRoot),
+    referenceAudit: await auditReferenceSkillInventory(options.referenceDir),
+    skillCoverage: skillCoverageReport(),
+    hermesStatus: await createHermesStatus(config, options.eccRoot),
+  })
+  console.log(options.json ? JSON.stringify(report, null, 2) : renderHarnessDoctorReport(report))
   if (!report.ready) process.exitCode = 1
 })
 
@@ -620,23 +745,45 @@ program.command("delegate-prompts").argument("[mode]", "mode", "migrate").descri
   console.log(options.json ? JSON.stringify(pack, null, 2) : renderSubagentPromptPack(pack))
 })
 
-program.command("agent-run").argument("<task>", "basic-check|file-audit|migration-slice").argument("<file>").argument("[item]").description("Run a bounded D3 agent task with tool evidence.").option("--profile <name>").option("--safety <mode>").option("--compile", "compile after reading and linting").option("--catalog", "catalog after a clean compile").option("--global", "catalog globally with (G").option("--confirm", "confirm mutation steps under ask safety").option("--sample-limit <n>", "sample records for file-audit", (value) => Number(value), 3).option("--out <dir>", "output directory for migration-slice").option("--json").action(async (task: string, file: string, item: string | undefined, options: { profile?: string; safety?: string; compile?: boolean; catalog?: boolean; global?: boolean; confirm?: boolean; sampleLimit?: number; out?: string; json?: boolean }) => {
+function writeAgentRunEvents(events: AgentRunEvent[]): void {
+  for (const event of events) console.log(JSON.stringify(event))
+}
+
+program.command("agent-run").argument("<task>", "basic-check|file-audit|migration-slice").argument("<file>").argument("[item]").description("Run a bounded D3 agent task with tool evidence.").option("--profile <name>").option("--safety <mode>").option("--compile", "compile after reading and linting").option("--catalog", "catalog after a clean compile").option("--global", "catalog globally with (G").option("--confirm", "confirm mutation steps under ask safety").option("--sample-limit <n>", "sample records for file-audit", (value) => Number(value), 3).option("--out <dir>", "output directory for migration-slice").option("--json").option("--ndjson", "emit start/step/result events as newline-delimited JSON").action(async (task: string, file: string, item: string | undefined, options: { profile?: string; safety?: string; compile?: boolean; catalog?: boolean; global?: boolean; confirm?: boolean; sampleLimit?: number; out?: string; json?: boolean; ndjson?: boolean }) => {
   if (task !== "basic-check" && task !== "file-audit" && task !== "migration-slice") throw new Error("Unsupported agent-run task. Use: basic-check, file-audit, or migration-slice")
-  const report = await runAgentTask(await loadConfig(), {
-    task,
-    file,
-    item,
-    outDir: options.out,
-    profile: options.profile,
-    safety: options.safety ? parseSafety(options.safety) : undefined,
-    compile: options.compile,
-    catalog: options.catalog,
-    global: options.global,
-    confirm: options.confirm,
-    sampleLimit: options.sampleLimit,
-  })
-  console.log(options.json ? JSON.stringify(report, null, 2) : renderAgentRunReport(report))
-  if (!report.ready) process.exitCode = 1
+  try {
+    const report = await runAgentTask(await loadConfig(), {
+      task,
+      file,
+      item,
+      outDir: options.out,
+      profile: options.profile,
+      safety: options.safety ? parseSafety(options.safety) : undefined,
+      compile: options.compile,
+      catalog: options.catalog,
+      global: options.global,
+      confirm: options.confirm,
+      sampleLimit: options.sampleLimit,
+    })
+    if (options.ndjson) writeAgentRunEvents(createAgentRunEvents(report))
+    else console.log(options.json ? JSON.stringify(report, null, 2) : renderAgentRunReport(report))
+    if (!report.ready) process.exitCode = 1
+  } catch (error) {
+    if (options.ndjson) {
+      writeAgentRunEvents([{
+        type: "error",
+        task,
+        agent: "d3-operator",
+        target: item ? `${file}/${item}` : file,
+        profile: options.profile,
+        ready: false,
+        evidence: [(error as Error).message],
+      }])
+      process.exitCode = 1
+      return
+    }
+    throw error
+  }
 })
 
 program.command("skills").description("List baked-in D3 Code skills.").option("--json").action((options: { json?: boolean }) => {
@@ -663,6 +810,34 @@ program.command("reference-skills").description("Map reference skill families to
 program.command("reference-audit").argument("[reference-dir]", "reference folder", defaultReferenceDir).description("Scan reference SKILL.md files and verify each one is baked, adapted, or explicitly out of scope.").option("--json").action(async (referenceDir: string, options: { json?: boolean }) => {
   const report = await auditReferenceSkillInventory(referenceDir)
   console.log(options.json ? JSON.stringify(report, null, 2) : renderReferenceSkillAudit(report))
+})
+
+program.command("reference-skill-scout").argument("<reference-dir>", "reference folder").description("Classify external SKILL.md files through the D3 manual/reference scope before adoption.").option("--scope <scope>", "scope to apply; currently d3", "d3").option("--json").action(async (referenceDir: string, options: { scope: ReferenceSkillScoutScope; json?: boolean }) => {
+  if (options.scope !== "d3") throw new Error("reference-skill-scout currently supports only --scope d3")
+  const report = await scoutReferenceSkills(referenceDir, { scope: options.scope })
+  console.log(options.json ? JSON.stringify(report, null, 2) : renderReferenceSkillScout(report))
+})
+
+program.command("hermes-setup").description("Enable or update the optional Hermes/ECC operator harness bridge.").option("--ecc-root <dir>", "path to local ECC checkout").option("--disable", "disable Hermes/ECC bridge").option("--json").action(async (options: { eccRoot?: string; disable?: boolean; json?: boolean }) => {
+  const config = await loadConfig()
+  config.hermes = {
+    enabled: !options.disable,
+    eccRoot: options.eccRoot ?? config.hermes?.eccRoot,
+    memoryEnabled: true,
+  }
+  await saveConfig(config)
+  const status = await createHermesStatus(config, options.eccRoot)
+  console.log(options.json ? JSON.stringify(status, null, 2) : renderHermesStatus(status))
+})
+
+program.command("hermes-status").description("Show Hermes/ECC operator harness bridge status.").option("--ecc-root <dir>", "path to local ECC checkout").option("--json").action(async (options: { eccRoot?: string; json?: boolean }) => {
+  const status = await createHermesStatus(await loadConfig(), options.eccRoot)
+  console.log(options.json ? JSON.stringify(status, null, 2) : renderHermesStatus(status))
+})
+
+program.command("ecc-hermes-skills").description("Show which ECC/Hermes skills are adapted into D3Code.").option("--json").action(async (options: { json?: boolean }) => {
+  const status = await createHermesStatus(await loadConfig())
+  console.log(options.json ? JSON.stringify(status.imports, null, 2) : renderEccHermesImportMap())
 })
 
 program.command("mvbasic-reference-audit").argument("[rocket-mvbasic-dir]", "Rocket MV BASIC reference folder", defaultRocketMvBasicDir).description("Audit Rocket MV BASIC extension docs as an IDE-parity checklist for D3 Code IDE, connection, locks, compile/catalog, and language intelligence.").option("--json").action(async (rocketMvBasicDir: string, options: { json?: boolean }) => {
@@ -792,6 +967,10 @@ program.command("tools").description("List core D3 tools.").action(() => {
   for (const tool of d3Tools) console.log(`${tool.name}\t${tool.mutates ? "mutates" : "read"}\t${tool.description}`)
 })
 
+program.command("capabilities").description("List D3/SB+ coding capabilities shared by the agent, CLI, and IDE.").option("--json").action((options: { json?: boolean }) => {
+  console.log(options.json ? JSON.stringify({ capabilities: d3Capabilities }, null, 2) : renderD3Capabilities())
+})
+
 program.command("tool").argument("<name>").argument("[json]").description("Execute a D3 tool against the selected profile.").option("--profile <name>").option("--safety <mode>").action(async (name: string, json = "{}", options: { profile?: string; safety?: string }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
@@ -834,10 +1013,36 @@ program.command("write-item").argument("<file>").argument("<item>").argument("[b
   console.log(output.compact)
 })
 
+program.command("create-file").argument("<file>").description("Create a D3 file using create-file syntax from the D3 reference.").option("--profile <name>").option("--safety <mode>").option("--dict-modulo <n>", "dictionary modulo", (value) => Number(value), 3).option("--data-modulo <n>", "data modulo", (value) => Number(value), 11).option("--dict-only", "create a dictionary-only file").option("--data-only-dict <file>", "create a data section under an existing dictionary reference").option("--confirm", "confirm the create-file command under ask safety").action(async (file: string, options: { profile?: string; safety?: string; dictModulo: number; dataModulo: number; dictOnly?: boolean; dataOnlyDict?: string; confirm?: boolean }) => {
+  const config = await loadConfig()
+  const profile = selectProfile(config, options.profile)
+  const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
+  const output = await runToolByName(config, {
+    name: "d3_create_file",
+    input: { file, dictModulo: options.dictModulo, dataModulo: options.dataModulo, dictionaryOnly: options.dictOnly, dataOnlyDictionary: options.dataOnlyDict, confirmed: options.confirm || safety === "trust" },
+    safety,
+    profile: options.profile,
+  })
+  console.log(output.compact)
+})
+
 program.command("read-dict").argument("<file>").argument("<item>").description("Read a D3 dictionary item using CT DICT.").option("--profile <name>").option("--safety <mode>").action(async (file: string, item: string, options: { profile?: string; safety?: string }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const output = await runToolByName(config, { name: "d3_read_dict", input: { file, item }, safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile })
+  console.log(output.compact)
+})
+
+program.command("write-dict").argument("<file>").argument("<item>").argument("[body...]").description("Write a D3 dictionary item through ED DICT batch input.").option("--profile <name>").option("--safety <mode>").option("--body-file <file>", "read dictionary body from a local file").option("--confirm", "confirm the write under ask safety").action(async (file: string, item: string, bodyParts: string[] | undefined, options: { profile?: string; safety?: string; bodyFile?: string; confirm?: boolean }) => {
+  const config = await loadConfig()
+  const profile = selectProfile(config, options.profile)
+  const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
+  const output = await runToolByName(config, {
+    name: "d3_write_dict",
+    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), confirmed: options.confirm || safety === "trust" },
+    safety,
+    profile: options.profile,
+  })
   console.log(output.compact)
 })
 
@@ -870,6 +1075,19 @@ program.command("compile-basic").argument("<file>").argument("<item>").descripti
   console.log(output.compact)
 })
 
+program.command("build-basic").argument("<file>").argument("<item>").description("Write BASIC source, then optionally compile and catalog it.").option("--profile <name>").option("--safety <mode>").option("--body-file <file>", "read BASIC source from a local file").option("--compile", "run BASIC after writing").option("--catalog", "run CATALOG after writing or compiling").option("--global", "catalog globally with (G").option("--confirm", "confirm write/build commands under ask safety").action(async (file: string, item: string, options: { profile?: string; safety?: string; bodyFile?: string; compile?: boolean; catalog?: boolean; global?: boolean; confirm?: boolean }) => {
+  const config = await loadConfig()
+  const profile = selectProfile(config, options.profile)
+  const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
+  const output = await runToolByName(config, {
+    name: "d3_build_basic_program",
+    input: { file, item, source: await bodyFromOptions(undefined, options.bodyFile), compile: options.compile, catalog: options.catalog, global: options.global, confirmed: options.confirm || safety === "trust" },
+    safety,
+    profile: options.profile,
+  })
+  console.log(output.compact)
+})
+
 program.command("catalog-basic").argument("<file>").argument("<item>").description("Catalog a compiled D3 BASIC program.").option("--profile <name>").option("--safety <mode>").option("--global", "catalog globally with (G").option("--confirm", "confirm catalog under ask safety").action(async (file: string, item: string, options: { profile?: string; safety?: string; global?: boolean; confirm?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
@@ -895,6 +1113,79 @@ program.command("index-manual").argument("<text-file>").description("Index extra
 program.command("search-manual").argument("<query>").description("Search the indexed D3 manual.").action(async (query: string) => {
   const hits = searchDocuments(await loadIndex("manual"), query).slice(0, 20)
   for (const hit of hits) console.log(`${hit.uri}:${hit.line}: ${hit.excerpt}`)
+})
+
+program.command("rag-build").description("Build the local D3Code reference RAG index from Rocket D3, MV BASIC, System Builder, operator memory, and optional ECC/Hermes references.").option("--index <name>", "cache index name", "reference-rag").option("--reference-dir <dir>", "reference folder", defaultReferenceDir).option("--ecc-root <dir>", "path to local ECC checkout for selected source skills").option("--json").action(async (options: { index: string; referenceDir: string; eccRoot?: string; json?: boolean }) => {
+  const config = await loadConfig()
+  const index = await buildRagIndex({ referenceDir: options.referenceDir, eccRoot: options.eccRoot ?? config.hermes?.eccRoot })
+  const path = await saveRagIndex(index, options.index)
+  const payload = { index: options.index, path, sources: index.sources.length, chunks: index.chunks.length, builtAt: index.builtAt }
+  console.log(options.json ? JSON.stringify(payload, null, 2) : `Built RAG index ${options.index}: ${payload.sources} source(s), ${payload.chunks} chunk(s) -> ${path}`)
+})
+
+program.command("rag-search").argument("<query...>").description("Search the local D3Code reference RAG index with source routing.").option("--index <name>", "cache index name", "reference-rag").option("--limit <n>", "maximum hits", (value) => Number(value), 8).option("--json").action(async (queryParts: string[], options: { index: string; limit: number; json?: boolean }) => {
+  const query = queryParts.join(" ")
+  const index = await loadRagIndex(options.index)
+  const result = searchRagIndex(index, query, { limit: options.limit })
+  console.log(options.json ? JSON.stringify(result, null, 2) : formatRagSearchResult(result))
+})
+
+program.command("sbplus-plan").description("Create a reference-grounded SB+ screen/process builder plan without writing definition records.").option("--system <name>").option("--process <name>").option("--kind <kind>", "input process, output process, menu process, report writer", "input process").option("--file <file>", "primary file").option("--field <name>", "field/prompt name; repeatable", (value, previous: string[]) => [...previous, value], [] as string[]).option("--notes <text>").option("--json").action(async (options: { system?: string; process?: string; kind: string; file?: string; field: string[]; notes?: string; json?: boolean }) => {
+  const config = await loadConfig()
+  const output = await runToolByName(config, {
+    name: "d3_sbplus_plan",
+    input: { system: options.system, process: options.process, kind: options.kind, file: options.file, fields: options.field, notes: options.notes },
+    safety: config.defaultSafety,
+    compact: !options.json,
+  })
+  console.log(options.json ? JSON.stringify(output.raw, null, 2) : output.compact)
+})
+
+program.command("sbplus-screen-plan").description("Create a no-write SB+/System Builder screen/process migration plan with fields, actions, and proof gates.").option("--system <name>").option("--process <name>").option("--kind <kind>", "input process, output process, menu process, report writer", "input process").option("--file <file>", "primary file").option("--field <name>", "field/prompt name; repeatable", (value, previous: string[]) => [...previous, value], [] as string[]).option("--notes <text>").option("--json").action((options: { system?: string; process?: string; kind: string; file?: string; field: string[]; notes?: string; json?: boolean }) => {
+  const plan = createSbplusScreenPlan({ system: options.system, process: options.process, kind: options.kind, file: options.file, fields: options.field, notes: options.notes })
+  console.log(options.json ? JSON.stringify(plan, null, 2) : renderSbplusScreenPlan(plan))
+})
+
+program.command("sbplus-discover").description("Discover likely SB+ process, screen, menu, and driver definition files in the selected account.").option("--profile <name>").option("--safety <mode>").option("--limit <n>", "maximum MD entries to inspect", (value) => Number(value), 300).option("--json").action(async (options: { profile?: string; safety?: string; limit: number; json?: boolean }) => {
+  const config = await loadConfig()
+  const profile = selectProfile(config, options.profile)
+  const output = await runToolByName(config, {
+    name: "d3_sbplus_discover",
+    input: { limit: options.limit },
+    safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile),
+    profile: options.profile,
+    compact: !options.json,
+  })
+  console.log(options.json ? JSON.stringify(output.raw, null, 2) : output.compact)
+})
+
+program.command("rag-route").argument("<query...>").description("Explain which reference family D3Code will consult first for a question.").option("--json").action((queryParts: string[], options: { json?: boolean }) => {
+  const query = queryParts.join(" ")
+  const route = routeReferenceQuery(query)
+  console.log(options.json ? JSON.stringify({ query, route }, null, 2) : [`Query: ${query}`, `Primary: ${route.primary}`, `Sources: ${route.sources.join(", ")}`, `Rationale: ${route.rationale}`].join("\n"))
+})
+
+program.command("rag-status").description("Show local D3Code reference RAG status and source inventory.").option("--index <name>", "cache index name", "reference-rag").option("--reference-dir <dir>", "reference folder", defaultReferenceDir).option("--ecc-root <dir>", "path to local ECC checkout for selected source skills").option("--json").action(async (options: { index: string; referenceDir: string; eccRoot?: string; json?: boolean }) => {
+  const config = await loadConfig()
+  const status = await ragIndexStatus(options.index, options.referenceDir, options.eccRoot ?? config.hermes?.eccRoot)
+  console.log(options.json ? JSON.stringify(status, null, 2) : formatRagIndexStatus(status))
+})
+
+program.command("system-builder-manifest").description("Read the System Builder manual manifest.").option("--manifest <file>", "manifest path", `${defaultReferenceDir}/system-builder/manifest.json`).option("--json").action(async (options: { manifest: string; json?: boolean }) => {
+  const manifest = await loadSystemBuilderManifest(options.manifest)
+  console.log(options.json ? JSON.stringify(manifest, null, 2) : manifest.manuals.map((manual) => `${manual.title} ${manual.version ?? ""} ${manual.resolvedPath}`).join("\n"))
+})
+
+program.command("operator-memory-add").description("Record a verified, sanitized D3Code operator lesson for Hermes-style memory.").requiredOption("--project <name>").requiredOption("--kind <kind>", "lesson|workflow|reference|fix").requiredOption("--summary <text>").requiredOption("--evidence <text>").option("--memory <file>", "memory jsonl file", memoryPath.replace(/\.md$/i, ".jsonl")).option("--json").action(async (options: { project: string; kind: string; summary: string; evidence: string; memory: string; json?: boolean }) => {
+  if (!["lesson", "workflow", "reference", "fix"].includes(options.kind)) throw new Error("kind must be one of: lesson, workflow, reference, fix")
+  const entry = createOperatorMemoryEntry({ project: options.project, kind: options.kind as OperatorMemoryKind, summary: options.summary, evidence: options.evidence })
+  await appendOperatorMemory(options.memory, entry)
+  console.log(options.json ? JSON.stringify(entry, null, 2) : `Recorded ${entry.kind} memory ${entry.id} for ${entry.project}`)
+})
+
+program.command("operator-memory-list").description("List sanitized D3Code operator memory entries.").option("--project <name>").option("--memory <file>", "memory jsonl file", memoryPath.replace(/\.md$/i, ".jsonl")).option("--json").action(async (options: { project?: string; memory: string; json?: boolean }) => {
+  const entries = await readOperatorMemory(options.memory, options.project)
+  console.log(options.json ? JSON.stringify(entries, null, 2) : entries.map((entry) => `- ${entry.createdAt} [${entry.project}/${entry.kind}] ${entry.summary}\n  evidence: ${entry.evidence}`).join("\n"))
 })
 
 program.command("manual-scope").argument("<manual-file>").description("Report D3 manual topic and command capability coverage from a PDF or extracted text file.").action(async (textFile: string) => {
@@ -1297,8 +1588,22 @@ program.command("bundle-artifacts").argument("<bundle-json-file>").requiredOptio
   console.log(JSON.stringify(await writeBundleArtifacts(options.out, createBundleArtifacts(bundle), bundle), null, 2))
 })
 
-program.command("ide").alias("id").argument("[visibility]", "use public to bind on server interfaces, or setup-auth").argument("[username]").argument("[password]").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host").option("--public", "bind on server interfaces").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").action(async (visibility: string | undefined, username: string | undefined, password: string | undefined, options: { port: number; host?: string; public?: boolean; profile?: string; model?: string; safety?: string; mode: string }) => {
+program.command("api").description("Start the Python FastAPI D3 runtime for D3PY/UOPY-aware tooling.").option("--port <port>", "API port", (value) => Number(value), 8737).option("--host <host>", "bind host", "127.0.0.1").action(async (options: { port: number; host: string }) => {
+  const child = startFastApiProcess({ host: options.host, port: options.port, stdio: "inherit" })
+  console.log(`D3 Code Python API running: http://${options.host}:${options.port}`)
+  console.log("Press Ctrl+C to stop.")
+  await new Promise<void>((resolve, reject) => {
+    child.once("error", reject)
+    child.once("exit", (code) => code && code !== 0 ? reject(new Error(`Python API exited with code ${code}`)) : resolve())
+    process.once("SIGINT", () => resolve())
+    process.once("SIGTERM", () => resolve())
+  }).finally(() => stopChildProcess(child))
+})
+
+program.command("ide").alias("id").argument("[visibility]", "use public to bind on server interfaces, or setup-auth").argument("[username]").argument("[password]").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host").option("--public", "bind on server interfaces").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").option("--server <server>", "fastapi|node", "fastapi").option("--api-backend <backend>", "legacy Node mode only: node|fastapi", "node").option("--api-port <port>", "legacy Node hybrid FastAPI runtime port", (value) => Number(value), 8737).option("--api-host <host>", "legacy Node hybrid FastAPI runtime bind host", "127.0.0.1").action(async (visibility: string | undefined, username: string | undefined, password: string | undefined, options: { port: number; host?: string; public?: boolean; profile?: string; model?: string; safety?: string; mode: string; server: string; apiBackend: string; apiPort: number; apiHost: string }) => {
   if (visibility && visibility !== "public" && visibility !== "setup-auth") throw new Error("Unknown IDE visibility. Use `d3code ide`, `d3code ide public`, `d3code ide setup-auth`, or `d3code ide --host <host>`.")
+  if (options.server !== "fastapi" && options.server !== "node") throw new Error("IDE server must be one of: fastapi, node")
+  if (options.apiBackend !== "node" && options.apiBackend !== "fastapi") throw new Error("IDE API backend must be one of: node, fastapi")
   const config = await loadConfig()
   if (visibility === "setup-auth") {
     const current = resolveIdeAuth(config)
@@ -1317,17 +1622,55 @@ program.command("ide").alias("id").argument("[visibility]", "use public to bind 
     publicMode = await askPublicIdeBind()
   }
   const host = options.host ?? configuredHost ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
+  const selectedProfileName = options.profile ?? profile?.name
+  if (options.server === "fastapi") {
+    const port = await reservePort(host, options.port)
+    const child = startFastApiProcess({
+      host,
+      port,
+      stdio: "ignore",
+      env: {
+        D3CODE_IDE_MODEL: options.model ?? config.defaultModel,
+        D3CODE_IDE_SAFETY: safety,
+        D3CODE_IDE_PROFILE: selectedProfileName ?? "",
+        D3CODE_IDE_MODE: mode.id,
+      },
+    })
+    const displayOptions = { publicHost: config.idePublicHost }
+    const displayUrl = displayUrlForIdeBind(host, port, undefined, displayOptions)
+    console.log(`D3 Code IDE running (${displayUrlLabelForIdeBind(host, undefined, displayOptions)}): ${terminalLink(displayUrl, displayUrl)}`)
+    if (host === "0.0.0.0" || host === "::" || options.port === 0) console.log(`Bound: ${host}:${port}`)
+    console.log(`Backend: FastAPI Python`)
+    console.log(`Profile: ${selectedProfileName ?? "none"}`)
+    if (publicMode || host === "0.0.0.0" || host === "::") console.log(`Auth: Basic user ${resolveIdeAuth(config).username}`)
+    for (const note of ideAccessNotes(host, port, undefined, displayOptions)) console.log(note)
+    if (publicMode || host === "0.0.0.0" || host === "::") {
+      for (const note of await openTemporaryFirewallPort(port)) console.log(note)
+    }
+    console.log("Press Ctrl+C to stop.")
+    await new Promise<void>((resolve, reject) => {
+      child.once("error", reject)
+      child.once("exit", (code) => code && code !== 0 ? reject(new Error(`FastAPI IDE exited with code ${code}`)) : resolve())
+      process.once("SIGINT", () => resolve())
+      process.once("SIGTERM", () => resolve())
+    }).finally(() => stopChildProcess(child))
+    return
+  }
+  const pythonApi = options.apiBackend === "fastapi"
+    ? { process: startFastApiProcess({ host: options.apiHost, port: options.apiPort, stdio: "inherit" }), url: `http://${options.apiHost}:${options.apiPort}` }
+    : undefined
   const server = await startIdeServer(config, {
     model: options.model ?? config.defaultModel,
     safety,
-    profile: options.profile ?? profile?.name,
+    profile: selectedProfileName,
     mode: mode.id,
-  }, { host, port: options.port })
+  }, { host, port: options.port, pythonApiUrl: pythonApi?.url })
   const displayOptions = { publicHost: config.idePublicHost }
   const displayUrl = displayUrlForIdeBind(host, server.port, undefined, displayOptions)
   console.log(`D3 Code IDE running (${displayUrlLabelForIdeBind(host, undefined, displayOptions)}): ${terminalLink(displayUrl, displayUrl)}`)
   if (displayUrl !== server.url) console.log(`Bound: ${server.host}:${server.port}`)
   console.log(`Profile: ${options.profile ?? profile?.name ?? "none"}`)
+  if (pythonApi) console.log(`Python API: ${pythonApi.url}`)
   if (publicMode || host === "0.0.0.0" || host === "::") console.log(`Auth: Basic user ${resolveIdeAuth(config).username}`)
   for (const note of ideAccessNotes(host, server.port, undefined, displayOptions)) console.log(note)
   if (publicMode || host === "0.0.0.0" || host === "::") {
@@ -1338,6 +1681,7 @@ program.command("ide").alias("id").argument("[visibility]", "use public to bind 
     process.once("SIGINT", () => resolve())
     process.once("SIGTERM", () => resolve())
   })
+  stopChildProcess(pythonApi?.process)
   await closeServer(server)
 })
 

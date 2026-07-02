@@ -31,6 +31,16 @@ const ConfigSchema = z.object({
   defaultProfile: z.string().optional(),
   profiles: z.array(ProfileSchema).default([]),
   modelSecrets: z.record(z.string()).default({}),
+  hermes: z.object({
+    enabled: z.boolean().default(true),
+    eccRoot: z.string().optional(),
+    memoryEnabled: z.boolean().default(true),
+  }).optional(),
+  sidecar: z.object({
+    enabled: z.boolean().default(true),
+    autoStart: z.boolean().default(true),
+    binary: z.string().optional(),
+  }).optional(),
   ideBindHost: z.string().optional(),
   idePublicHost: z.string().optional(),
   ideAuth: z.object({
@@ -47,6 +57,8 @@ export const defaultConfig: D3CodeConfig = {
   defaultSafety: "ask",
   profiles: [],
   modelSecrets: {},
+  hermes: { enabled: true, memoryEnabled: true },
+  sidecar: { enabled: true, autoStart: true },
 }
 
 export async function loadConfig(): Promise<D3CodeConfig> {

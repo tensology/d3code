@@ -66,6 +66,8 @@ import { checkGeneratedWebApp } from "../migration/webapp-check.js"
 import { startIdeServer, stopIdeServers } from "../ide/server.js"
 import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes } from "../ide/access.js"
 import { resolveIdeAuth, setIdeAuth } from "../ide/auth.js"
+import { createScreenAudit, renderScreenAudit } from "../screens/audit.js"
+import { createSbplusScreenPlan, renderSbplusScreenPlan } from "../screens/sbplus-plan.js"
 
 export interface RuntimeState {
   model: string
@@ -188,7 +190,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [public|stop] [--port N] [--host 127.0.0.1|0.0.0.0], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [public|stop] [--port N] [--host 127.0.0.1|0.0.0.0], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /screen-audit <basic-file> [--transcript <file>], /sbplus-screen-plan <system> <process> [file] [field...], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /estate, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -297,6 +299,15 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       const width = Number(args[1] ?? "80")
       const height = Number(args[2] ?? "24")
       return { output: renderD3ScreenBuffer(parseD3ScreenTranscript(await readFile(file, "utf8"), { width, height })) }
+    }
+    case "/screen-audit": {
+      const file = args[0]
+      if (!file) return { output: "Usage: /screen-audit <basic-file> [--transcript <file>]" }
+      const transcriptIndex = args.indexOf("--transcript")
+      const transcriptFile = transcriptIndex === -1 ? undefined : args[transcriptIndex + 1]
+      const basicSource = await readFile(file, "utf8")
+      const transcript = transcriptFile ? await readFile(transcriptFile, "utf8") : undefined
+      return { output: renderScreenAudit(createScreenAudit({ name: file, basicSource, transcript })) }
     }
     case "/terminal-capture": {
       const outDir = args[0]
@@ -468,6 +479,14 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       if (!jsonFile) return { output: "Usage: /bundle-screen-plan <bundle.json>" }
       const { bundle } = await loadBundleReport(jsonFile)
       return { output: renderScreenModernizationPlan(createScreenModernizationPlan(bundle)) }
+    }
+    case "/sbplus-screen-plan": {
+      const system = args[0]
+      const process = args[1]
+      if (!system || !process) return { output: "Usage: /sbplus-screen-plan <system> <process> [file] [field...]" }
+      const file = args[2]
+      const fields = args.slice(3)
+      return { output: renderSbplusScreenPlan(createSbplusScreenPlan({ system, process, file, fields })) }
     }
     case "/bundle-ui-plan": {
       const jsonFile = args[0]

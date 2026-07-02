@@ -35,6 +35,11 @@ test("factory selects persistent local session when profile requests it", () => 
   assert.ok(session instanceof PersistentLocalD3Session)
 })
 
+test("factory keeps d3 entry commands persistent when profile requests terminal state", () => {
+  const session = createD3Session({ name: "persistent-d3", type: "local", entryCommand: "d3", sessionMode: "persistent" })
+  assert.ok(session instanceof PersistentLocalD3Session)
+})
+
 test("persistent local D3 session fails when entry exits before prompt", async () => {
   const session = new PersistentLocalD3Session({
     name: "bad-entry",
@@ -134,4 +139,10 @@ test("persistent local D3 session can send D3 login startup input before waiting
   } finally {
     await session.close()
   }
+})
+
+test("normalizeStartupInput converts carriage returns into login lines", async () => {
+  const { normalizeStartupInput } = await import("../src/d3/adapter.js")
+  assert.equal(normalizeStartupInput("dm\rdm\r"), "dm\ndm")
+  assert.equal(normalizeStartupInput("dm\ndm\n"), "dm\ndm")
 })

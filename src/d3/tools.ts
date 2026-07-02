@@ -1,9 +1,12 @@
 import { assertD3Allowed } from "../core/permissions.js"
 import type { D3CommandResult, ToolContext, ToolDefinition } from "../domain/types.js"
 import { indexD3Account, loadIndex, saveIndex, searchDocuments } from "../indexing/indexer.js"
+import { buildRagIndex, formatRagSearchResult, loadRagIndex, saveRagIndex, searchRagIndex } from "../rag/reference-rag.js"
+import { d3Capabilities, renderD3Capabilities } from "./capabilities.js"
 import { detectLocalD3 } from "./detect.js"
 import { inspectD3Estate } from "./estate.js"
 import { formatManualSearchResult, searchDefaultManuals } from "./manual-search.js"
+import { discoverSbplus } from "./sbplus.js"
 
 function requireSession(context: ToolContext) {
   if (!context.session) throw new Error("No active D3 session. Run /login or configure a profile.")
@@ -19,6 +22,26 @@ function quoteTclArg(value: string): string {
   return /^[A-Za-z0-9_.:-]+$/.test(value) ? value : `"${value.replace(/"/g, '\\"')}"`
 }
 
+function requireName(value: unknown, label: string): string {
+  const text = String(value ?? "").trim()
+  if (!/^[A-Za-z0-9_.:-]+$/.test(text)) throw new Error(`${label} must contain only letters, numbers, underscore, dot, colon, or hyphen.`)
+  return text
+}
+
+function requireModulo(value: unknown, label: string): number {
+  const modulo = Number(value)
+  if (!Number.isInteger(modulo) || modulo <= 0) throw new Error(`${label} must be a positive integer modulo.`)
+  return modulo
+}
+
+function edWriteCommand(file: string, item: string, body: string): string {
+  return `ED ${file} ${item}\nI\n${body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")}\nFI`
+}
+
+function edWriteDictCommand(file: string, item: string, body: string): string {
+  return `ED DICT ${file} ${item}\nI\n${body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")}\nFI`
+}
+
 function assertAllowedAccount(context: ToolContext, account: string): void {
   const allowed = context.profile?.allowedAccounts
   if (allowed && allowed.length > 0 && !allowed.includes(account)) {
@@ -32,6 +55,12 @@ export const d3Tools: ToolDefinition[] = [
     description: "Detect a local Rocket D3 command.",
     mutates: false,
     execute: async () => detectLocalD3(),
+  },
+  {
+    name: "d3_builder_capabilities",
+    description: "List the shared D3/SB+ coding capabilities used by the agent, CLI, and IDE.",
+    mutates: false,
+    execute: async () => ({ capabilities: d3Capabilities, compact: renderD3Capabilities() }),
   },
   {
     name: "d3_tcl",
@@ -76,8 +105,24 @@ export const d3Tools: ToolDefinition[] = [
     mutates: true,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string; body: string; confirmed?: boolean }
-      const escaped = args.body.replace(/\n/g, "\n")
-      return runTcl(context, `ED ${args.file} ${args.item}\nI\n${escaped}\nFI`, args.confirmed)
+      const file = requireName(args.file, "file")
+      const item = requireName(args.item, "item")
+      return runTcl(context, edWriteCommand(file, item, args.body ?? ""), args.confirmed)
+    },
+  },
+  {
+    name: "d3_create_file",
+    description: "Create a D3 file using documented create-file syntax.",
+    mutates: true,
+    execute: async (input: unknown, context) => {
+      const args = input as { file: string; dictModulo?: number; dataModulo?: number; dictionaryOnly?: boolean; dataOnlyDictionary?: string; confirmed?: boolean }
+      const file = requireName(args.file, "file")
+      const command = args.dataOnlyDictionary
+        ? `create-file data ${requireName(args.dataOnlyDictionary, "dictionary reference")},${file} ${requireModulo(args.dataModulo ?? args.dictModulo, "data modulo")}`
+        : args.dictionaryOnly
+          ? `create-file dict ${file} ${requireModulo(args.dictModulo, "dictionary modulo")}`
+          : `create-file ${file} ${requireModulo(args.dictModulo, "dictionary modulo")} ${requireModulo(args.dataModulo, "data modulo")}`
+      return runTcl(context, command, args.confirmed)
     },
   },
   {
@@ -87,6 +132,17 @@ export const d3Tools: ToolDefinition[] = [
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
       return runTcl(context, `CT DICT ${args.file} ${args.item}`, true)
+    },
+  },
+  {
+    name: "d3_write_dict",
+    description: "Write a D3 dictionary item through ED DICT batch input.",
+    mutates: true,
+    execute: async (input: unknown, context) => {
+      const args = input as { file: string; item: string; body: string; confirmed?: boolean }
+      const file = requireName(args.file, "file")
+      const item = requireName(args.item, "dictionary item")
+      return runTcl(context, edWriteDictCommand(file, item, args.body ?? ""), args.confirmed)
     },
   },
   {
@@ -114,6 +170,20 @@ export const d3Tools: ToolDefinition[] = [
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string; global?: boolean; confirmed?: boolean }
       return runTcl(context, `CATALOG ${args.file} ${args.item}${args.global ? " (G" : ""}`, args.confirmed)
+    },
+  },
+  {
+    name: "d3_build_basic_program",
+    description: "Write BASIC source through ED, then optionally compile and catalog it.",
+    mutates: true,
+    execute: async (input: unknown, context) => {
+      const args = input as { file: string; item: string; source: string; compile?: boolean; catalog?: boolean; global?: boolean; confirmed?: boolean }
+      const file = requireName(args.file, "file")
+      const item = requireName(args.item, "item")
+      const commands = [edWriteCommand(file, item, args.source ?? "")]
+      if (args.compile) commands.push(`BASIC ${file} ${item}`)
+      if (args.catalog) commands.push(`CATALOG ${file} ${item}${args.global ? " (G" : ""}`)
+      return runTcl(context, commands.join("\n"), args.confirmed)
     },
   },
   {
@@ -165,6 +235,76 @@ export const d3Tools: ToolDefinition[] = [
       const args = input as { query: string; limit?: number; paths?: string[] }
       const result = await searchDefaultManuals(args.query, args.limit, args.paths)
       return { ...result, compact: formatManualSearchResult(result) }
+    },
+  },
+  {
+    name: "d3_rag_search",
+    description: "Search the local routed D3Code RAG index across D3, MV BASIC, System Builder, operator notes, and learned memory.",
+    mutates: false,
+    execute: async (input: unknown) => {
+      const args = input as { query: string; limit?: number; index?: string }
+      const indexName = args.index ?? "reference-rag"
+      let index
+      try {
+        index = await loadRagIndex(indexName)
+      } catch {
+        index = await buildRagIndex()
+        await saveRagIndex(index, indexName)
+      }
+      const result = searchRagIndex(index, args.query, { limit: args.limit })
+      return { ...result, compact: formatRagSearchResult(result) }
+    },
+  },
+  {
+    name: "d3_sbplus_plan",
+    description: "Create a reference-grounded SB+ screen/process builder plan without writing SB+ definition records.",
+    mutates: false,
+    execute: async (input: unknown) => {
+      const args = input as { system?: string; process?: string; kind?: string; file?: string; fields?: string[]; notes?: string }
+      const query = [
+        "SB+",
+        args.kind ?? "input process",
+        args.process ?? "screen definition",
+        args.file ?? "",
+        (args.fields ?? []).join(" "),
+        "validation F1 F3 help process definition drivers",
+      ].join(" ")
+      let index
+      try {
+        index = await loadRagIndex("reference-rag")
+      } catch {
+        index = await buildRagIndex()
+        await saveRagIndex(index, "reference-rag")
+      }
+      const result = searchRagIndex(index, query, { limit: 5 })
+      const lines = [
+        "# SB+ Builder Plan",
+        `System: ${args.system ?? "(discover in account)"}`,
+        `Process: ${args.process ?? "(name required)"}`,
+        `Type: ${args.kind ?? "input process"}`,
+        `Primary file: ${args.file ?? "(discover/confirm)"}`,
+        `Fields: ${(args.fields ?? []).join(", ") || "(not supplied)"}`,
+        "",
+        "Steps:",
+        "1. Confirm the SB+ system, process name, primary file, and local SB+ definition files in the target account.",
+        "2. Define the screen fields first, including defaults, validations, required flags, and F1/F3 help.",
+        "3. Use SB+ screen/process tools to create or update the screen definition and process definition.",
+        "4. Run the process once so SB+ can build or refresh drivers, then capture the terminal/screen proof.",
+        "5. Only after discovery, write definition records through account-specific tools or normal SB+ maintenance screens.",
+        args.notes ? `\nOperator notes: ${args.notes}` : "",
+        "",
+        formatRagSearchResult(result),
+      ].filter(Boolean)
+      return { plan: lines.join("\n"), references: result.hits, compact: lines.join("\n") }
+    },
+  },
+  {
+    name: "d3_sbplus_discover",
+    description: "Discover likely SB+ systems, process, screen, menu, and driver definition files in the active account.",
+    mutates: false,
+    execute: async (input: unknown, context) => {
+      const args = input as { limit?: number }
+      return discoverSbplus(requireSession(context), { limit: args.limit, signal: context.signal, timeoutMs: context.commandTimeoutMs })
     },
   },
   {

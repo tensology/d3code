@@ -1,0 +1,25 @@
+{
+  "manuals": [
+    {
+      "title": "SB/XA SB+ Solutions Developer Guide",
+      "version": "6.5.6",
+      "localPath": "../SBXA_SBPlusSolutionsDeveloperGuide_V656.pdf",
+      "gitTracked": true,
+      "ingestionStatus": "indexed",
+      "topics": [
+        "System Builder",
+        "SB/XA",
+        "SB+",
+        "screens",
+        "menus",
+        "templates",
+        "reports",
+        "application builder"
+      ]
+    }
+  ],
+  "notes": [
+    "Index this PDF before any System Builder-specific coding, explanation, or migration task.",
+    "Keep private or licensed manuals out of Git unless this repository is allowed to contain them."
+  ]
+}

@@ -7,6 +7,7 @@ import test from "node:test"
 import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
+const localEccRoot = "/Users/paul/development/TENSOLOGY/DECISIONS/COMPETITION/ecc"
 
 async function cli(args: string[]) {
   return execFileAsync("node", ["dist/src/cli.js", ...args], {
@@ -724,7 +725,9 @@ test("CLI exposes first-class D3 item, dictionary, lock, diff, and write command
     "case \"$input\" in",
     "  *'CT CUSTOMERS 100'*) printf '001 CUSTOMER\\nOLD.NAME\\n' ;;",
     "  *'CT DICT CUSTOMERS NAME'*) printf '001 D\\n002 1\\n003 Name\\n' ;;",
+    "  *'create-file ORDERS 3 11'*) printf 'ORDERS created\\n' ;;",
     "  *'LIST-LOCKS'*) printf 'No locks present\\n' ;;",
+    "  *'ED DICT CUSTOMERS STATUS'*) printf 'DICT SAVED\\n' ;;",
     "  *'ED CUSTOMERS 100'*) printf 'ITEM SAVED\\n' ;;",
     "  *) printf 'UNKNOWN\\n' ;;",
     "esac",
@@ -754,6 +757,12 @@ test("CLI exposes first-class D3 item, dictionary, lock, diff, and write command
 
   const write = await execFileAsync("node", ["dist/src/cli.js", "write-item", "CUSTOMERS", "100", "--profile", "fake", "--body-file", proposed, "--confirm"], { cwd: process.cwd(), env })
   assert.match(write.stdout, /ITEM SAVED/)
+
+  const created = await execFileAsync("node", ["dist/src/cli.js", "create-file", "ORDERS", "--profile", "fake", "--dict-modulo", "3", "--data-modulo", "11", "--confirm"], { cwd: process.cwd(), env })
+  assert.match(created.stdout, /ORDERS created/)
+
+  const dictWrite = await execFileAsync("node", ["dist/src/cli.js", "write-dict", "CUSTOMERS", "STATUS", "D\\n4\\nStatus", "--profile", "fake", "--confirm"], { cwd: process.cwd(), env })
+  assert.match(dictWrite.stdout, /DICT SAVED/)
 })
 
 test("CLI exposes first-class D3 AQL, compile, catalog, and call commands", async () => {
@@ -764,6 +773,7 @@ test("CLI exposes first-class D3 AQL, compile, catalog, and call commands", asyn
     "input=$(cat)",
     "case \"$input\" in",
     "  *'LIST CUSTOMERS'*) printf '100 Alice\\n101 Bob\\n' ;;",
+    "  *'ED BP GET.CUSTOMER'*'BASIC BP GET.CUSTOMER'*'CATALOG BP GET.CUSTOMER'*) printf 'BUILT BASIC OK\\n' ;;",
     "  *'BASIC BP GET.CUSTOMER'*) printf 'BASIC OK\\n' ;;",
     "  *'CATALOG BP GET.CUSTOMER (G'*) printf 'CATALOG GLOBAL OK\\n' ;;",
     "  *'CATALOG BP GET.CUSTOMER'*) printf 'CATALOG OK\\n' ;;",
@@ -786,6 +796,11 @@ test("CLI exposes first-class D3 AQL, compile, catalog, and call commands", asyn
   const compile = await execFileAsync("node", ["dist/src/cli.js", "compile-basic", "BP", "GET.CUSTOMER", "--profile", "fake", "--confirm"], { cwd: process.cwd(), env })
   assert.match(compile.stdout, /BASIC OK/)
 
+  const source = join(home, "GET.CUSTOMER.b")
+  await writeFile(source, "SUBROUTINE GET.CUSTOMER(ID)\nRETURN\n")
+  const build = await execFileAsync("node", ["dist/src/cli.js", "build-basic", "BP", "GET.CUSTOMER", "--profile", "fake", "--body-file", source, "--compile", "--catalog", "--confirm"], { cwd: process.cwd(), env })
+  assert.match(build.stdout, /BUILT BASIC OK/)
+
   const catalog = await execFileAsync("node", ["dist/src/cli.js", "catalog-basic", "BP", "GET.CUSTOMER", "--profile", "fake", "--global", "--confirm"], { cwd: process.cwd(), env })
   assert.match(catalog.stdout, /CATALOG GLOBAL OK/)
 
@@ -796,6 +811,32 @@ test("CLI exposes first-class D3 AQL, compile, catalog, and call commands", asyn
 
   const call = await execFileAsync("node", ["dist/src/cli.js", "call-subroutine", "GET.CUSTOMER", "100", "--profile", "fake", "--confirm"], { cwd: process.cwd(), env })
   assert.match(call.stdout, /CALL OK/)
+
+  const capabilities = await execFileAsync("node", ["dist/src/cli.js", "capabilities"], { cwd: process.cwd(), env })
+  assert.match(capabilities.stdout, /BASIC Program Builder/)
+  assert.match(capabilities.stdout, /SB\+ Screen and Process Builder/)
+})
+
+test("CLI discovers likely SB+ definition files from the active account", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-cli-sbplus-discover-"))
+  const script = join(home, "fake-d3.sh")
+  await writeFile(script, [
+    "#!/bin/sh",
+    "input=$(cat)",
+    "case \"$input\" in",
+    "  *'LIST MD'*) printf 'SALES.PROC D Process definitions\\nSALES.SCREEN D Screen definitions\\nSALES.MENU D Menu definitions\\nSALES.DRIVER D Driver definitions\\nCUSTOMERS D Customer file\\n' ;;",
+    "  *) printf 'UNKNOWN\\n' ;;",
+    "esac",
+    "",
+  ].join("\n"), { mode: 0o755 })
+  const env = { ...process.env, D3CODE_HOME: home }
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "fake", "--account", "SALES", "--entry", script], { cwd: process.cwd(), env })
+
+  const discovered = await execFileAsync("node", ["dist/src/cli.js", "sbplus-discover", "--profile", "fake"], { cwd: process.cwd(), env })
+  assert.match(discovered.stdout, /SB\+ Discovery: fake \/ SALES/)
+  assert.match(discovered.stdout, /Detected: yes/)
+  assert.match(discovered.stdout, /SALES\.PROC/)
+  assert.match(discovered.stdout, /SALES\.SCREEN/)
 })
 
 test("CLI runs a bounded D3 agent task with evidence", async () => {
@@ -1101,6 +1142,7 @@ test("CLI setup without a provider preserves the configured model provider", asy
 
 test("CLI setup can bootstrap a persistent D3 profile noninteractively", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-setup-profile-"))
+  const env = { ...process.env, D3CODE_HOME: home }
   const result = await execFileAsync("node", [
     "dist/src/cli.js",
     "setup",
@@ -1128,14 +1170,14 @@ test("CLI setup can bootstrap a persistent D3 profile noninteractively", async (
     "SALES,DM",
   ], {
     cwd: process.cwd(),
-    env: { ...process.env, D3CODE_HOME: home },
+    env,
   })
   assert.match(result.stdout, /Configured anthropic\/claude-sonnet-4-5/)
   assert.match(result.stdout, /Default profile: prod/)
 
   const profiles = await execFileAsync("node", ["dist/src/cli.js", "profiles"], {
     cwd: process.cwd(),
-    env: { ...process.env, D3CODE_HOME: home },
+    env,
   })
   assert.match(profiles.stdout, /prod/)
   assert.match(profiles.stdout, /account=SALES/)
@@ -1144,17 +1186,23 @@ test("CLI setup can bootstrap a persistent D3 profile noninteractively", async (
   const config = JSON.parse(await readFile(join(home, "config.jsonc"), "utf8")) as { profiles: Array<{ startupInput?: string }> }
   assert.equal(config.profiles[0]?.startupInput, "dm\rdm\r")
 
+  await execFileAsync("node", ["dist/src/cli.js", "hermes-setup", "--ecc-root", localEccRoot], {
+    cwd: process.cwd(),
+    env,
+  })
+
   const readiness = await execFileAsync("node", ["dist/src/cli.js", "readiness"], {
     cwd: process.cwd(),
-    env: { ...process.env, D3CODE_HOME: home, ANTHROPIC_API_KEY: "test-key" },
+    env: { ...env, ANTHROPIC_API_KEY: "test-key" },
   })
   assert.match(readiness.stdout, /\[ok\] Model Selection/)
+  assert.match(readiness.stdout, /\[ok\] Hermes \/ ECC Operator Harness/)
   assert.match(readiness.stdout, /\[ok\] First-run Setup Proof/)
   assert.match(readiness.stdout, /\[ok\] Terminal-like Session Behavior/)
 
   const setupProof = await execFileAsync("node", ["dist/src/cli.js", "setup-proof"], {
     cwd: process.cwd(),
-    env: { ...process.env, D3CODE_HOME: home },
+    env,
   })
   assert.match(setupProof.stdout, /D3 Code Setup Proof/)
   assert.match(setupProof.stdout, /Ready: yes/)

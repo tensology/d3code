@@ -9,7 +9,7 @@ export interface BundleSkillPackMode {
   mode: D3CodeModeID
   title: string
   safety: string
-  skills: Array<{ id: string; source: string; behavior: string[] }>
+  skills: Array<{ id: string; source: string; behavior: string[]; referenceFamilies: string[] }>
   workflow: string[]
   commands: string[]
 }
@@ -72,6 +72,17 @@ function commandsFor(mode: D3CodeModeID, recipe?: RecipeID): string[] {
   return []
 }
 
+function referenceFamiliesForSkill(skill: NonNullable<ReturnType<typeof getSkill>>): string[] {
+  const families = referenceSkillFamilies
+    .filter((family) => family.status !== "out-of-scope" && family.productSkills.includes(skill.id))
+    .map((family) => `${family.source}:${family.reference}`)
+  return families.length > 0 ? families : [`${skill.source}:D3Code native adaptation`]
+}
+
+function isD3ApplicableSkill(skill: ReturnType<typeof getSkill>): skill is NonNullable<ReturnType<typeof getSkill>> {
+  return Boolean(skill?.appliesToD3)
+}
+
 export function createBundleSkillPack(bundle: D3ApplicationBundle, artifacts: BundleArtifacts): BundleSkillPack {
   const modes = bundleModes.map(({ mode, recipe }) => {
     const definition = getMode(mode)!
@@ -81,10 +92,11 @@ export function createBundleSkillPack(bundle: D3ApplicationBundle, artifacts: Bu
       safety: definition.safetyBias,
       workflow: definition.workflow,
       commands: commandsFor(mode, recipe),
-      skills: definition.skills.map((skillID) => getSkill(skillID)).filter((skill): skill is NonNullable<ReturnType<typeof getSkill>> => Boolean(skill)).map((skill) => ({
+      skills: definition.skills.map((skillID) => getSkill(skillID)).filter(isD3ApplicableSkill).map((skill) => ({
         id: skill.id,
         source: skill.source,
         behavior: skill.bakedBehavior,
+        referenceFamilies: referenceFamiliesForSkill(skill),
       })),
     }
   })
@@ -163,6 +175,7 @@ export function renderBundleSkillPack(pack: BundleSkillPack): string {
     ...pack.modes.flatMap((mode) => [
       `- ${mode.title} (${mode.mode}, safety=${mode.safety})`,
       `  skills: ${mode.skills.map((skill) => skill.id).join(", ")}`,
+      `  reference families: ${[...new Set(mode.skills.flatMap((skill) => skill.referenceFamilies))].join(", ") || "D3Code native"}`,
       `  workflow: ${mode.workflow.join(" -> ")}`,
       `  commands: ${mode.commands.join(" | ") || "none"}`,
     ]),

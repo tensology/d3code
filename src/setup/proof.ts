@@ -96,6 +96,19 @@ export function createSetupProofReport(config: D3CodeConfig): SetupProofReport {
       evidence: [`default safety: ${config.defaultSafety ?? "unset"}`, `profile safety: ${profile?.safetyDefault ?? "inherits default"}`],
       next: "Use `ask` for first-run D3 accounts; switch to `trust` only after proof on a disposable slice.",
     }),
+    item({
+      id: "hermes-ecc-bridge",
+      status: (config.hermes?.enabled ?? true) ? config.hermes?.eccRoot ? "ok" : "action" : "missing",
+      title: "Hermes / ECC operator bridge",
+      evidence: [
+        `enabled: ${(config.hermes?.enabled ?? true) ? "yes" : "no"}`,
+        `ecc root: ${config.hermes?.eccRoot ?? "not configured"}`,
+        `memory: ${config.hermes?.memoryEnabled === false ? "disabled" : "enabled"}`,
+      ],
+      next: (config.hermes?.enabled ?? true) && config.hermes?.eccRoot
+        ? "Run `d3code hermes-status` to verify adapted ECC/Hermes source skill availability."
+        : "Run `d3code hermes-setup --ecc-root <path-to-ecc>` to enable optional operator memory/orchestration support.",
+    }),
   ].sort((a, b) => statusRank(a.status) - statusRank(b.status))
 
   return {

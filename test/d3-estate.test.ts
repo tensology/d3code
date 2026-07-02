@@ -7,6 +7,7 @@ test("estate parser extracts and classifies D3 file pointers", () => {
     "Page   1     MD",
     "CUSTOMERS D Customer file",
     "BP D Programs",
+    "VOC D Screens",
     "ORDERS D Order data",
     "[405] 3 items listed out of 3 items.",
   ].join("\n"))
@@ -14,6 +15,7 @@ test("estate parser extracts and classifies D3 file pointers", () => {
   assert.deepEqual(files.map((file) => [file.name, file.kind]), [
     ["CUSTOMERS", "data"],
     ["BP", "program"],
+    ["VOC", "screen"],
     ["ORDERS", "data"],
   ])
 })

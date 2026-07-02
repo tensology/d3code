@@ -22,7 +22,7 @@ export async function detectLocalD3(configuredCommand?: string): Promise<D3Detec
 
   for (const command of commandProbes) {
     try {
-      const { stdout } = await execFileAsync("sh", ["-lc", `command -v ${command}`])
+      const { stdout } = await execFileAsync("sh", ["-c", `command -v ${command}`])
       const resolved = stdout.trim()
       if (resolved) {
         return { available: true, strategy: "path-probe", command, details: `Found ${command} at ${resolved}.` }

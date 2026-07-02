@@ -3,13 +3,21 @@ import type { AddressInfo } from "node:net"
 import type { D3CodeConfig } from "../config/config.js"
 import { saveConfig, selectProfile } from "../config/config.js"
 import type { SafetyMode } from "../domain/types.js"
+import { createD3Session } from "../d3/adapter.js"
+import { formatD3ToolResultForDisplay, humanD3SessionError, humanizeD3ConnectError } from "../d3/connection-message.js"
+import { d3Capabilities } from "../d3/capabilities.js"
 import { d3Tools } from "../d3/tools.js"
+import { assertD3Allowed } from "../core/permissions.js"
 import { defaultSecretStore, secretRefForProvider } from "../security/secrets.js"
 import { runToolByName } from "../tools/runner.js"
-import { runD3AgentTurn, type AgentChatFunction } from "../tui/agent.js"
+import { runD3AgentTurn, createD3AgentSystemPrompt, type AgentChatFunction, type D3AgentTurnEvent } from "../tui/agent.js"
 import type { ChatMessage } from "../llm/client.js"
-import { normalizeD3PromptPattern } from "../d3/prompts.js"
+import type { D3CommandResult, D3Session } from "../domain/types.js"
+import { normalizeD3PromptPattern, D3_TCL_PROMPT_PATTERN } from "../d3/prompts.js"
+import { inspectD3Browser } from "../d3/estate.js"
 import { createLocalD3Profile } from "../d3/profile-defaults.js"
+import { createD3ToolRoutingStatus } from "../d3/tool-routing.js"
+import { ragIndexStatus } from "../rag/reference-rag.js"
 import { providers } from "../providers/catalog.js"
 import { discoverProviderModels } from "../providers/model-discovery.js"
 import { isPublicIdeHost } from "./access.js"
@@ -21,6 +29,29 @@ export interface IdeRuntimeState {
   profile?: string
   mode: string
   agentHistory?: ChatMessage[]
+  agentHistories?: Map<string, ChatMessage[]>
+  agentJobs?: Map<string, AgentJob>
+  terminalSessions?: Map<string, D3Session>
+  terminalTranscripts?: Map<string, string>
+}
+
+export type AgentJobStatus = "pending" | "running" | "done" | "error"
+
+export interface AgentJobEvent {
+  seq: number
+  type: string
+  data: unknown
+}
+
+export interface AgentJob {
+  chatId: string
+  status: AgentJobStatus
+  events: AgentJobEvent[]
+  nextSeq: number
+  input: string
+  clientHistory?: ChatMessage[]
+  startedAt: number
+  finishedAt?: number
 }
 
 export interface IdeServerOptions {
@@ -29,6 +60,7 @@ export interface IdeServerOptions {
   agentChatFn?: AgentChatFunction
   requireAuth?: boolean
   saveConfigFn?: (config: D3CodeConfig) => Promise<void>
+  pythonApiUrl?: string
 }
 
 export interface IdeServerHandle {
@@ -39,6 +71,208 @@ export interface IdeServerHandle {
 }
 
 const running = new Map<string, IdeServerHandle>()
+
+function agentJobsFor(state: IdeRuntimeState): Map<string, AgentJob> {
+  if (!state.agentJobs) state.agentJobs = new Map()
+  return state.agentJobs
+}
+
+function terminalSessionsFor(state: IdeRuntimeState): Map<string, D3Session> {
+  if (!state.terminalSessions) state.terminalSessions = new Map()
+  return state.terminalSessions
+}
+
+function terminalTranscriptsFor(state: IdeRuntimeState): Map<string, string> {
+  if (!state.terminalTranscripts) state.terminalTranscripts = new Map()
+  return state.terminalTranscripts
+}
+
+function terminalKey(profileName?: string): string {
+  return profileName || "default"
+}
+
+function appendTerminalTranscript(state: IdeRuntimeState, profileName: string | undefined, command: string, result: D3CommandResult): string {
+  const key = terminalKey(profileName)
+  const current = terminalTranscriptsFor(state).get(key) ?? ""
+  const output = [result.stdout, result.stderr ? `stderr:\n${result.stderr}` : ""].filter(Boolean).join("\n").trim()
+  const next = [current.trimEnd(), `> ${command}`, output || "(no output)"].filter(Boolean).join("\n").trim()
+  terminalTranscriptsFor(state).set(key, next)
+  return next
+}
+
+async function closeTerminalSession(state: IdeRuntimeState, profileName?: string): Promise<void> {
+  const sessions = terminalSessionsFor(state)
+  const key = terminalKey(profileName)
+  const session = sessions.get(key)
+  sessions.delete(key)
+  await session?.close().catch(() => {})
+}
+
+async function runTerminalCommand(config: D3CodeConfig, state: IdeRuntimeState, command: string, confirmed?: boolean): Promise<{ result: D3CommandResult; transcript: string; mechanism: string }> {
+  const profile = selectProfile(config, state.profile)
+  if (!profile) throw new Error("No D3 profile selected. Add and select a D3 profile first.")
+  assertD3Allowed(state.safety, command, Boolean(confirmed))
+  const key = terminalKey(profile.name)
+  const sessions = terminalSessionsFor(state)
+  let session = sessions.get(key)
+  if (!session) {
+    session = createD3Session(profile)
+    sessions.set(key, session)
+  }
+  const result = await session.run(command, 0)
+  const transcript = appendTerminalTranscript(state, profile.name, command, result)
+  return {
+    result,
+    transcript,
+    mechanism: profile.sessionMode === "persistent" ? "persistent-pty" : "oneshot-command",
+  }
+}
+
+function agentHistoriesFor(state: IdeRuntimeState): Map<string, ChatMessage[]> {
+  if (!state.agentHistories) state.agentHistories = new Map()
+  return state.agentHistories
+}
+
+function agentHistoryFor(state: IdeRuntimeState, chatId: string): ChatMessage[] | undefined {
+  return agentHistoriesFor(state).get(chatId) ?? (chatId === "default" ? state.agentHistory : undefined)
+}
+
+function setAgentHistoryFor(state: IdeRuntimeState, chatId: string, messages: ChatMessage[]): void {
+  agentHistoriesFor(state).set(chatId, messages)
+  state.agentHistory = messages
+}
+
+function resetAgentHistory(state: IdeRuntimeState, chatId?: string): void {
+  if (chatId) {
+    agentHistoriesFor(state).delete(chatId)
+    state.agentJobs?.delete(chatId)
+    if (state.agentHistories?.size === 0) state.agentHistory = undefined
+    return
+  }
+  state.agentHistory = undefined
+  state.agentHistories?.clear()
+  state.agentJobs?.clear()
+}
+
+function pushAgentJobEvent(job: AgentJob, type: string, data: unknown): number {
+  const seq = job.nextSeq++
+  job.events.push({ seq, type, data })
+  return seq
+}
+
+function normalizeAgentHistory(
+  config: D3CodeConfig,
+  state: IdeRuntimeState,
+  clientHistory: ChatMessage[] | undefined,
+  serverHistory: ChatMessage[] | undefined,
+): ChatMessage[] | undefined {
+  const base = clientHistory?.length ? clientHistory : serverHistory
+  if (!base?.length) return undefined
+  if (base[0]?.role === "system") return base
+  return [{ role: "system", content: createD3AgentSystemPrompt(config, state) }, ...base]
+}
+
+async function executeAgentJob(
+  config: D3CodeConfig,
+  state: IdeRuntimeState,
+  options: IdeServerOptions,
+  job: AgentJob,
+): Promise<void> {
+  if (job.status !== "pending") return
+  job.status = "running"
+  try {
+    const turn = await runD3AgentTurn(config, defaultSecretStore(), {
+      ...state,
+      input: job.input,
+      history: normalizeAgentHistory(config, state, job.clientHistory, agentHistoryFor(state, job.chatId)),
+      chatFn: options.agentChatFn,
+      onEvent: (event: D3AgentTurnEvent) => pushAgentJobEvent(job, event.type, event),
+    })
+    setAgentHistoryFor(state, job.chatId, turn.messages)
+    pushAgentJobEvent(job, "done", {
+      output: turn.output,
+      tools: turn.toolEvents.map((event) => ({ name: event.name, input: event.input, reason: event.reason, result: event.result.compact })),
+      usage: turn.usage,
+    })
+    job.status = "done"
+  } catch (error) {
+    pushAgentJobEvent(job, "error", { error: (error as Error).message })
+    job.status = "error"
+  } finally {
+    job.finishedAt = Date.now()
+  }
+}
+
+function agentJobEventsSince(job: AgentJob, since: number): AgentJobEvent[] {
+  return job.events.filter((event) => event.seq >= since)
+}
+
+function waitForAgentJob(job: AgentJob, timeoutMs = 120_000): Promise<AgentJob> {
+  if (job.status === "done" || job.status === "error") return Promise.resolve(job)
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const tick = () => {
+      if (job.status === "done" || job.status === "error") {
+        resolve(job)
+        return
+      }
+      if (Date.now() - started > timeoutMs) {
+        reject(new Error("agent job timed out"))
+        return
+      }
+      setTimeout(tick, 40)
+    }
+    tick()
+  })
+}
+
+async function streamAgentJobToSse(res: ServerResponse, job: AgentJob, since = 0): Promise<void> {
+  let cursor = since
+  let closed = false
+  reqOnClose(res, () => {
+    closed = true
+  })
+  while (!closed) {
+    const pending = agentJobEventsSince(job, cursor)
+    for (const event of pending) {
+      if (closed) return
+      writeSse(res, event.type, { seq: event.seq, ...event.data as Record<string, unknown> })
+      cursor = event.seq + 1
+    }
+    if (job.status === "done" || job.status === "error") break
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  }
+  if (!closed) res.end()
+}
+
+function reqOnClose(res: ServerResponse, onClose: () => void): void {
+  res.on("close", onClose)
+}
+
+function startAgentJob(
+  config: D3CodeConfig,
+  state: IdeRuntimeState,
+  options: IdeServerOptions,
+  chatId: string,
+  input: string,
+  clientHistory?: ChatMessage[],
+): AgentJob {
+  const jobs = agentJobsFor(state)
+  const existing = jobs.get(chatId)
+  if (existing?.status === "running" || existing?.status === "pending") return existing
+  const job: AgentJob = {
+    chatId,
+    status: "pending",
+    events: [],
+    nextSeq: 0,
+    input,
+    clientHistory,
+    startedAt: Date.now(),
+  }
+  jobs.set(chatId, job)
+  void executeAgentJob(config, state, options, job)
+  return job
+}
 
 function send(res: ServerResponse, status: number, body: string, contentType = "text/plain; charset=utf-8"): void {
   res.writeHead(status, { "content-type": contentType, "cache-control": "no-store" })
@@ -61,14 +295,17 @@ function sendAuthRequired(res: ServerResponse): void {
 function startSse(res: ServerResponse): void {
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-store",
+    "cache-control": "no-cache, no-store, must-revalidate",
     connection: "keep-alive",
+    "x-accel-buffering": "no",
   })
 }
 
 function writeSse(res: ServerResponse, event: string, data: unknown): void {
   res.write(`event: ${event}\n`)
   res.write(`data: ${JSON.stringify(data)}\n\n`)
+  const flush = (res as ServerResponse & { flush?: () => void }).flush
+  flush?.()
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
@@ -79,8 +316,16 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 }
 
 function html(): string {
-  const sideChat = (tag: "aside" | "section", className: string, outputId: string, promptId: string, sendId: string, safetyId: string) =>
-    `<${tag} class="${className} right-chat-pane"><div class="right-resizer" title="Drag chat width" aria-hidden="true"></div><div class="dock agent-shell"><div class="dock-head"><div class="dock-title">Current chat</div><div class="dock-sub" id="${safetyId}"></div></div><div class="dock-body agent-chat side-chat"><div id="${outputId}" class="agent-thread side-chat-thread"></div><div class="agent-composer side-chat-composer"><textarea id="${promptId}" class="agentbox side-chat-input" placeholder="Message D3 Code..."></textarea><div class="side-chat-actions"><button class="primary" id="${sendId}">Send</button></div></div></div></div></${tag}>`
+  const iconPlus =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
+  const iconCog =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+  const sessionsFooterHtml =
+    `<div class="sessions-footer"><div class="sessions-footer-actions"><button type="button" class="icon-button sessions-add-profile" title="Add profile" aria-label="Add profile">${iconPlus}</button><button type="button" class="icon-button sessions-settings" title="Settings" aria-label="Settings">${iconCog}</button></div></div>`
+  const rightWorkbench = (inner: string) =>
+    `<div class="right-workbench"><div class="column-resizer column-resizer-left" data-resize="right" title="Resize chat panel width"></div>${inner}<div class="sessions-backdrop" tabindex="-1" aria-hidden="true"></div><aside class="sessions-drawer" aria-hidden="true"><div class="sessions-drawer-head"><div class="dock-title">Sessions</div><button type="button" class="sessions-close" aria-label="Close sessions">&times;</button></div><div class="sessions-drawer-body"><div class="session-chat-list sessions-tree"></div></div>${sessionsFooterHtml}</aside></div>`
+  const sideChat = (tag: "aside" | "section", className: string, outputId: string, promptId: string, sendId: string, activityId: string, runStatusId: string) =>
+    `<${tag} class="${className} right-chat-pane"><div class="dock agent-shell"><div class="dock-head side-chat-head chat-banner"><div class="dock-title side-chat-title" data-chat-title>New chat</div></div><div class="dock-body agent-chat side-chat"><div class="chat-stage-side"><div id="${outputId}" class="agent-thread side-chat-thread chat-column"></div><div class="agent-composer side-chat-composer"><textarea id="${promptId}" class="agentbox side-chat-input" placeholder="Plan, build — / for commands and context"></textarea><div class="side-chat-actions"><button class="primary" id="${sendId}">Send</button></div></div></div></div></div></${tag}>`
   return [
     "<!doctype html>",
     "<html lang=\"en\">",
@@ -92,34 +337,37 @@ function html(): string {
     ":root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#081019;color:#dbe7f3;--bg:#081019;--chrome:#0c1520;--rail:#0f1b27;--panel:#121f2d;--panel2:#172635;--editor:#0a121b;--line:#243448;--line2:#304256;--text:#dbe7f3;--muted:#8293a7;--soft:#aebed0;--accent:#4f8cff;--accent2:#35c49a;--warn:#f4b860;--danger:#ff6b6b;--bubble:#18293a;--bubble-user:#1d3f5f}",
     "body[data-theme='light']{color-scheme:light;--bg:#f6f8fb;--chrome:#ffffff;--rail:#eef2f7;--panel:#ffffff;--panel2:#f7f9fc;--editor:#ffffff;--line:#d7dee8;--line2:#c3cedb;--text:#142033;--muted:#687789;--soft:#405166;--accent:#1f6feb;--accent2:#008b6a;--warn:#a15c00;--danger:#c24141;--bubble:#ffffff;--bubble-user:#e7f0ff}",
     "*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text)}button,input,select,textarea{font:inherit}button{min-height:32px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);border-radius:5px;padding:0 10px;cursor:pointer;font-size:12px;font-weight:650;letter-spacing:0;line-height:1.12;white-space:nowrap}button:hover{background:var(--panel);border-color:var(--accent)}button.primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 0 0 1px rgba(79,140,255,.18)}input,select,textarea{width:100%;border:1px solid var(--line2);background:var(--editor);color:var(--text);border-radius:5px;padding:8px 9px;font-size:12px;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,140,255,.14)}textarea{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical}",
-    ".top{height:44px;display:grid;grid-template-columns:220px 1fr auto auto;align-items:center;border-bottom:1px solid var(--line);background:var(--chrome);padding:0 12px;gap:10px}.brand{font-weight:760;font-size:14px}.meta{font-size:12px;color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.view-toggle{display:flex;align-items:center;gap:6px}.mode-button{width:34px;min-width:34px;padding:0;border-radius:6px;display:grid;place-items:center}.mode-button svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.mode-button.active{background:var(--accent);border-color:var(--accent);color:#fff}.profile-wrap{position:relative}.profile-button{display:flex;align-items:center;gap:8px;min-width:156px;justify-content:space-between}.profile-menu{position:absolute;right:0;top:38px;width:360px;background:var(--panel);border:1px solid var(--line);box-shadow:0 18px 42px rgba(0,0,0,.28);border-radius:8px;padding:12px;z-index:10;display:none}.profile-menu.open{display:grid;gap:10px}.profile-list{display:grid;gap:6px}.profile-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px}.profile-choice{height:auto;display:grid;gap:2px;text-align:left;padding:9px 10px;white-space:normal}.profile-choice.active{background:var(--accent);border-color:var(--accent);color:#fff}.profile-choice.active span{color:rgba(255,255,255,.78)}.profile-choice span{font-size:11px;color:var(--muted);font-weight:500}.profile-action{min-width:48px}.modal-backdrop{position:fixed;inset:0;background:rgba(2,8,15,.62);display:none;place-items:center;z-index:30;padding:18px}.modal-backdrop.open{display:grid}.profile-form{width:min(680px,100%);border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--panel);box-shadow:0 24px 80px rgba(0,0,0,.38);display:grid;gap:12px}.profile-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.profile-form-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.field{display:grid;gap:4px}.field.wide{grid-column:1/3}.field span{font-size:11px;color:var(--muted);font-weight:700}.field em{font-style:normal;font-size:11px;line-height:1.35;color:var(--muted)}.theme-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}.theme-choice.active{background:var(--accent);border-color:var(--accent);color:#fff}.menu-title{font-size:12px;font-weight:760}.menu-muted{font-size:11px;color:var(--muted);line-height:1.4}",
-    ".layout{display:grid;grid-template-columns:300px minmax(380px,1fr) var(--right-w,340px);grid-template-rows:minmax(420px,1fr) 248px;height:calc(100vh - 44px);min-height:720px}.sidebar{grid-row:1/3;background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}.right{grid-column:3;grid-row:1/3;background:var(--rail);border-left:1px solid var(--line);min-width:0;min-height:0}.runtime{grid-column:2;grid-row:2;background:var(--rail);border-top:1px solid var(--line);min-width:0;min-height:0}main{grid-column:2;grid-row:1;min-width:0;background:var(--editor);display:flex;flex-direction:column}.dock{height:100%;display:flex;flex-direction:column;min-height:0}.dock-head{min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:0 12px;background:var(--panel2)}.dock-title{font-size:12px;font-weight:760;text-transform:uppercase;color:var(--text);letter-spacing:.02em}.dock-sub{font-size:11px;color:var(--muted);white-space:nowrap}.dock-body{padding:12px;overflow:auto;min-height:0;flex:1}.panel{border-bottom:1px solid var(--line);background:transparent}.panel:last-child{border-bottom:0}.panel h2{font-size:12px;line-height:1;margin:0 0 10px;color:var(--text);text-transform:uppercase;letter-spacing:.02em}.panel .body{padding:0}",
+    ".top{height:44px;display:grid;grid-template-columns:220px 1fr auto;align-items:center;border-bottom:1px solid var(--line);background:var(--chrome);padding:0 12px;gap:10px}.brand{font-weight:760;font-size:14px}.meta{font-size:12px;color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.view-toggle{display:flex;align-items:center;gap:6px}.mode-button{width:34px;min-width:34px;padding:0;border-radius:6px;display:grid;place-items:center}.mode-button svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.mode-button.active{background:var(--accent);border-color:var(--accent);color:#fff}.modal-backdrop{position:fixed;inset:0;background:rgba(2,8,15,.62);display:none;place-items:center;z-index:30;padding:18px}.modal-backdrop.open{display:grid}.profile-form{width:min(680px,100%);border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--panel);box-shadow:0 24px 80px rgba(0,0,0,.38);display:grid;gap:12px}.profile-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.profile-form-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.settings-form{width:min(420px,100%);border:1px solid var(--line);border-radius:9px;padding:14px;background:var(--panel);box-shadow:0 24px 80px rgba(0,0,0,.38);display:grid;gap:12px}.settings-form-actions{display:flex;justify-content:flex-end}.field{display:grid;gap:4px}.field.wide{grid-column:1/3}.field span{font-size:11px;color:var(--muted);font-weight:700}.field em{font-style:normal;font-size:11px;line-height:1.35;color:var(--muted)}.theme-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}.theme-choice.active{background:var(--accent);border-color:var(--accent);color:#fff}.menu-title{font-size:12px;font-weight:760}.menu-muted{font-size:11px;color:var(--muted);line-height:1.4}",
+    ".layout{display:grid;grid-template-columns:var(--editor-sidebar-w,290px) minmax(380px,1fr) var(--right-w,340px);grid-template-rows:minmax(320px,1fr) minmax(180px,32vh);height:calc(100vh - 44px);min-height:720px}#editorView{display:none}.editor-sidebar{grid-row:1/3;background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0;position:relative}.layout>.right-workbench{grid-column:3;grid-row:1/3;background:var(--rail);border-left:1px solid var(--line);min-width:0;min-height:0}.editor-screen{grid-column:2;grid-row:2;background:var(--rail);border-top:1px solid var(--line);min-width:0;min-height:0;display:grid;grid-template-rows:auto 1fr}main.editor-main{grid-column:2;grid-row:1;min-width:0;background:var(--editor);display:flex;flex-direction:column}.sidebar{grid-row:1/3;background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}.runtime{grid-column:2;grid-row:2;background:var(--rail);border-top:1px solid var(--line);min-width:0;min-height:0}main{grid-column:2;grid-row:1;min-width:0;background:var(--editor);display:flex;flex-direction:column}.dock{height:100%;display:flex;flex-direction:column;min-height:0}.dock-head{min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:0 12px;background:var(--panel2)}.dock-title{font-size:12px;font-weight:760;text-transform:uppercase;color:var(--text);letter-spacing:.02em}.dock-sub{font-size:11px;color:var(--muted);white-space:nowrap}.dock-body{padding:12px;overflow:auto;min-height:0;flex:1}.dock-head-actions{display:flex;align-items:center;gap:6px}.editor-screen .dock-body{padding:0;min-height:0}.editor-screen .terminal{height:100%;min-height:0;border:0;border-radius:0;padding:14px 16px}.editor-screen .terminal:focus{box-shadow:inset 0 0 0 1px rgba(53,196,154,.45)}.d3-browser-body{padding:0 0 8px}.d3-account-row{display:grid;gap:4px;padding:0 10px 8px 36px}.d3-account-label{font-size:11px;font-weight:760;color:var(--text)}.d3-account-who{font-size:10px;color:var(--muted)}.d3-logto-row{display:grid;grid-template-columns:1fr auto;gap:6px;padding:0 10px 10px 36px}.d3-logto-row input{min-height:30px;padding:6px 8px;font-size:11px}.d3-browser-error{padding:0 10px 10px 36px;font-size:11px;line-height:1.45;color:var(--warn);white-space:normal}.d3-category-head{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 10px 7px 28px;border:0;background:transparent;color:var(--soft);text-align:left;font:inherit;font-size:11px;font-weight:760;text-transform:uppercase;letter-spacing:.04em;cursor:pointer}.d3-category-head:hover{background:rgba(79,140,255,.08);color:var(--text)}.d3-category-toggle{width:18px;min-width:18px;height:18px;display:grid;place-items:center;color:var(--muted)}.d3-category-toggle svg{width:12px;height:12px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;transition:transform .15s ease}.d3-category.collapsed .d3-category-toggle svg{transform:rotate(-90deg)}.d3-category-count{font-size:10px;color:var(--muted);font-weight:700}.d3-category.collapsed .d3-files{display:none}.d3-files{display:flex;flex-direction:column;padding-bottom:2px}.d3-file-item{display:flex;align-items:center;gap:8px;width:100%;min-height:30px;padding:5px 10px 5px 42px;border:0;border-radius:0;background:transparent;color:var(--soft);text-align:left;font:inherit;font-size:12px;font-weight:650;line-height:1.3;cursor:pointer}.d3-file-item:hover{background:rgba(79,140,255,.09);color:var(--text)}.d3-file-item.active{background:rgba(79,140,255,.11);box-shadow:inset 3px 0 0 var(--accent);color:var(--text)}.d3-file-kind{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}.editor-toolbar-actions{height:auto;min-height:44px;flex-wrap:wrap;padding:6px 10px;gap:8px}.editor-toolbar-actions button{flex:0 0 auto}",
     ".tabs{display:grid;grid-template-columns:1fr;gap:4px;padding:10px;border-bottom:1px solid var(--line);background:var(--rail)}.tab{height:auto;text-align:left;display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:start;border-color:transparent;background:transparent;padding:9px 8px;color:var(--soft)}.tab b{display:block;font-size:12px;color:inherit}.tab span{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}.tab.active{background:var(--panel);color:var(--text);border-color:var(--line2);box-shadow:inset 3px 0 0 var(--accent)}.tab.active span{color:var(--muted)}.glyph{width:18px;height:18px;display:grid;place-items:center;color:var(--accent2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.pane{display:none}.pane.active{display:block}",
     ".row{display:flex;gap:8px;align-items:center;margin-bottom:8px}.row>*{flex:1}.row button{flex:0 0 auto}.stack{display:grid;gap:8px}.label{font-size:11px;font-weight:750;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.04em}.hint{font-size:11px;color:var(--muted);line-height:1.45;margin:6px 0 10px}.list{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;background:var(--editor);border:1px solid var(--line);border-radius:6px;padding:10px;min-height:92px;color:var(--text)}.mini{min-height:70px}.check{display:flex;gap:7px;align-items:center;color:var(--muted);font-size:12px;margin:8px 0}.check input{width:auto}.toolbar{min-height:38px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);background:var(--panel2);padding:0 10px}.editor-actions{height:auto;min-height:44px;flex-wrap:wrap;padding:6px 10px}.editor-actions .check{flex:1 1 185px;margin:0}.tool-chip{height:24px;border:1px solid var(--line);border-radius:4px;padding:4px 7px;color:var(--muted);font-size:11px;background:var(--panel)}.tool-chip.hot{color:#fff;background:var(--accent2);border-color:var(--accent2)}",
     ".editor-wrap{display:grid;grid-template-columns:44px 1fr;min-height:0;flex:1}.gutter{background:var(--panel2);border-right:1px solid var(--line);color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:22px;padding:12px 8px;text-align:right;user-select:none}.editor{border:0;border-radius:0;background:var(--editor);min-height:430px;height:100%;padding:12px 14px;line-height:22px;font-size:13px;color:var(--text);tab-size:2}.editor:focus{box-shadow:none;border:0}.editor-fields{display:grid;grid-template-columns:minmax(130px,1fr) minmax(160px,1.3fr) auto;gap:8px;padding:10px;border-bottom:1px solid var(--line);background:var(--panel2)}",
-    ".agent-shell{height:100%;display:flex;flex-direction:column}.agent-chat{padding:0;display:grid;grid-template-rows:1fr auto;height:100%;overflow:hidden}.agent-thread{overflow:auto;padding:14px;display:grid;align-content:start;gap:10px;background:var(--rail)}.right-chat-pane{position:relative}.right-resizer{position:absolute;left:-5px;top:0;bottom:0;width:9px;cursor:col-resize;z-index:8}.right-resizer:hover,.right-resizer.dragging{background:rgba(79,140,255,.25)}.side-chat-thread{padding:18px;background:var(--editor)}.side-chat-thread .chat-bubble{max-width:100%}.side-chat-thread .chat-bubble.assistant{background:transparent;border:0;border-radius:0;padding:6px 0}.side-chat-thread .chat-bubble.assistant .message-head{display:none}.side-chat-thread .chat-bubble.user{border-radius:12px}.side-chat-composer{border-top:1px solid var(--line);padding:12px;background:var(--editor)}.side-chat-input{min-height:88px;resize:vertical;background:var(--panel);border-radius:8px}.side-chat-actions{display:flex;justify-content:flex-end;margin-top:8px}.chat-bubble{max-width:92%;border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:var(--bubble);font-size:13px;line-height:1.45;white-space:normal}.chat-bubble.user{justify-self:end;background:var(--bubble-user);border-color:rgba(79,140,255,.45);cursor:text}.chat-bubble.assistant{justify-self:start}.message-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px}.message-meta{font-size:11px;color:var(--muted);font-weight:700}.message-actions{display:flex;gap:10px;align-items:center;margin-top:12px}.copy-message{width:24px;min-width:24px;min-height:24px;padding:0;border:0;border-radius:5px;color:var(--muted);background:transparent;display:grid;place-items:center}.copy-message svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.copy-message:hover{color:var(--text);background:var(--panel2);border-color:transparent}.message-body{overflow-wrap:anywhere}.message-body p{margin:0 0 12px}.message-body p:last-child{margin-bottom:0}.message-body ul{margin:6px 0 12px 18px;padding:0}.message-body li{margin:4px 0}.message-body strong{font-weight:780;color:var(--text)}.message-body code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 4px}.message-body pre{margin:8px 0 0;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--editor);overflow:auto;white-space:pre}.user-edit{min-width:min(620px,70vw);min-height:74px;background:transparent;border:0;box-shadow:none!important;color:var(--text);padding:0;font:inherit;line-height:1.45;resize:vertical}.control-menu{position:fixed;z-index:70;display:none;gap:8px;width:min(360px,calc(100vw - 28px));background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:10px;box-shadow:0 18px 48px rgba(0,0,0,.34)}.control-menu.open{display:grid}.control-menu-title{font-size:12px;font-weight:780}.control-menu-note{font-size:11px;color:var(--muted);line-height:1.35}.control-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}.control-row button.active{background:var(--accent);border-color:var(--accent);color:#fff}.model-menu-grid{display:grid;gap:8px}.model-menu-grid label{display:grid;gap:4px;font-size:11px;color:var(--muted);font-weight:750}.model-menu-grid input,.model-menu-grid select{font-size:12px}.model-key-panel{display:none;gap:8px}.model-key-panel.open{display:grid}.snackbar{position:fixed;left:50%;bottom:22px;transform:translate(-50%,18px);z-index:60;background:var(--panel2);border:1px solid var(--line2);box-shadow:0 12px 34px rgba(0,0,0,.32);border-radius:8px;color:var(--text);padding:9px 12px;font-size:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease}.snackbar.show{opacity:1;transform:translate(-50%,0)}.tool-event{max-width:92%;justify-self:start;border:1px solid var(--line);background:var(--panel2);border-radius:7px;padding:9px;display:grid;gap:5px}.tool-event.running{border-color:rgba(244,184,96,.55)}.tool-name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--accent2);font-weight:750}.tool-status{font-size:11px;color:var(--muted);font-weight:700}.chat-tool-summary{font-size:12px;line-height:1.45;color:var(--soft);white-space:pre-wrap}.chat-tool-detail{display:none;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:11px;line-height:1.4;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto}.tool-event.expanded .chat-tool-detail{display:block}.tool-toggle{margin-top:5px;height:auto;min-height:22px;padding:0;border:0;background:transparent;color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer}.agent-composer{border-top:1px solid var(--line);padding:10px;background:var(--panel)}.agentbox{min-height:72px;max-height:140px;line-height:1.45;background:var(--editor)}.agent-actions{display:flex;justify-content:flex-end;margin-top:8px}",
-    "#chatView,#terminalView{display:none}.chat-layout{height:calc(100vh - 44px);min-height:680px;grid-template-columns:290px minmax(420px,1fr) var(--right-w,320px);background:var(--bg)}body[data-view='chat'] #chatView,body[data-view='terminal'] #terminalView{display:grid}body[data-view='chat'] #editorView,body[data-view='terminal'] #editorView{display:none}.chat-sidebar,.chat-info{background:var(--rail);border-right:1px solid var(--line);min-width:0;min-height:0}.chat-info{border-right:0;border-left:1px solid var(--line)}.chat-main,.terminal-main{grid-column:auto;grid-row:auto;background:var(--editor);min-height:0;display:grid;grid-template-rows:auto 1fr auto}.terminal-main{grid-template-rows:auto 1fr}.chat-list{display:grid;align-content:start;gap:6px}.chat-item{height:auto;min-height:56px;text-align:left;display:grid;gap:3px;white-space:normal;background:transparent;border-color:transparent;color:var(--text);padding:8px}.chat-item.active{background:var(--panel);border-color:var(--line2);box-shadow:inset 3px 0 0 var(--accent)}.chat-item b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chat-item span{font-size:11px;color:var(--muted);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nav-section{border-bottom:1px solid var(--line);padding:12px}.nav-section:last-child{border-bottom:0}.nav-kicker{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:800;margin-bottom:8px}.run-status{font-size:11px;color:var(--muted);font-weight:750}.run-status[data-kind='running']{color:var(--warn)}.run-status[data-kind='streaming']{color:var(--accent2)}.chat-thread-main{overflow:auto;padding:24px min(7vw,96px);display:grid;align-content:start;gap:14px;background:var(--editor)}.chat-thread-main .chat-bubble{max-width:min(820px,92%);font-size:14px}.chat-thread-main .chat-bubble.assistant{background:transparent;border:0;border-radius:0;padding:8px 0;justify-self:stretch;max-width:min(900px,100%)}.chat-thread-main .chat-bubble.assistant .message-head{display:none}.chat-thread-main .chat-bubble.assistant .copy-message{opacity:.72}.chat-thread-main .chat-bubble.assistant .copy-message:hover{opacity:1}.chat-thread-main .chat-bubble.user{max-width:min(680px,78%);border-radius:12px;padding:12px 14px}.chat-thread-main .chat-bubble.user .message-head,.chat-thread-main .chat-bubble.user .message-actions{display:none}.chat-thread-main .tool-event{max-width:min(820px,92%);margin:2px 0 8px 0;background:transparent;border:0;border-left:2px solid var(--line2);border-radius:0;padding:5px 0 5px 14px}.chat-thread-main .tool-event.running{border-color:var(--warn)}.chat-composer-main{border-top:1px solid var(--line);padding:14px 18px 16px;background:var(--editor)}.composer-wrap{position:relative;min-width:0;max-width:min(900px,100%);margin:0 auto;background:#2b2b2e;border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:16px 16px 12px;box-shadow:0 18px 44px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.04)}body[data-theme='light'] .composer-wrap{background:#f7f9fc;border-color:#d9e1ea;box-shadow:0 12px 28px rgba(20,32,51,.08)}.chat-composer-main textarea{min-height:72px;max-height:180px;resize:none;border:0;border-radius:0;background:transparent;box-shadow:none!important;padding:2px 8px 10px;font-family:inherit;font-size:16px;line-height:1.45;color:var(--text)}.chat-composer-main textarea:focus{border:0;box-shadow:none}.chat-composer-main textarea::placeholder{color:rgba(174,190,208,.58)}.composer-controls{display:flex;align-items:center;gap:10px;margin-top:2px}.composer-left,.composer-right{display:flex;align-items:center;gap:10px;min-width:0}.composer-right{margin-left:auto}.composer-icon{width:36px;min-width:36px;min-height:36px;border:0;background:transparent;border-radius:999px;padding:0;display:grid;place-items:center;color:var(--soft)}.composer-icon:hover{background:rgba(255,255,255,.07);border-color:transparent;color:var(--text)}body[data-theme='light'] .composer-icon:hover{background:rgba(20,32,51,.07)}.composer-icon svg,.composer-send svg,.composer-safety svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.composer-safety{display:flex;align-items:center;gap:7px;min-height:36px;border:0;background:transparent;color:#ff8b4a;padding:0 4px;font-size:15px;font-weight:720}.composer-safety:hover{background:transparent;border-color:transparent;color:#ff9c63}.composer-safety svg{width:18px;height:18px}.composer-model{max-width:260px;overflow:hidden;text-overflow:ellipsis;border:0;background:transparent;color:var(--soft);min-height:36px;padding:0 4px;font-size:15px;font-weight:680}.composer-model:hover{background:transparent;border-color:transparent;color:var(--text)}.composer-send{width:46px;min-width:46px;min-height:46px;border-radius:999px;background:#e5e5e5;color:#151515;border:0;padding:0;display:grid;place-items:center}.composer-send:hover{background:#fff;border-color:transparent;color:#111}.composer-send svg{width:24px;height:24px;stroke-width:2.2}.slash-palette,.action-popover{position:absolute;left:12px;right:12px;bottom:calc(100% + 10px);background:var(--panel);border:1px solid var(--line2);box-shadow:0 18px 44px rgba(0,0,0,.35);border-radius:14px;padding:7px;display:none;z-index:20;max-height:310px;overflow:auto}.slash-palette.open,.action-popover.open{display:grid;gap:4px}.slash-option,.action-option{height:auto;min-height:42px;text-align:left;display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;background:transparent;border-color:transparent;border-radius:10px;padding:7px 9px}.slash-option.active,.action-option:hover{background:var(--panel2);border-color:var(--line2)}.slash-option b,.action-option b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--accent)}.slash-option span,.action-option span{font-size:11px;color:var(--muted);white-space:normal;line-height:1.35}.attachment-tray{display:flex;flex-wrap:wrap;gap:6px;padding:0 8px 8px}.attachment-chip{display:flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--line2);background:var(--panel2);color:var(--soft);border-radius:999px;padding:4px 8px;font-size:11px}.attachment-chip button{min-height:20px;width:20px;min-width:20px;padding:0;border:0;background:transparent;color:var(--muted);border-radius:999px}.info-card{padding:12px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.45}.info-card:last-child{border-bottom:0}.info-card h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.02em}.info-line{display:grid;grid-template-columns:84px 1fr;gap:8px;margin:6px 0}.info-line span:first-child{color:var(--muted);font-weight:750}.info-copy{color:var(--soft)}",
+    ".agent-shell{height:100%;display:flex;flex-direction:column}.agent-chat{padding:0;display:grid;grid-template-rows:1fr auto;height:100%;overflow:hidden}.agent-thread{overflow:auto;padding:14px;display:grid;align-content:start;gap:10px;background:var(--rail)}.right-workbench{position:relative;min-width:0;min-height:0;height:100%;overflow:hidden}.right-chat-pane{position:relative;z-index:1;height:100%}.chat-sidebar,.chat-info{position:relative}.column-resizer{position:absolute;top:0;bottom:0;width:9px;cursor:col-resize;z-index:12;touch-action:none}.column-resizer-left{left:-5px}.column-resizer-right{right:-5px}.column-resizer:hover,.column-resizer.dragging{background:rgba(79,140,255,.25)}.chat-banner{display:flex;align-items:center;min-height:40px}.chat-banner .dock-title,.chat-banner .side-chat-title{margin:0;line-height:1;min-height:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.side-chat-head{display:flex;align-items:center;min-height:40px}.icon-button{width:32px;min-width:32px;min-height:32px;padding:0;border-radius:6px;display:grid;place-items:center}.icon-button svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round}.sessions-drawer{position:absolute;top:0;right:0;bottom:0;width:min(268px,92%);z-index:26;background:var(--rail);border-left:1px solid var(--line2);box-shadow:-16px 0 36px rgba(0,0,0,.28);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .22s ease;pointer-events:none}.sessions-drawer-head{min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:0 10px;background:var(--panel2)}.sessions-drawer-actions{display:flex;align-items:center;gap:6px}.sessions-drawer-actions .sessions-new{color:var(--accent)}.sessions-close{width:28px;min-width:28px;min-height:28px;padding:0;border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1}.sessions-close:hover{color:var(--text)}.sessions-drawer-body{padding:0;overflow:auto;min-height:0;flex:1}.sessions-body{padding:0!important;display:flex;flex-direction:column;min-height:0}.sessions-tree{flex:1;overflow:auto;min-height:0}.sessions-footer{padding:8px 10px;border-top:1px solid var(--line);background:var(--panel2);flex-shrink:0}.sessions-footer-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px}.sessions-footer .icon-button{color:var(--soft);border:0;background:transparent}.sessions-footer .icon-button:hover{color:var(--text);background:rgba(79,140,255,.1);border-color:transparent}.sessions-drawer{display:flex;flex-direction:column}.sessions-drawer .sessions-footer{margin-top:auto}.sessions-empty{padding:14px 12px;font-size:12px;line-height:1.45;color:var(--muted)}.session-profile{border-bottom:1px solid var(--line)}.session-profile.active .session-profile-head{background:rgba(79,140,255,.07);box-shadow:inset 3px 0 0 var(--accent)}.session-profile.active .session-profile-select{color:var(--text)}.session-profile-head{width:100%}.session-profile-head:hover .session-profile-row,.session-profile-head:hover .session-profile-meta{background:rgba(79,140,255,.09)}.session-profile-head:hover .session-profile-toggle,.session-profile-head:hover .session-profile-new-chat,.session-profile-head:hover .session-profile-menu{background:rgba(79,140,255,.14);border-color:transparent;color:var(--text)}.session-profile-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;align-items:center;gap:2px;padding:2px 6px 2px 4px;transition:background .12s ease}.session-profile-online{width:20px;min-width:20px;height:28px;display:grid;place-items:center;color:var(--accent2);flex-shrink:0}.session-profile-online svg{width:9px;height:9px;fill:currentColor}.session-profile-toggle{width:28px;min-width:28px;min-height:32px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);display:grid;place-items:center;transition:background .12s ease,color .12s ease}.session-profile-toggle svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;transition:transform .15s ease}.session-profile.collapsed .session-profile-toggle svg{transform:rotate(-90deg)}.session-profile-select{height:auto;min-height:32px;text-align:left;border:0;background:transparent;color:var(--text);padding:6px 4px;font-size:12px;font-weight:760;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.session-profile-select:hover{background:transparent;border-color:transparent}.session-profile-meta{font-size:10px;color:var(--muted);font-weight:600;padding:0 8px 8px 36px;transition:background .12s ease}.session-profile-new-chat,.session-profile-menu{width:28px;min-width:28px;min-height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);display:grid;place-items:center;transition:background .12s ease,color .12s ease}.session-profile-new-chat{color:var(--accent)}.session-profile-new-chat svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.session-profile-menu svg{width:16px;height:16px;fill:currentColor}.session-profile.collapsed .session-chats{display:none}.session-profile.collapsed .d3-browser-body{display:none}.session-chats{display:flex;flex-direction:column;padding:0 0 4px}.session-chat-item{display:flex;align-items:center;gap:8px;width:100%;min-height:34px;padding:6px 10px 6px 28px;border:0;border-radius:0;background:transparent;color:var(--soft);text-align:left;font:inherit;font-size:12px;font-weight:650;line-height:1.3;cursor:pointer;transition:background .12s ease,color .12s ease}.session-chat-item:hover{background:rgba(79,140,255,.09);color:var(--text)}.session-chat-item.active{background:linear-gradient(90deg,rgba(79,140,255,.22),rgba(53,196,154,.08));box-shadow:inset 4px 0 0 var(--accent2);color:var(--text)}.session-chat-selected{margin-left:auto;border:1px solid rgba(53,196,154,.55);border-radius:999px;padding:2px 6px;color:var(--accent2);font-size:10px;font-weight:800;line-height:1;text-transform:uppercase}.session-chat-icon{width:16px;min-width:16px;height:16px;display:grid;place-items:center;color:var(--muted);flex-shrink:0}.session-chat-icon svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.session-chat-item:hover .session-chat-icon,.session-chat-item.active .session-chat-icon{color:var(--accent2)}.session-chat-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.session-chat-busy{width:16px;min-width:16px;height:16px;display:grid;place-items:center;color:var(--accent2);flex-shrink:0;margin-left:auto}.session-chat-busy svg{width:14px;height:14px;animation:session-chat-spin .8s linear infinite}@keyframes session-chat-spin{to{transform:rotate(360deg)}}.sessions-backdrop{position:absolute;inset:0;z-index:24;background:rgba(2,8,15,.38);display:none;cursor:pointer}.sessions-drawer.peek{transform:translateX(calc(100% - 56px));pointer-events:auto}.right-workbench.sessions-peek .sessions-backdrop,.right-workbench.sessions-open .sessions-backdrop{display:block;pointer-events:auto}.right-workbench.sessions-peek .sessions-backdrop{background:rgba(2,8,15,.18)}.right-workbench.sessions-peek .right-chat-pane,.right-workbench.sessions-open .right-chat-pane{pointer-events:none}.right-workbench.sessions-peek .sessions-drawer,.right-workbench.sessions-open .sessions-drawer{pointer-events:auto}.right-workbench.sessions-open .sessions-drawer{transform:translateX(0);pointer-events:auto}.side-chat-thread.chat-column{padding:18px;background:var(--editor)}.side-chat-composer{border-top:1px solid var(--line);padding:12px;background:var(--editor)}.side-chat-input{min-height:88px;resize:vertical;background:var(--panel);border-radius:8px}.side-chat-actions{display:flex;justify-content:flex-end;margin-top:8px}.chat-bubble{max-width:92%;border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:var(--bubble);font-size:13px;line-height:1.45;white-space:normal}.chat-bubble.user{justify-self:end;background:var(--bubble-user);border-color:rgba(79,140,255,.45);cursor:text}.chat-bubble.assistant{justify-self:start}.message-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px}.message-meta{font-size:11px;color:var(--muted);font-weight:700}.message-actions{display:flex;gap:10px;align-items:center;margin-top:12px}.copy-message{width:24px;min-width:24px;min-height:24px;padding:0;border:0;border-radius:5px;color:var(--muted);background:transparent;display:grid;place-items:center}.copy-message svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.copy-message:hover{color:var(--text);background:var(--panel2);border-color:transparent}.message-body{overflow-wrap:anywhere}.message-body p{margin:0 0 12px}.message-body p:last-child{margin-bottom:0}.message-body ul{margin:6px 0 12px 18px;padding:0}.message-body li{margin:4px 0}.message-body strong{font-weight:780;color:var(--text)}.message-body code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 4px}.message-body pre{margin:8px 0 0;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--editor);overflow:auto;white-space:pre}.user-edit{min-width:min(620px,70vw);min-height:74px;background:transparent;border:0;box-shadow:none!important;color:var(--text);padding:0;font:inherit;line-height:1.45;resize:vertical}.control-menu{position:fixed;z-index:70;display:none;gap:8px;width:min(360px,calc(100vw - 28px));background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:10px;box-shadow:0 18px 48px rgba(0,0,0,.34)}.control-menu.open{display:grid}.control-menu-title{font-size:12px;font-weight:780}.control-menu-note{font-size:11px;color:var(--muted);line-height:1.35}.control-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}.control-row button.active{background:var(--accent);border-color:var(--accent);color:#fff}.model-menu-grid{display:grid;gap:8px}.model-menu-grid label{display:grid;gap:4px;font-size:11px;color:var(--muted);font-weight:750}.model-menu-grid input,.model-menu-grid select{font-size:12px}.model-key-panel{display:none;gap:8px}.model-key-panel.open{display:grid}.snackbar{position:fixed;left:50%;bottom:22px;transform:translate(-50%,18px);z-index:60;background:var(--panel2);border:1px solid var(--line2);box-shadow:0 12px 34px rgba(0,0,0,.32);border-radius:8px;color:var(--text);padding:9px 12px;font-size:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease}.snackbar.show{opacity:1;transform:translate(-50%,0)}.tool-event{max-width:92%;justify-self:start;border:1px solid var(--line);background:var(--panel2);border-radius:7px;padding:7px 10px}.tool-event.running{border-color:rgba(244,184,96,.55)}.tool-event-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;width:100%;margin:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:default}.tool-event.collapsible .tool-event-head{cursor:pointer}.tool-name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--accent2);font-weight:750;white-space:nowrap}.tool-preview{font-size:12px;line-height:1.35;color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.tool-meta{display:flex;align-items:center;gap:8px;justify-self:end;white-space:nowrap}.tool-status{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}.tool-chevron{font-size:14px;color:var(--muted);line-height:1;transition:transform .15s ease}.tool-event.expanded .tool-chevron{transform:rotate(90deg)}.tool-event.expanded .tool-preview{display:none}.chat-tool-detail{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;line-height:1.45;color:var(--soft);white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto}.tool-event.expanded .chat-tool-detail{display:block}.agent-composer{border-top:1px solid var(--line);padding:10px;background:var(--panel)}.agentbox{min-height:72px;max-height:140px;line-height:1.45;background:var(--editor)}.agent-actions{display:flex;justify-content:flex-end;margin-top:8px}",
+    "#chatView,#terminalView{display:none}.chat-layout{height:calc(100vh - 44px);min-height:680px;grid-template-columns:var(--sidebar-w,290px) minmax(360px,1fr) var(--right-w,320px);background:var(--bg)}.chat-layout.workbench-layout{grid-template-columns:minmax(0,1fr) var(--right-w,320px)}body[data-view='chat'] #chatView,body[data-view='terminal'] #terminalView{display:grid}body[data-view='editor'] #editorView{display:grid}body[data-view='chat'] #editorView,body[data-view='terminal'] #editorView{display:none}.chat-sidebar,.chat-info,.right-rail{background:var(--rail);border-right:1px solid var(--line);min-width:0;min-height:0}.chat-info,.right-rail{border-right:0;border-left:1px solid var(--line)}.chat-main{grid-column:auto;grid-row:auto;background:var(--editor);min-height:0;display:grid;grid-template-rows:auto 1fr}.chat-stage{--chat-content-w:min(900px,100%);display:grid;grid-template-rows:1fr auto;min-height:0;overflow:hidden}.chat-main.chat-empty .chat-stage{display:flex;flex-direction:column;justify-content:center;align-items:center}.chat-main.chat-empty .chat-thread-main{display:none}.chat-main.chat-empty .chat-composer-main{border-top:0;width:100%;padding:0 18px 18px}.chat-main.chat-empty .composer-wrap{max-width:var(--chat-content-w);margin:0 auto}.chat-composer-main,.side-chat-composer{will-change:transform}.agent-shell.chat-empty .agent-chat{display:flex;flex-direction:column;justify-content:center;min-height:0}.chat-stage-side{--chat-content-w:min(900px,100%);display:grid;grid-template-rows:1fr auto;min-height:0;overflow:hidden}.agent-shell.chat-empty .chat-stage-side{width:100%;max-width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center}.agent-shell.chat-empty .agent-thread{display:none}.agent-shell.chat-empty .side-chat-composer{border-top:0;width:100%}.terminal-main{grid-column:auto;grid-row:auto;background:var(--editor);min-height:0;display:grid;grid-template-rows:auto 1fr}.chat-context-menu{position:fixed;z-index:80;display:none;min-width:156px;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:4px;box-shadow:0 14px 36px rgba(0,0,0,.32)}.chat-context-menu.open{display:grid}.chat-context-menu button{height:auto;min-height:34px;text-align:left;border:0;background:transparent;color:var(--text);border-radius:6px;padding:7px 10px;font-size:12px;font-weight:650}.chat-context-menu button:hover{background:var(--panel2)}.chat-context-menu button[data-chat-action='delete'],.chat-context-menu button[data-profile-action='remove']{color:#ff9b9b}.nav-section{border-bottom:1px solid var(--line);padding:12px}.nav-section:last-child{border-bottom:0}.nav-kicker{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:800;margin-bottom:8px}.run-status{font-size:11px;color:var(--muted);font-weight:750;white-space:nowrap}.run-status[data-kind='running']{color:var(--warn)}.run-status[data-kind='streaming']{color:var(--accent2)}.run-activity{font-size:11px;color:var(--muted);line-height:1.35;min-height:16px}.run-activity[data-kind='running'],.run-activity[data-kind='streaming']{color:var(--soft)}.typing-row{display:flex;align-items:center;gap:8px;padding:10px 18px;color:var(--muted);font-size:13px;width:100%;max-width:var(--chat-content-w);box-sizing:border-box;margin:0}.typing-dots{display:inline-flex;gap:4px;align-items:center}.typing-dots span{width:5px;height:5px;border-radius:50%;background:var(--accent2);animation:typing-bounce 1.1s ease-in-out infinite}.typing-dots span:nth-child(2){animation-delay:.16s}.typing-dots span:nth-child(3){animation-delay:.32s}@keyframes typing-bounce{0%,80%,100%{opacity:.35;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}@keyframes streamBubbleIn{0%{opacity:0;transform:translateY(14px)}100%{opacity:1;transform:none}}@keyframes streamPulse{0%{opacity:.5;filter:blur(4px);transform:translateY(4px)}100%{opacity:1;filter:none;transform:none}}@keyframes streamCaret{0%,100%{opacity:.4;transform:scaleY(.82)}50%{opacity:1;transform:scaleY(1)}}.chat-bubble.assistant.streaming{animation:streamBubbleIn .48s cubic-bezier(.22,1,.36,1)}.chat-bubble.assistant.streaming .message-body.stream-pulse{animation:streamPulse .36s cubic-bezier(.22,1,.36,1)}.chat-bubble.assistant.streaming .message-body:after{content:'';display:inline-block;width:7px;height:1.05em;margin-left:4px;vertical-align:text-bottom;background:linear-gradient(180deg,var(--accent2),var(--accent));border-radius:2px;animation:streamCaret .9s ease-in-out infinite}.chat-thread-main,.agent-thread.chat-column{display:flex;flex-direction:column;align-items:center;gap:16px;overflow:auto;padding:20px 18px 28px;background:var(--editor)}.chat-thread-main>*,.agent-thread.chat-column>*{width:100%;max-width:var(--chat-content-w);box-sizing:border-box}.chat-thread-main .chat-bubble,.agent-thread.chat-column .chat-bubble{font-size:15px;line-height:1.55}.chat-thread-main .chat-bubble.user,.agent-thread.chat-column .chat-bubble.user{width:100%;max-width:var(--chat-content-w);border-radius:24px;padding:16px 18px;background:#2b2b2e;border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 44px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.04);color:var(--text);cursor:default;user-select:text}body[data-theme='light'] .chat-thread-main .chat-bubble.user,body[data-theme='light'] .agent-thread.chat-column .chat-bubble.user{background:#f7f9fc;border-color:#d9e1ea;box-shadow:0 12px 28px rgba(20,32,51,.08)}.chat-thread-main .chat-bubble.user .message-head,.chat-thread-main .chat-bubble.user .message-actions,.agent-thread.chat-column .chat-bubble.user .message-head,.agent-thread.chat-column .chat-bubble.user .message-actions{display:none}.chat-thread-main .chat-bubble.assistant,.agent-thread.chat-column .chat-bubble.assistant,.chat-thread-main .chat-bubble.assistant.streaming,.agent-thread.chat-column .chat-bubble.assistant.streaming{width:100%;max-width:var(--chat-content-w);background:transparent;border:0;box-shadow:none;border-radius:0;padding:10px 18px 18px;box-sizing:border-box}.chat-thread-main .chat-bubble.assistant .message-head,.agent-thread.chat-column .chat-bubble.assistant .message-head{display:none}.chat-thread-main .chat-bubble.assistant .message-actions,.agent-thread.chat-column .chat-bubble.assistant .message-actions{display:flex;justify-content:flex-end;margin-top:8px;padding-top:0;border-top:0}.chat-thread-main .chat-bubble.assistant .copy-message,.agent-thread.chat-column .chat-bubble.assistant .copy-message{opacity:.75}.chat-thread-main .chat-bubble.assistant .copy-message:hover,.agent-thread.chat-column .chat-bubble.assistant .copy-message:hover{opacity:1}.chat-thread-main .tool-event,.agent-thread.chat-column .tool-event{width:100%;max-width:var(--chat-content-w);margin:0;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 18px}.chat-thread-main .tool-event.running,.agent-thread.chat-column .tool-event.running{border-color:rgba(244,184,96,.55)}.chat-composer-main{border-top:1px solid var(--line);padding:14px 18px 16px;background:var(--editor);display:flex;flex-direction:column;align-items:center}.composer-wrap{position:relative;min-width:0;width:100%;max-width:var(--chat-content-w);margin:0 auto;box-sizing:border-box;background:#2b2b2e;border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:16px 16px 12px;box-shadow:0 18px 44px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.04)}body[data-theme='light'] .composer-wrap{background:#f7f9fc;border-color:#d9e1ea;box-shadow:0 12px 28px rgba(20,32,51,.08)}.chat-composer-main textarea,.side-chat-input{text-align:left}.chat-composer-main textarea{min-height:72px;max-height:180px;resize:none;border:0;border-radius:0;background:transparent;box-shadow:none!important;padding:2px 8px 10px;font-family:inherit;font-size:16px;line-height:1.45;color:var(--text)}.chat-composer-main textarea:focus{border:0;box-shadow:none}.chat-composer-main textarea::placeholder{color:rgba(174,190,208,.58)}.composer-controls{display:flex;align-items:center;gap:10px;margin-top:2px}.composer-left,.composer-right{display:flex;align-items:center;gap:10px;min-width:0}.composer-right{margin-left:auto}.composer-icon{width:36px;min-width:36px;min-height:36px;border:0;background:transparent;border-radius:999px;padding:0;display:grid;place-items:center;color:var(--soft)}.composer-icon:hover{background:rgba(255,255,255,.07);border-color:transparent;color:var(--text)}body[data-theme='light'] .composer-icon:hover{background:rgba(20,32,51,.07)}.composer-icon svg,.composer-send svg,.composer-safety svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.composer-safety{display:flex;align-items:center;gap:7px;min-height:36px;border:0;background:transparent;color:#ff8b4a;padding:0 4px;font-size:15px;font-weight:720}.composer-safety:hover{background:transparent;border-color:transparent;color:#ff9c63}.composer-safety svg{width:18px;height:18px}.composer-model{max-width:260px;overflow:hidden;text-overflow:ellipsis;border:0;background:transparent;color:var(--soft);min-height:36px;padding:0 4px;font-size:15px;font-weight:680}.composer-model:hover{background:transparent;border-color:transparent;color:var(--text)}.composer-send{width:46px;min-width:46px;min-height:46px;border-radius:999px;background:#e5e5e5;color:#151515;border:0;padding:0;display:grid;place-items:center}.composer-send:hover{background:#fff;border-color:transparent;color:#111}.composer-send svg{width:24px;height:24px;stroke-width:2.2}.slash-palette,.action-popover{position:absolute;left:12px;right:12px;bottom:calc(100% + 10px);background:var(--panel);border:1px solid var(--line2);box-shadow:0 18px 44px rgba(0,0,0,.35);border-radius:14px;padding:7px;display:none;z-index:20;max-height:310px;overflow:auto}.slash-palette.open,.action-popover.open{display:grid;gap:4px}.slash-option,.action-option{height:auto;min-height:42px;text-align:left;display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;background:transparent;border-color:transparent;border-radius:10px;padding:7px 9px}.slash-option.active,.action-option:hover{background:var(--panel2);border-color:var(--line2)}.slash-option b,.action-option b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--accent)}.slash-option span,.action-option span{font-size:11px;color:var(--muted);white-space:normal;line-height:1.35}.attachment-tray{display:flex;flex-wrap:wrap;gap:6px;padding:0 8px 8px}.attachment-chip{display:flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--line2);background:var(--panel2);color:var(--soft);border-radius:999px;padding:4px 8px;font-size:11px}.attachment-chip button{min-height:20px;width:20px;min-width:20px;padding:0;border:0;background:transparent;color:var(--muted);border-radius:999px}.info-card{padding:12px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.45}.info-card:last-child{border-bottom:0}.info-card h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.02em}.info-line{display:grid;grid-template-columns:84px 1fr;gap:8px;margin:6px 0}.info-line span:first-child{color:var(--muted);font-weight:750}.info-copy{color:var(--soft)}",
     ".runtime .dock-body{padding:10px 12px}.terminal-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:8px}.terminal{background:#02070c;color:#b7f7c5;border:1px solid #193324;border-radius:6px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;min-height:136px;white-space:pre-wrap;line-height:1.5;font-size:12px;outline:none;cursor:text;overflow:auto}.terminal-main .dock-body{padding:0;min-height:0}.terminal-main .terminal{height:100%;min-height:0;border:0;border-radius:0;padding:14px 16px}.terminal:focus{border-color:#35c49a;box-shadow:0 0 0 2px rgba(53,196,154,.18)}.terminal-main .terminal:focus{box-shadow:inset 0 0 0 1px rgba(53,196,154,.45)}.terminal:empty:before{content:'D3 runtime output will appear here';color:#4e665a}.command-label{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);font-size:11px}",
-    "@media(max-width:1100px){.layout{grid-template-columns:280px 1fr;grid-template-rows:minmax(420px,1fr) 240px 320px;height:auto;min-height:calc(100vh - 44px)}main{grid-column:2;grid-row:1}.runtime{grid-column:2;grid-row:2}.right{grid-column:1/3;grid-row:3;border-left:0;border-top:1px solid var(--line)}.sidebar{grid-row:1/3}.chat-layout{grid-template-columns:250px 1fr}.chat-info{grid-column:1/3;border-left:0;border-top:1px solid var(--line)}.top{grid-template-columns:1fr auto auto}.meta{display:none}}@media(max-width:760px){.layout,.chat-layout{display:block;height:auto}.sidebar,.right,.runtime,.chat-sidebar,.chat-info{border:0;border-top:1px solid var(--line);min-height:260px}.editor-fields{grid-template-columns:1fr}.editor-wrap{grid-template-columns:34px 1fr}.chat-main{display:block;min-height:520px}.chat-thread-main{min-height:360px}.chat-composer-main{grid-template-columns:1fr}.top{height:44px;padding:0 10px}.tabs{grid-template-columns:1fr 1fr}.tab{grid-template-columns:1fr}.glyph{display:none}.profile-button{min-width:132px}.profile-menu{right:0;width:min(320px,calc(100vw - 20px))}}",
+    "@media(max-width:1100px){.layout{grid-template-columns:280px 1fr;grid-template-rows:minmax(420px,1fr) 240px 320px;height:auto;min-height:calc(100vh - 44px)}main{grid-column:2;grid-row:1}.runtime{grid-column:2;grid-row:2}.layout>.right-workbench{grid-column:1/3;grid-row:3;border-left:0;border-top:1px solid var(--line)}.sidebar{grid-row:1/3}.chat-layout{grid-template-columns:var(--sidebar-w,250px) minmax(0,1fr) var(--right-w,280px)}.chat-layout.workbench-layout{grid-template-columns:1fr}.chat-layout.workbench-layout .right-workbench{grid-column:1;border-top:1px solid var(--line);min-height:280px}.chat-info{grid-column:1/3;border-left:0;border-top:1px solid var(--line)}.top{grid-template-columns:1fr auto auto}.meta{display:none}}@media(max-width:760px){.layout,.chat-layout{display:block;height:auto}.sidebar,.layout>.right-workbench,.runtime,.chat-sidebar,.chat-info,.right-workbench{border:0;border-top:1px solid var(--line);min-height:260px}.sessions-drawer{width:min(300px,100%)}.editor-fields{grid-template-columns:1fr}.editor-wrap{grid-template-columns:34px 1fr}.chat-main{display:block;min-height:520px}.chat-thread-main{min-height:360px}.chat-composer-main{grid-template-columns:1fr}.top{height:44px;padding:0 10px}.tabs{grid-template-columns:1fr 1fr}.tab{grid-template-columns:1fr}.glyph{display:none}}",
     "</style>",
     "</head>",
     "<body data-theme=\"dark\" data-view=\"chat\">",
-    "<div class=\"top\"><div class=\"brand\">D3 Code IDE</div><div class=\"meta\" id=\"meta\">Current chat</div><div class=\"view-toggle\" aria-label=\"Workspace view\"><button id=\"chatModeButton\" class=\"mode-button active\" title=\"Chat mode\" aria-label=\"Chat mode\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z\"/><path d=\"M8 9h8M8 13h5\"/></svg></button><button id=\"editorModeButton\" class=\"mode-button\" title=\"Editor mode\" aria-label=\"Editor mode\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 20h9\"/><path d=\"M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z\"/></svg></button><button id=\"terminalModeButton\" class=\"mode-button\" title=\"D3 terminal\" aria-label=\"D3 terminal\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 17l6-6-6-6\"/><path d=\"M12 19h8\"/></svg></button></div><div class=\"profile-wrap\"><button id=\"profileMenuButton\" class=\"profile-button\"><span id=\"profileButtonLabel\">Profiles</span><span>v</span></button><div id=\"profileMenu\" class=\"profile-menu\"><div><div class=\"menu-title\">Profiles</div><div class=\"menu-muted\">Add, edit, remove, or select a D3 connection profile.</div></div><div id=\"profileChoices\" class=\"profile-list\"></div><button id=\"addProfile\">Add profile</button><div class=\"theme-row\" id=\"themeRow\"><button class=\"theme-choice\" data-theme-choice=\"dark\">Dark mode</button><button class=\"theme-choice active\" data-theme-choice=\"light\">Light mode</button><button class=\"theme-choice\" data-theme-choice=\"system\">System</button></div></div></div></div>",
-    "<div id=\"chatView\" class=\"chat-layout\"><aside class=\"chat-sidebar\"><div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Session</div><button id=\"newChat\">New chat</button></div><div class=\"dock-body\"><div class=\"nav-section\"><div class=\"nav-kicker\">Chats</div><div id=\"chatList\" class=\"chat-list\"></div></div></div></div></aside><main class=\"chat-main\"><div class=\"dock-head\"><div><div class=\"dock-title\">Current chat</div><div class=\"dock-sub\" id=\"chatSubtitle\"></div></div><div id=\"runStatus\" class=\"run-status\" data-kind=\"ready\"></div></div><div id=\"chatOutput\" class=\"chat-thread-main\"></div><div class=\"chat-composer-main\"><div class=\"composer-wrap\"><div id=\"slashPalette\" class=\"slash-palette\"></div><div id=\"actionPopover\" class=\"action-popover\" role=\"menu\"><button id=\"addFileAction\" class=\"action-option\" type=\"button\"><b>File</b><span>Attach a file as context for this message.</span></button><button id=\"addPhotoAction\" class=\"action-option\" type=\"button\"><b>Photo</b><span>Attach an image or screenshot to the message.</span></button><button id=\"planModeAction\" class=\"action-option\" type=\"button\"><b>Plan mode</b><span>Switch permissions to Plan before sending.</span></button></div><input id=\"fileUpload\" type=\"file\" multiple hidden /><input id=\"photoUpload\" type=\"file\" accept=\"image/*\" multiple hidden /><textarea id=\"chatPrompt\" placeholder=\"Ask for follow-up changes\"></textarea><div id=\"attachmentTray\" class=\"attachment-tray\"></div><div class=\"composer-controls\"><div class=\"composer-left\"><button id=\"composerAdd\" class=\"composer-icon\" type=\"button\" title=\"Add context\" aria-label=\"Add context\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg></button><button id=\"composerSafety\" class=\"composer-safety\" type=\"button\" title=\"Change permission mode\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/><path d=\"M12 8v4\"/><path d=\"M12 16h.01\"/></svg><span id=\"composerSafetyLabel\">Ask</span></button></div><div class=\"composer-right\"><button id=\"composerModel\" class=\"composer-model\" type=\"button\" title=\"Change provider and model\">model</button><button id=\"composerMic\" class=\"composer-icon\" type=\"button\" title=\"Voice input\" aria-label=\"Voice input\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z\"/><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/><path d=\"M12 19v3\"/></svg></button><button class=\"composer-send\" id=\"chatSend\" type=\"button\" title=\"Send\" aria-label=\"Send message\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 19V5\"/><path d=\"M5 12l7-7 7 7\"/></svg></button></div></div></div></div></main><aside class=\"chat-info\"><div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Info</div><div class=\"dock-sub\" id=\"chatInfoSafety\"></div></div><div class=\"dock-body\"><div class=\"info-card\"><h3>Connection</h3><div class=\"info-line\"><span>Profile</span><strong id=\"chatInfoProfile\">none</strong></div><div class=\"info-line\"><span>Account</span><strong id=\"chatInfoAccount\">none</strong></div><div class=\"info-line\"><span>Model</span><strong id=\"chatInfoModel\">unknown</strong></div><div class=\"info-line\"><span>Safety</span><strong id=\"chatInfoSafetyValue\">ask</strong></div></div><div class=\"info-card\"><h3>Last tool</h3><div id=\"chatLastTool\" class=\"info-copy\">No D3 tool has run in this browser session.</div></div></div></div></aside></div>",
-    "<div id=\"terminalView\" class=\"chat-layout\"><aside class=\"chat-sidebar\"><div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Session</div><button id=\"newTerminalChat\">New chat</button></div><div class=\"dock-body\"><div class=\"nav-section\"><div class=\"nav-kicker\">Chats</div><div id=\"terminalChatList\" class=\"chat-list\"></div></div></div></div></aside><main class=\"terminal-main\"><div class=\"dock-head\"><div><div class=\"dock-title\">D3 Terminal</div><div class=\"dock-sub\">TCL session</div></div></div><div class=\"dock-body\"><div id=\"terminalMain\" class=\"terminal\" tabindex=\"0\" role=\"textbox\" aria-label=\"D3 runtime terminal\"></div></div></main>",
-    sideChat("aside", "chat-info", "terminalAgentOutput", "terminalAgentPrompt", "terminalAgentSend", "terminalAgentSafety"),
+    "<div class=\"top\"><div class=\"brand\">D3 Code IDE</div><div class=\"meta\" id=\"meta\">Sessions</div><div class=\"view-toggle\" aria-label=\"Workspace view\"><button id=\"chatModeButton\" class=\"mode-button active\" title=\"Chat mode\" aria-label=\"Chat mode\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z\"/><path d=\"M8 9h8M8 13h5\"/></svg></button><button id=\"editorModeButton\" class=\"mode-button\" title=\"Editor mode\" aria-label=\"Editor mode\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 20h9\"/><path d=\"M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z\"/></svg></button><button id=\"terminalModeButton\" class=\"mode-button\" title=\"D3 terminal\" aria-label=\"D3 terminal\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 17l6-6-6-6\"/><path d=\"M12 19h8\"/></svg></button></div></div>",
+    `<div id="chatView" class="chat-layout"><aside class="chat-sidebar"><div class="column-resizer column-resizer-right" data-resize="sidebar" title="Resize sessions list"></div><div class="dock"><div class="dock-head sessions-head"><div class="dock-title">Sessions</div></div><div class="dock-body sessions-body"><div id="chatList" class="sessions-tree"></div>${sessionsFooterHtml}</div></div></aside><main class="chat-main"><div class="dock-head chat-banner"><div class="dock-title" id="chatTitle" data-chat-title>New chat</div></div><div class="chat-stage"><div id="chatOutput" class="chat-thread-main chat-column"></div><div class="chat-composer-main"><div class="composer-wrap"><div id="slashPalette" class="slash-palette"></div><div id="actionPopover" class="action-popover" role="menu"><button id="addFileAction" class="action-option" type="button"><b>File</b><span>Attach a file as context for this message.</span></button><button id="addPhotoAction" class="action-option" type="button"><b>Photo</b><span>Attach an image or screenshot to the message.</span></button><button id="planModeAction" class="action-option" type="button"><b>Plan mode</b><span>Switch permissions to Plan before sending.</span></button></div><input id="fileUpload" type="file" multiple hidden /><input id="photoUpload" type="file" accept="image/*" multiple hidden /><textarea id="chatPrompt" placeholder="Plan, build — / for commands and context"></textarea><div id="attachmentTray" class="attachment-tray"></div><div class="composer-controls"><div class="composer-left"><button id="composerAdd" class="composer-icon" type="button" title="Add context" aria-label="Add context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button id="composerSafety" class="composer-safety" type="button" title="Change permission mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><span id="composerSafetyLabel">Ask</span></button></div><div class="composer-right"><button id="composerModel" class="composer-model" type="button" title="Change provider and model">model</button><button id="composerMic" class="composer-icon" type="button" title="Voice input" aria-label="Voice input"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></button><button class="composer-send" id="chatSend" type="button" title="Send" aria-label="Send message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></button></div></div></div></div></div></main><aside class="chat-info"><div class="column-resizer column-resizer-left" data-resize="right" title="Resize info panel"></div><div class="dock"><div class="dock-head"><div class="dock-title">Info</div><div class="dock-sub" id="chatInfoSafety"></div></div><div class="dock-body"><div class="info-card"><h3>Connection</h3><div class="info-line"><span>Profile</span><strong id="chatInfoProfile">none</strong></div><div class="info-line"><span>Account</span><strong id="chatInfoAccount">none</strong></div><div class="info-line"><span>Model</span><strong id="chatInfoModel">unknown</strong></div><div class="info-line"><span>Safety</span><strong id="chatInfoSafetyValue">ask</strong></div></div><div class="info-card"><h3>D3/SB+ Capabilities</h3><div id="capabilitiesPanel" class="info-copy">BASIC builder, file/dictionary builder, SB+ discovery/planning, RAG/manual search, terminal/screen proof.</div></div><div class="info-card"><h3>Last tool</h3><div id="chatLastTool" class="info-copy">No D3 tool has run in this browser session.</div></div></div></div></aside></div>`,
+    "<div id=\"terminalView\" class=\"chat-layout workbench-layout\"><main class=\"terminal-main\"><div class=\"dock-head\"><div><div class=\"dock-title\">D3 Terminal</div><div class=\"dock-sub\">TCL session</div></div></div><div class=\"dock-body\"><div class=\"terminal-row\"><input id=\"terminalCommand\" class=\"terminal-command\" placeholder=\"TCL command, D3 input, or menu choice\" /><button id=\"terminalSend\" type=\"button\">Send</button></div><div id=\"terminalMain\" class=\"terminal\" tabindex=\"0\" role=\"textbox\" aria-label=\"D3 runtime terminal\"></div></div></main>",
+    rightWorkbench(sideChat("aside", "right-rail", "terminalAgentOutput", "terminalAgentPrompt", "terminalAgentSend", "terminalAgentActivity", "terminalRunStatus")),
     "</div>",
     "<div id=\"editorView\" class=\"layout\">",
-    "<aside class=\"sidebar\"><div class=\"tabs\"><button class=\"tab active\" data-pane=\"profilesPane\"><span class=\"glyph\">@</span><span><b>Profiles / Accounts</b><span>D3 host, account, LOGTO context</span></span></button><button class=\"tab\" data-pane=\"dataPane\"><span class=\"glyph\">F</span><span><b>Data Files / Items</b><span>MD pointers, records, locks, AQL</span></span></button><button class=\"tab\" data-pane=\"dictPane\"><span class=\"glyph\">D</span><span><b>Dictionaries</b><span>DICT items and field definitions</span></span></button><button class=\"tab\" data-pane=\"basicPane\"><span class=\"glyph\">B</span><span><b>BASIC / Subroutines</b><span>Program items, compile, catalog, CALL</span></span></button><button class=\"tab\" data-pane=\"indexPane\"><span class=\"glyph\">#</span><span><b>Indexes / References</b><span>Account evidence and manuals</span></span></button></div><div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">D3 Navigator</div><div class=\"dock-sub\">account scoped</div></div><div class=\"dock-body\"><div id=\"profilesPane\" class=\"pane active\"><div class=\"panel\"><h2>Accounts</h2><div class=\"body stack\"><div class=\"hint\">Use the profile menu in the top right for connection profiles. This panel is for switching the active D3 account inside the selected profile.</div><div class=\"label\">LOGTO account</div><div class=\"row\"><input id=\"account\" placeholder=\"DM, SALES\" /><button id=\"loginAccount\">Login</button></div><label class=\"check\"><input id=\"confirmLogin\" type=\"checkbox\" /> confirm account switch</label></div></div></div><div id=\"dataPane\" class=\"pane\"><div class=\"panel\"><h2>Data Files / Items</h2><div class=\"body stack\"><div class=\"hint\">D3 files are account-level file pointers. Items are records inside those files, including program source in program files.</div><div class=\"row\"><button id=\"listFiles\">List MD file pointers</button><button id=\"locks\">Locks</button></div><div id=\"files\" class=\"list\"></div><div class=\"label\">AQL / TCL query</div><div class=\"row\"><input id=\"aql\" placeholder=\"LIST CUSTOMERS NAME\" /><button id=\"runAql\">Run</button></div></div></div></div><div id=\"dictPane\" class=\"pane\"><div class=\"panel\"><h2>Dictionaries</h2><div class=\"body stack\"><div class=\"hint\">Dictionary items describe how fields are named, derived, converted, and displayed for a data file.</div><input id=\"dictFile\" placeholder=\"data file, e.g. CUSTOMERS\" /><div class=\"row\"><input id=\"dictItem\" placeholder=\"dictionary item, e.g. NAME\" /><button id=\"readDictPanel\">Read DICT</button></div><div id=\"dictResults\" class=\"list\"></div></div></div></div><div id=\"basicPane\" class=\"pane\"><div class=\"panel\"><h2>BASIC / Subroutines</h2><div class=\"body stack\"><div class=\"row\"><input id=\"basicFile\" placeholder=\"program file, e.g. BP\" /><input id=\"basicItem\" placeholder=\"program item\" /></div><div class=\"row\"><button id=\"compileBasicPanel\">Compile BASIC</button><button id=\"catalogBasicPanel\">Catalog BASIC</button></div><div class=\"label\">Subroutine call</div><div class=\"row\"><input id=\"subroutine\" placeholder=\"GET.CUSTOMER\" /><button id=\"callSubroutine\">Call</button></div><input id=\"subArgs\" placeholder=\"arguments separated by spaces\" /><label class=\"check\"><input id=\"confirmCall\" type=\"checkbox\" /> confirm BASIC/subroutine action</label></div></div></div><div id=\"indexPane\" class=\"pane\"><div class=\"panel\"><h2>Indexes / References</h2><div class=\"body stack\"><button id=\"indexAccount\">Index account evidence</button><div class=\"label\">Search indexed account evidence</div><div class=\"row\"><input id=\"search\" placeholder=\"CUSTOMERS NAME\" /><button id=\"searchBtn\">Search</button></div><div class=\"label\">Manual search</div><div class=\"row\"><input id=\"manual\" placeholder=\"D-pointer, dictionary, READU\" /><button id=\"manualBtn\">Manual</button></div><div id=\"searchResults\" class=\"list\"></div></div></div></div></div></div></aside>",
-    "<main>",
-    "<div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Item / BASIC Editor</div><div class=\"dock-sub\">Rocket MV BASIC / item record</div></div><div class=\"toolbar\"><span class=\"tool-chip hot\">READ</span><span class=\"tool-chip\">WRITE guarded</span><span class=\"tool-chip\">DICT</span><span class=\"tool-chip\">BASIC</span><span class=\"tool-chip\">CATALOG</span></div><div class=\"editor-fields\"><input id=\"file\" placeholder=\"D3 file, e.g. CUSTOMERS or BP\" /><input id=\"item\" placeholder=\"item-ID, record, program, or subroutine\" /><button id=\"readItem\">Read item</button></div><div class=\"editor-wrap\"><div class=\"gutter\">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15<br>16<br>17<br>18<br>19<br>20</div><textarea id=\"itemBody\" class=\"editor\" spellcheck=\"false\" placeholder=\"Read a D3 item or BASIC program into this editor. Mutating actions stay behind confirmation gates.\"></textarea></div><div class=\"toolbar editor-actions\"><label class=\"check\"><input id=\"confirmWrite\" type=\"checkbox\" /> confirm D3 item write / compile / catalog</label><button id=\"writeItem\">Write item with safety gate</button><button id=\"readDict\">Read dictionary item</button><button id=\"compileBasic\">Compile BASIC</button><button id=\"catalogBasic\">Catalog BASIC</button></div></div>",
+    "<aside class=\"editor-sidebar\"><div class=\"column-resizer column-resizer-right\" data-resize=\"editor-sidebar\" title=\"Resize D3 browser\"></div><div class=\"dock\"><div class=\"dock-head sessions-head\"><div class=\"dock-title\">D3 Browser</div><div class=\"dock-head-actions\"><button type=\"button\" id=\"refreshBrowser\" class=\"icon-button\" title=\"Refresh account files\" aria-label=\"Refresh account files\">↻</button></div></div><div class=\"dock-body sessions-body\"><div id=\"d3Browser\" class=\"sessions-tree\"></div></div></div></aside>",
+    "<main class=\"editor-main\">",
+    "<div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Item / BASIC Editor</div><div class=\"dock-sub\">Rocket MV BASIC / item record</div></div><div class=\"editor-fields\"><input id=\"file\" placeholder=\"D3 file, e.g. CUSTOMERS or BP\" /><input id=\"item\" placeholder=\"item-ID, record, program, or subroutine\" /><button id=\"readItem\">Read</button></div><div class=\"editor-wrap\"><div class=\"gutter\">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15<br>16<br>17<br>18<br>19<br>20</div><textarea id=\"itemBody\" class=\"editor\" spellcheck=\"false\" placeholder=\"Pick a file from the browser or type a file and item ID, then read.\"></textarea></div><div class=\"toolbar editor-toolbar-actions\"><button id=\"writeItem\">Write</button><button id=\"readDict\">Dictionary</button><button id=\"compileBasic\">Compile</button><button id=\"catalogBasic\">Catalog</button><button id=\"buildBasic\">Build BASIC</button><button id=\"writeDict\">Write Dict</button><button id=\"createFile\">Create File</button><button id=\"ragSearchEditor\">RAG</button><button id=\"sbplusDiscover\">SB+ Discover</button><button id=\"sbplusPlan\">SB+ Plan</button></div></div>",
     "</main>",
-    sideChat("section", "right", "agentOutput", "agentPrompt", "agentSend", "agentSafety"),
-    "<section class=\"runtime\"><div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">D3 Runtime</div><div class=\"dock-sub\">Terminal emulation / TCL session</div></div><div class=\"dock-body\"><div class=\"terminal-row\"><input id=\"command\" placeholder=\"WHO, LIST MD, CT CUSTOMERS 100\" /><button class=\"primary\" id=\"send\">Send</button></div><label class=\"check\"><input id=\"confirmTerminal\" type=\"checkbox\" /> confirm mutation-risk runtime command</label><div id=\"terminal\" class=\"terminal\" tabindex=\"0\" role=\"textbox\" aria-label=\"D3 runtime terminal\"></div></div></div></section>",
+    rightWorkbench(sideChat("section", "right", "agentOutput", "agentPrompt", "agentSend", "agentActivity", "agentRunStatus")),
+    "<section class=\"editor-screen\"><div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">D3 Screen</div><div class=\"dock-sub\">Live terminal / screen output</div></div><div class=\"dock-body\"><div class=\"terminal-row\"><input id=\"editorTerminalCommand\" class=\"terminal-command\" placeholder=\"TCL command, D3 input, or menu choice\" /><button id=\"editorTerminalSend\" type=\"button\">Send</button></div><div id=\"editorScreen\" class=\"terminal\" tabindex=\"0\" role=\"textbox\" aria-label=\"D3 screen terminal\"></div></div></div></section>",
     "</div>",
     "<div id=\"snackbar\" class=\"snackbar\" role=\"status\" aria-live=\"polite\"></div>",
+    "<div id=\"chatContextMenu\" class=\"chat-context-menu\" role=\"menu\" aria-hidden=\"true\"><button type=\"button\" data-chat-action=\"delete\">Delete chat</button></div>",
+    "<div id=\"profileContextMenu\" class=\"chat-context-menu\" role=\"menu\" aria-hidden=\"true\"><button type=\"button\" data-profile-action=\"edit\">Edit profile</button><button type=\"button\" data-profile-action=\"remove\">Remove profile</button></div>",
     "<div id=\"safetyMenu\" class=\"control-menu\"><div class=\"control-menu-title\">Permission mode</div><div class=\"control-row\"><button data-safety-option=\"ask\">Ask</button><button data-safety-option=\"plan\">Plan</button><button data-safety-option=\"trust\">Full access</button></div><div class=\"control-menu-note\">This updates the current session and saves the default for this profile.</div></div>",
     "<div id=\"modelMenu\" class=\"control-menu\"><div class=\"control-menu-title\">Provider and model</div><div class=\"model-menu-grid\"><label>Provider<select id=\"modelProvider\"></select></label><div id=\"modelKeyPanel\" class=\"model-key-panel\"><div id=\"modelKeyMessage\" class=\"control-menu-note\"></div><label>API key<input id=\"modelApiKey\" type=\"password\" placeholder=\"Paste provider API key\" /></label><button id=\"saveModelKey\" class=\"primary\">Save key</button></div><label id=\"modelChoiceWrap\">Model<select id=\"modelChoice\"></select></label><button id=\"saveModelChoice\" class=\"primary\">Save model</button><div id=\"modelMenuNote\" class=\"control-menu-note\"></div></div></div>",
+    "<div id=\"settingsModal\" class=\"modal-backdrop\"><div class=\"settings-form\"><div><div class=\"menu-title\">Settings</div><div class=\"menu-muted\">Appearance and other IDE preferences.</div></div><div class=\"field\"><span>Theme</span><div class=\"theme-row\" id=\"themeRow\"><button type=\"button\" class=\"theme-choice\" data-theme-choice=\"dark\">Dark</button><button type=\"button\" class=\"theme-choice\" data-theme-choice=\"light\">Light</button><button type=\"button\" class=\"theme-choice\" data-theme-choice=\"system\">System</button></div><em>Choose dark, light, or match your system setting.</em></div><div class=\"settings-form-actions\"><button type=\"button\" id=\"closeSettings\">Close</button></div></div></div>",
     "<div id=\"profileModal\" class=\"modal-backdrop\"><div id=\"profileForm\" class=\"profile-form\"><div><div class=\"menu-title\" id=\"profileFormTitle\">Add D3 connection</div><div class=\"menu-muted\">This tells D3 Code how to reach a Rocket D3 account. It is separate from the AI model provider.</div></div><div class=\"profile-form-grid\"><label class=\"field\"><span>Profile name</span><input id=\"profileName\" placeholder=\"Production, Test, Local DM\" /><em>A friendly name for this saved connection.</em></label><label class=\"field\"><span>Connection</span><select id=\"profileType\"><option value=\"local\">This machine</option><option value=\"ssh\">SSH server</option></select><em>Choose SSH when D3 lives on another server.</em></label><label class=\"field\"><span>SSH host</span><input id=\"profileHost\" placeholder=\"d3.example.com\" /><em>Only needed for SSH connections.</em></label><label class=\"field\"><span>SSH user</span><input id=\"profileUser\" /><em>Only needed for SSH connections.</em></label><label class=\"field\"><span>Starting D3 account</span><input id=\"profileAccount\" placeholder=\"DM\" /><em>The account to use after connecting, such as DM or SALES.</em></label><label class=\"field\"><span>Runtime session</span><select id=\"profileSession\"><option value=\"persistent\">Keep connected</option><option value=\"oneshot\">Run one command at a time</option></select><em>Keep connected is best for the IDE and agent.</em></label><label class=\"field wide\"><span>Command that opens D3</span><input id=\"profileEntry\" placeholder=\"d3, ap, or your server login command\" /><em>Leave blank if the shell or SSH login already lands inside D3/TCL.</em></label><label class=\"field wide\"><span>Startup input</span><textarea id=\"profileStartup\" rows=\"3\" placeholder=\"dm\\ndm\\n\"></textarea><em>Keys sent after D3 opens, before D3 Code waits for the ready prompt. Use this for user/account/master-dictionary prompts.</em></label><label class=\"field\"><span>Ready prompt</span><input id=\"profilePrompt\" placeholder=\":\" /><em>Normal TCL is a standalone :. The > prompt means an active select list.</em></label><label class=\"field\"><span>Approval mode</span><select id=\"profileSafety\"><option value=\"ask\">Ask before risky actions</option><option value=\"plan\">Read and plan only</option><option value=\"trust\">Allow normal guarded work</option></select><em>Controls writes, compile, catalog, LOGTO, and runtime commands.</em></label></div><div class=\"profile-form-actions\"><button id=\"saveProfile\">Save profile</button><button id=\"cancelProfile\">Cancel</button></div></div></div>",
     "<script>",
     "const $=id=>document.getElementById(id);",
@@ -127,21 +375,56 @@ function html(): string {
     "function escapeHtml(s){return String(s).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]))}",
     "let terminalDraft='';",
     "function terminalText(v){return typeof v==='string'?v:JSON.stringify(v,null,2)}",
-    "function terminalEls(){return ['terminal','terminalMain'].map(id=>$(id)).filter(Boolean)}",
-    "function commandEls(){return ['command','terminalCommand'].map(id=>$(id)).filter(Boolean)}",
+    "function formatTerminalResponse(v){if(!v)return '';if(typeof v==='string')return v;if(v.transcript)return String(v.transcript);if(v.error)return 'Error: '+v.error;if(v.result)return String(v.result);return terminalText(v)}",
+    "function terminalEls(){return ['terminalMain','editorScreen'].map(id=>$(id)).filter(Boolean)}",
+    "function commandEls(){return ['terminalCommand','editorTerminalCommand'].map(id=>$(id)).filter(Boolean)}",
     "function renderTerminal(){const out=terminalEls()[0]?.dataset.output||'';terminalEls().forEach(el=>{el.dataset.output=out;el.textContent=(out?out.replace(/\\s*$/,'')+'\\n':'')+'> '+terminalDraft;el.scrollTop=el.scrollHeight});commandEls().forEach(el=>el.value=terminalDraft)}",
-    "function show(id,v){if(id==='terminal') {const text=terminalText(v);terminalEls().forEach(el=>el.dataset.output=text);renderTerminal();return}$(id).textContent=terminalText(v)}",
+    "function setTerminalTranscript(text){terminalEls().forEach(el=>el.dataset.output=String(text||''));renderTerminal()}",
+    "function show(id,v){if(id==='terminal'||id==='editorScreen') {setTerminalTranscript(formatTerminalResponse(v));return}const node=$(id);if(node)node.textContent=terminalText(v)}",
     "const CHAT_STORE='d3code.ide.chats.v1';",
     "const CHAT_VIEW_STORE='d3code.ide.view';",
     "const RIGHT_WIDTH_STORE='d3code.ide.rightWidth';",
+    "const EDITOR_SIDEBAR_WIDTH_STORE='d3code.ide.editorSidebarWidth';",
+    "const D3_BROWSER_COLLAPSE_STORE='d3code.ide.d3BrowserCollapse.v1';",
+    "const SIDEBAR_WIDTH_STORE='d3code.ide.sidebarWidth';",
+    "const PROFILE_COLLAPSE_STORE='d3code.ide.profileCollapse.v1';",
+    "const CHAT_INPUT_PLACEHOLDER='Plan, build — / for commands and context';",
     "let chatSessions=[];",
     "let activeChatId='';",
-    "function makeChat(){const id='chat-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);return {id,title:'New session',updatedAt:Date.now(),messages:[]}}",
-    "function loadChats(){try{const saved=JSON.parse(localStorage.getItem(CHAT_STORE)||'[]');if(Array.isArray(saved)&&saved.length){chatSessions=saved;activeChatId=saved[0].id;return}}catch{}const first=makeChat();chatSessions=[first];activeChatId=first.id;saveChats()}",
-    "function saveChats(){try{localStorage.setItem(CHAT_STORE,JSON.stringify(chatSessions.slice(0,30)))}catch{}}",
-    "function currentChat(){let chat=chatSessions.find(c=>c.id===activeChatId);if(!chat){chat=makeChat();chatSessions.unshift(chat);activeChatId=chat.id}return chat}",
+    "let agentRunChatId='';",
+    "const busyChatIds=new Set();",
+    "function chatById(id){return chatSessions.find(c=>c.id===id)||null}",
+    "function isAgentChatLive(){return Boolean(agentRunChatId&&agentRunChatId===activeChatId)}",
+    "function recordingChat(){return chatById(agentRunChatId)||currentChat()}",
+    "function setChatBusy(id,busy){if(!id)return;if(busy)busyChatIds.add(id);else busyChatIds.delete(id);renderChatList()}",
+    "let chatContextTargetId='';",
+    "let profileContextTarget='';",
+    "let editingProfileName='';",
+    "let profileCache=[];",
+    "let selectedProfile='';",
+    "let profileCollapse={};",
+    "let d3BrowserCollapse={};",
+    "let d3BrowserCache={};",
+    "let selectedD3File='';",
+    "let currentSafety='ask';",
+    "let pythonRuntime=null;",
+    "function makeChat(profile){const id='chat-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);return {id,title:'New chat',profile:profile||'',updatedAt:Date.now(),messages:[]}}",
+    "function isBlankChatSession(chat){return !chat||!chat.messages||chat.messages.length===0}",
+    "function activeChatSession(){return chatSessions.find(c=>c.id===activeChatId)||null}",
+    "function chatsForProfile(profile){return chatSessions.filter(c=>(c.profile||'')===profile).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))}",
+    "function loadProfileCollapse(){try{const saved=JSON.parse(localStorage.getItem(PROFILE_COLLAPSE_STORE)||'{}');profileCollapse=saved&&typeof saved==='object'?saved:{}}catch{profileCollapse={}}}",
+    "function saveProfileCollapse(){try{localStorage.setItem(PROFILE_COLLAPSE_STORE,JSON.stringify(profileCollapse))}catch{}}",
+    "function profileCollapsed(name){return profileCollapse[name]===true}",
+    "function toggleProfileCollapsed(name){profileCollapse[name]=!profileCollapsed(name);saveProfileCollapse();renderChatList();renderD3Browser()}",
+    "function migrateChatProfiles(activeProfile){chatSessions.forEach(c=>{if(!c.profile&&activeProfile)c.profile=activeProfile})}",
+    "function syncActiveChatForProfile(){if(!selectedProfile){activeChatId='';return}const chats=chatsForProfile(selectedProfile);if(!chats.length){activeChatId='';return}if(!chats.some(c=>c.id===activeChatId))activeChatId=chats[0].id}",
+    "function loadChats(){loadProfileCollapse();try{const saved=JSON.parse(localStorage.getItem(CHAT_STORE)||'[]');if(Array.isArray(saved)&&saved.length){chatSessions=saved;activeChatId=saved[0]?.id||'';return}}catch{}chatSessions=[];activeChatId=''}",
+    "function saveChats(){try{localStorage.setItem(CHAT_STORE,JSON.stringify(chatSessions.slice(0,60)))}catch{}}",
+    "function requireActiveChat(){let chat=activeChatSession();if(chat)return chat;if(!selectedProfile)return null;chat=makeChat(selectedProfile);chatSessions.unshift(chat);activeChatId=chat.id;saveChats();renderChatList();return chat}",
+    "function currentChat(){return requireActiveChat()}",
     "function previewText(text){return String(text||'').replace(/\\s+/g,' ').trim().slice(0,90)}",
-    "function recordChatMessage(message){message.id=message.id||('msg-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7));message.createdAt=message.createdAt||Date.now();const chat=currentChat();chat.messages.push(message);chat.updatedAt=Date.now();const firstUser=chat.messages.find(m=>m.role==='user');if(firstUser)chat.title=previewText(firstUser.text).slice(0,44)||'Session';chatSessions=[chat,...chatSessions.filter(c=>c.id!==chat.id)];saveChats();renderChatList()}",
+    "function ensureMessageId(message){message.id=message.id||('msg-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7));message.createdAt=message.createdAt||Date.now();return message}",
+    "function recordChatMessage(message,chatId){ensureMessageId(message);const chat=chatById(chatId)||recordingChat();if(!chat)return;chat.messages.push(message);chat.updatedAt=Date.now();const firstUser=chat.messages.find(m=>m.role==='user');if(firstUser)chat.title=previewText(firstUser.text).slice(0,44)||'Session';chatSessions=[chat,...chatSessions.filter(c=>c.id!==chat.id)];saveChats();renderChatList();if(chatId===activeChatId||chat.id===activeChatId)syncChatTitle()}",
     "function formatTime(ts){try{return new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(new Date(ts||Date.now()))}catch{return ''}}",
     "function cleanAgentText(text){return String(text||'').replace(/<\\/?(?:d3_tool|tool_call|d_value|arg_key|arg_value)[^>]*>/gi,'').replace(/\\{\\s*\"name\"\\s*:\\s*\"d3_[\\s\\S]*?\\}\\s*/g,'').trim()}",
     "function inlineMarkdown(s){return escapeHtml(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>')}",
@@ -149,8 +432,14 @@ function html(): string {
     "function placeMenu(menu,anchor){const rect=anchor.getBoundingClientRect();menu.style.left=Math.min(rect.left,window.innerWidth-menu.offsetWidth-14)+'px';menu.style.top=Math.max(12,rect.top-menu.offsetHeight-10)+'px'}",
     "function closeControlMenus(){document.querySelectorAll('.control-menu').forEach(menu=>menu.classList.remove('open'))}",
     "function openControlMenu(id,anchor){closeControlMenus();const menu=$(id);menu.classList.add('open');requestAnimationFrame(()=>placeMenu(menu,anchor))}",
+    "function activeLayoutRoot(){const view=document.body.dataset.view;if(view==='chat')return document.getElementById('chatView');if(view==='terminal')return document.getElementById('terminalView');if(view==='editor')return document.getElementById('editorView');return null}",
     "function setRightWidth(px){const width=Math.max(260,Math.min(720,Number(px)||340));document.documentElement.style.setProperty('--right-w',width+'px');try{localStorage.setItem(RIGHT_WIDTH_STORE,String(width))}catch{}}",
-    "function initRightResize(){try{const saved=localStorage.getItem(RIGHT_WIDTH_STORE);if(saved)setRightWidth(saved)}catch{}document.querySelectorAll('.right-resizer').forEach(handle=>{handle.addEventListener('pointerdown',event=>{event.preventDefault();handle.classList.add('dragging');const move=e=>setRightWidth(window.innerWidth-e.clientX);const up=()=>{handle.classList.remove('dragging');document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up)};document.addEventListener('pointermove',move);document.addEventListener('pointerup',up)})})}",
+    "function setSidebarWidth(px){const width=Math.max(220,Math.min(480,Number(px)||290));document.documentElement.style.setProperty('--sidebar-w',width+'px');try{localStorage.setItem(SIDEBAR_WIDTH_STORE,String(width))}catch{}}",
+    "function setEditorSidebarWidth(px){const width=Math.max(220,Math.min(480,Number(px)||290));document.documentElement.style.setProperty('--editor-sidebar-w',width+'px');try{localStorage.setItem(EDITOR_SIDEBAR_WIDTH_STORE,String(width))}catch{}}",
+    "function editorSidebarWidthFromPointer(clientX){const root=document.getElementById('editorView');if(!root)return null;const rect=root.getBoundingClientRect();return Math.max(220,Math.min(480,clientX-rect.left))}",
+    "function rightWidthFromPointer(clientX){const root=activeLayoutRoot();if(!root)return null;const rect=root.getBoundingClientRect();return Math.max(260,Math.min(720,rect.right-clientX))}",
+    "function sidebarWidthFromPointer(clientX){const root=document.getElementById('chatView');if(!root)return null;const rect=root.getBoundingClientRect();return Math.max(220,Math.min(480,clientX-rect.left))}",
+    "function initColumnResize(){try{const savedRight=localStorage.getItem(RIGHT_WIDTH_STORE);if(savedRight)setRightWidth(savedRight)}catch{}try{const savedSidebar=localStorage.getItem(SIDEBAR_WIDTH_STORE);if(savedSidebar)setSidebarWidth(savedSidebar)}catch{}try{const savedEditorSidebar=localStorage.getItem(EDITOR_SIDEBAR_WIDTH_STORE);if(savedEditorSidebar)setEditorSidebarWidth(savedEditorSidebar)}catch{}document.querySelectorAll('.column-resizer').forEach(handle=>{handle.addEventListener('pointerdown',event=>{event.preventDefault();const mode=handle.dataset.resize||'right';handle.classList.add('dragging');const move=e=>{if(mode==='sidebar'){const width=sidebarWidthFromPointer(e.clientX);if(width!=null)setSidebarWidth(width);return}if(mode==='editor-sidebar'){const width=editorSidebarWidthFromPointer(e.clientX);if(width!=null)setEditorSidebarWidth(width);return}const width=rightWidthFromPointer(e.clientX);if(width!=null)setRightWidth(width)};const up=()=>{handle.classList.remove('dragging');document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up)};document.addEventListener('pointermove',move);document.addEventListener('pointerup',up)})})}",
     "let snackbarTimer=null;",
     "function toast(text){const bar=$('snackbar');if(!bar)return;bar.textContent=text;bar.classList.add('show');clearTimeout(snackbarTimer);snackbarTimer=setTimeout(()=>bar.classList.remove('show'),1400)}",
     "async function copyText(text){try{await navigator.clipboard.writeText(text||'');toast('Copied')}catch{toast('Could not copy')}}",
@@ -158,19 +447,31 @@ function html(): string {
     "function copyIcon(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"></rect><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"></path></svg>'}",
     "function beginEditMessage(message){if(message.role!=='user'||!message.id)return;document.querySelectorAll('.user-edit').forEach(el=>renderActiveChat());const nodes=document.querySelectorAll(`[data-message-id=\"${message.id}\"]`);nodes.forEach(node=>{const body=node.querySelector('.message-body');if(!body)return;body.innerHTML='<textarea class=\"user-edit\" spellcheck=\"true\"></textarea>';const area=body.querySelector('textarea');area.value=message.text||'';area.focus();area.setSelectionRange(area.value.length,area.value.length);area.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();renderActiveChat();return}if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitEditedMessage(message.id,area.value)}}})}",
     "async function submitEditedMessage(id,text){const next=String(text||'').trim();if(!next){renderActiveChat();return}const chat=currentChat();const index=chat.messages.findIndex(m=>m.id===id);if(index<0){renderActiveChat();return}chat.messages=chat.messages.slice(0,index);chat.updatedAt=Date.now();const firstUser=chat.messages.find(m=>m.role==='user');chat.title=previewText((firstUser&&firstUser.text)||next).slice(0,44)||'Session';saveChats();renderChatList();renderActiveChat();try{await streamAgent(next)}catch(error){addBubble('assistant',error.message||String(error))}}",
-    "const toolTitles={d3_list_files:'Listed D3 files',d3_read_item:'Read D3 item',d3_write_item:'Wrote D3 item',d3_read_dict:'Read D3 dictionary',d3_query_aql:'Ran AQL',d3_tcl:'Ran TCL',d3_login:'Switched account',d3_detect:'Checked D3',d3_locks:'Inspected locks',d3_index_account:'Indexed account',d3_search:'Searched account',d3_manual_search:'Searched manuals'};",
+    "const toolTitles={d3_list_files:'Listed D3 files',d3_read_item:'Read D3 item',d3_write_item:'Wrote D3 item',d3_create_file:'Created D3 file',d3_read_dict:'Read D3 dictionary',d3_write_dict:'Wrote D3 dictionary',d3_build_basic_program:'Built BASIC program',d3_compile_basic:'Compiled BASIC',d3_catalog:'Cataloged BASIC',d3_sbplus_plan:'Planned SB+ process',d3_sbplus_discover:'Discovered SB+ account shape',d3_builder_capabilities:'Listed D3/SB+ capabilities',d3_query_aql:'Ran AQL',d3_tcl:'Ran TCL',d3_login:'Switched account',d3_detect:'Checked D3',d3_locks:'Inspected locks',d3_index_account:'Indexed account',d3_search:'Searched account',d3_manual_search:'Searched manuals',d3_rag_search:'Searched RAG'};",
     "function toolTitle(name){return toolTitles[name]||('D3 tool '+String(name||'').replace(/^d3_/,''))}",
-    "function toolSummary(text){const lines=String(text||'').split(/\\r?\\n/).map(line=>line.trim()).filter(Boolean);return lines.slice(0,2).join('\\n')||'Working...'}",
-    "function toolNeedsDetails(message){const full=message.detail||message.text||'';const summary=toolSummary(full);return full.length>summary.length+24}",
+    "function toolPreviewLine(text){const line=String(text||'').split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean)[0]||'';if(!line)return 'Done';return line.length>96?line.slice(0,93)+'…':line}",
+    "function toolExpandable(full){const body=String(full||'').trim();if(!body)return false;const lines=body.split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean);if(lines.length>1)return true;return lines[0].length>96}",
     "let activeToolNode=null;",
-    "function renderToolNode(div,message){message.createdAt=message.createdAt||Date.now();const full=message.detail||message.text||'';const summary=message.status==='running'?(message.reason||'Working...'):toolSummary(full);const showToggle=message.status!=='running'&&toolNeedsDetails({detail:full,text:summary});div.className='tool-event '+(message.status==='running'?'running':'');div.dataset.rawText=full;div.innerHTML='<div><div class=\"tool-name\">'+escapeHtml(toolTitle(message.name))+'</div><div class=\"tool-status\">'+escapeHtml(message.status==='running'?'running':'done')+' · '+escapeHtml(formatTime(message.createdAt))+'</div></div><div class=\"chat-tool-summary\">'+escapeHtml(summary)+'</div>'+(showToggle?'<div class=\"chat-tool-detail\">'+escapeHtml(full)+'</div><button type=\"button\" class=\"tool-toggle\">Show technical log</button>':'');const toggle=div.querySelector('.tool-toggle');if(toggle)toggle.onclick=()=>{div.classList.toggle('expanded');toggle.textContent=div.classList.contains('expanded')?'Hide technical log':'Show technical log'}}",
-    "function syncToolMessage(message){if(!message.id)return;const chat=currentChat();const index=chat.messages.findIndex(m=>m.id===message.id);if(index>=0)chat.messages[index]={...chat.messages[index],...message};else chat.messages.push(message);chat.updatedAt=Date.now();saveChats()}",
-    "function messageNode(message){message.createdAt=message.createdAt||Date.now();const div=document.createElement('div');if(message.id)div.dataset.messageId=message.id;if(message.kind==='tool'){renderToolNode(div,message);return div}div.className='chat-bubble '+(message.role||'assistant');div.innerHTML='<div class=\"message-head\"><div class=\"message-meta\">'+escapeHtml(message.role==='user'?'You':'D3 Code')+' · '+escapeHtml(formatTime(message.createdAt))+'</div></div><div class=\"message-body\"></div>'+(message.role==='assistant'?'<div class=\"message-actions\"><button class=\"copy-message\" type=\"button\" title=\"Copy response\" aria-label=\"Copy response\">'+copyIcon()+'</button></div>':'');const copy=div.querySelector('.copy-message');if(copy)copy.onclick=()=>copyText(div.dataset.rawText);if(message.role==='user')div.onclick=()=>beginEditMessage(message);updateMessageNode(div,message);return div}",
+    "function renderToolNode(div,message){message.createdAt=message.createdAt||Date.now();const full=message.detail||message.text||'';const running=message.status==='running';const preview=running?(message.reason||'Working...'):toolPreviewLine(full);const expandable=!running&&toolExpandable(full);const expanded=expandable&&message.expanded!==false;div.className='tool-event '+(running?'running':'')+(expandable?' collapsible':'')+(expanded?' expanded':'');div.dataset.rawText=full;div.innerHTML='<button type=\"button\" class=\"tool-event-head\"'+(expandable?' aria-expanded=\"'+(expanded?'true':'false')+'\"':' disabled')+'><span class=\"tool-name\">'+escapeHtml(toolTitle(message.name))+'</span><span class=\"tool-preview\">'+escapeHtml(preview)+'</span><span class=\"tool-meta\"><span class=\"tool-status\">'+escapeHtml(running?'running':'done')+' · '+escapeHtml(formatTime(message.createdAt))+'</span>'+(expandable?'<span class=\"tool-chevron\" aria-hidden=\"true\">›</span>':'')+'</span></button>'+(expandable?'<div class=\"chat-tool-detail\">'+escapeHtml(full)+'</div>':'');const head=div.querySelector('.tool-event-head');if(head&&expandable)head.onclick=()=>{const open=div.classList.toggle('expanded');message.expanded=open;head.setAttribute('aria-expanded',open?'true':'false');syncToolMessage(message)}}",
+    "function syncToolMessage(message,chatId){ensureMessageId(message);const chat=chatById(chatId||agentRunChatId||activeChatId);if(!chat)return;const index=chat.messages.findIndex(m=>m.id===message.id);if(index>=0)chat.messages[index]={...chat.messages[index],...message};else chat.messages.push(message);chat.updatedAt=Date.now();chatSessions=[chat,...chatSessions.filter(c=>c.id!==chat.id)];saveChats();renderChatList()}",
+    "function messageNode(message){message.createdAt=message.createdAt||Date.now();const div=document.createElement('div');if(message.id)div.dataset.messageId=message.id;if(message.kind==='tool'){renderToolNode(div,message);return div}div.className='chat-bubble '+(message.role||'assistant');div.innerHTML='<div class=\"message-head\"><div class=\"message-meta\">'+escapeHtml(message.role==='user'?'You':'D3 Code')+' · '+escapeHtml(formatTime(message.createdAt))+'</div></div><div class=\"message-body\"></div>'+(message.role==='assistant'?'<div class=\"message-actions\"><button class=\"copy-message\" type=\"button\" title=\"Copy response\" aria-label=\"Copy response\">'+copyIcon()+'</button></div>':'');const copy=div.querySelector('.copy-message');if(copy)copy.onclick=()=>copyText(div.dataset.rawText);updateMessageNode(div,message);return div}",
+    "function chatOutputs(){return ['chatOutput','agentOutput','terminalAgentOutput'].map(id=>$(id)).filter(Boolean)}",
     "function activeOutput(){if(document.body.dataset.view==='chat')return $('chatOutput');if(document.body.dataset.view==='terminal')return $('terminalAgentOutput');return $('agentOutput')}",
-    "function appendMessage(message,{record=true}={}){if(record)recordChatMessage(message);const out=activeOutput();const div=messageNode(message);out.appendChild(div);out.scrollTop=out.scrollHeight;return div}",
+    "function runStatusNodes(){return ['runStatus','agentRunStatus','terminalRunStatus'].map(id=>$(id)).filter(Boolean)}",
+    "function activityNodes(){return ['chatActivity','agentActivity','terminalAgentActivity'].map(id=>$(id)).filter(Boolean)}",
+    "function setRunStatus(){}",
+    "function setActivityText(){}",
+    "function scrollChatOutputs(){chatOutputs().forEach(out=>{out.scrollTop=out.scrollHeight})}",
+    "function removeTypingRows(){if(agentRunChatId&&agentRunChatId!==activeChatId)return;document.querySelectorAll('[data-typing=\"1\"]').forEach(node=>node.remove())}",
+    "function showTypingRows(label){if(agentRunChatId&&agentRunChatId!==activeChatId)return;removeTypingRows();const text=label||'Working...';chatOutputs().forEach(out=>{const row=document.createElement('div');row.className='typing-row';row.dataset.typing='1';row.innerHTML='<span class=\"typing-dots\" aria-hidden=\"true\"><span></span><span></span><span></span></span><span>'+escapeHtml(text)+'</span>';out.appendChild(row)});scrollChatOutputs()}",
+    "function clearStreamingBubbles(){if(agentRunChatId&&agentRunChatId!==activeChatId)return;document.querySelectorAll('[data-streaming=\"1\"]').forEach(node=>node.remove())}",
+    "function ensureStreamingBubble(){if(!isAgentChatLive())return null;clearStreamingBubbles();chatOutputs().forEach(out=>{const div=messageNode({kind:'bubble',role:'assistant',text:'',createdAt:Date.now()});div.classList.add('streaming');div.dataset.streaming='1';out.appendChild(div)});scrollChatOutputs();return document.querySelector('[data-streaming=\"1\"]')}",
+    "function pulseStreamingBody(body,nextLen){if(!body||nextLen<=Number(body.dataset.streamLen||0))return;body.dataset.streamLen=String(nextLen);body.classList.remove('stream-pulse');void body.offsetWidth;body.classList.add('stream-pulse')}",
+    "function updateStreamingBubbles(text){if(!isAgentChatLive())return;const next=String(text||'');document.querySelectorAll('[data-streaming=\"1\"]').forEach(node=>{const body=node.querySelector('.message-body');updateMessageNode(node,{role:'assistant',text:next});node.classList.add('streaming');pulseStreamingBody(body,next.length)});scrollChatOutputs()}",
+    "function finalizeStreamingBubbles(text){const finalText=cleanAgentText(text||'');if(isAgentChatLive())document.querySelectorAll('[data-streaming=\"1\"]').forEach(node=>{const body=node.querySelector('.message-body');if(body){body.classList.remove('stream-pulse');body.removeAttribute('data-stream-len')}node.classList.remove('streaming');updateMessageNode(node,{role:'assistant',text:finalText});node.dataset.rawText=finalText});return finalText}",
+    "function appendMessage(message,{record=true,chatId}={}){const targetId=chatId||agentRunChatId||activeChatId;if(record)recordChatMessage(message,targetId);if(targetId!==activeChatId)return null;let first=null;chatOutputs().forEach(out=>{const div=messageNode(message);out.appendChild(div);if(!first)first=div});scrollChatOutputs();return first}",
     "function addBubble(role,text){return appendMessage({kind:'bubble',role,text})}",
-    "function setRunStatus(text='',kind='ready'){const el=$('runStatus');if(!el)return;el.textContent=text;el.dataset.kind=kind}",
-    "function addToolEvent(t,{record=true}={}){const full=t.result||t.compact||t.reason||'running';const message={kind:'tool',role:'tool',name:t.name||'d3_tool',status:t.status||'done',text:toolSummary(full),detail:full,reason:t.reason};$('chatLastTool').textContent=toolTitle(message.name)+': '+previewText(full);if(message.status==='running'){activeToolNode=appendMessage(message,{record:false});return activeToolNode}if(activeToolNode){if(activeToolNode.dataset.messageId)message.id=activeToolNode.dataset.messageId;renderToolNode(activeToolNode,message);syncToolMessage(message);activeToolNode=null;return activeToolNode}return appendMessage(message,{record})}",
+    "function addToolEvent(t,{record=true}={}){const full=t.result||t.compact||t.reason||'running';const message={kind:'tool',role:'tool',name:t.name||'d3_tool',status:t.status||'done',text:toolPreviewLine(full),detail:full,reason:t.reason,expanded:t.expanded!==false};$('chatLastTool').textContent=toolTitle(message.name)+': '+previewText(full);const runId=agentRunChatId||activeChatId;if(message.status==='running'){ensureMessageId(message);if(isAgentChatLive())activeToolNode=appendMessage(message,{record:false,chatId:runId});else recordChatMessage(message,runId);return activeToolNode}ensureMessageId(message);if(activeToolNode&&isAgentChatLive()){message.id=message.id||activeToolNode.dataset.messageId||'';renderToolNode(activeToolNode,message);syncToolMessage(message);activeToolNode=null;return activeToolNode}const chat=chatById(runId);const runningMsg=chat?.messages?.slice().reverse().find(m=>m.kind==='tool'&&m.status==='running');if(runningMsg)message.id=runningMsg.id;syncToolMessage(message);if(runId===activeChatId){const node=document.querySelector(`[data-message-id=\"${message.id}\"]`);if(node)renderToolNode(node,message);else appendMessage(message,{record:false,chatId:runId})}return null}",
     "const slashCommands=[{name:'/help',desc:'show browser IDE commands'},{name:'/terminal',desc:'switch main area to the D3 terminal'},{name:'/editor',desc:'switch main area to item/BASIC editor'},{name:'/chat',desc:'switch back to current chat'},{name:'/files',desc:'list D3 files in the active account'},{name:'/locks',desc:'inspect active D3 locks'},{name:'/index',desc:'index the active D3 account'},{name:'/tcl',desc:'run a TCL/D3 command: /tcl WHO'},{name:'/aql',desc:'run an AQL query: /aql LIST MD'},{name:'/read',desc:'read item: /read FILE ITEM'},{name:'/dict',desc:'read dictionary item: /dict FILE ITEM'},{name:'/manual-search',desc:'search Rocket D3 manuals'},{name:'/new',desc:'start a new chat session'},{name:'/clear',desc:'clear this chat'}];",
     "let slashActive=0;",
     "let composerAttachments=[];",
@@ -187,81 +488,140 @@ function html(): string {
     "function closeSlashPalette(){const box=$('slashPalette');if(box){box.classList.remove('open');box.innerHTML=''}}",
     "function acceptSlash(index=slashActive){const matches=slashMatches();const command=matches[index];if(!command)return;const input=$('chatPrompt');input.value=command.name+' ';input.focus();input.setSelectionRange(input.value.length,input.value.length);closeSlashPalette()}",
     "function compactApiResult(value){if(value?.result)return value.result;if(value?.output)return value.output;if(value?.error)return 'error: '+value.error;return JSON.stringify(value,null,2)}",
-    "async function runSlash(input){const [command,...parts]=input.trim().split(/\\s+/);const rest=parts.join(' ');addBubble('user',input);if(command==='/help'){addBubble('assistant','Browser commands:\\n'+slashCommands.map(c=>'- `'+c.name+'` - '+c.desc).join('\\n'));return}if(command==='/terminal'){setView('terminal');addBubble('assistant','Opened the D3 terminal.');return}if(command==='/editor'){setView('editor');addBubble('assistant','Opened the editor.');return}if(command==='/chat'){setView('chat');return}if(command==='/new'){await newChat();return}if(command==='/clear'){currentChat().messages=[];saveChats();renderChatList();renderActiveChat();return}if(command==='/files'){addToolEvent({name:'D3 files',status:'done',result:compactApiResult(await api('/api/files'))});return}if(command==='/locks'){addToolEvent({name:'D3 locks',status:'done',result:compactApiResult(await api('/api/locks'))});return}if(command==='/index'){addToolEvent({name:'D3 account index',status:'done',result:compactApiResult(await api('/api/index',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}))});return}if(command==='/tcl'){if(!rest){addBubble('assistant','Usage: `/tcl WHO` or `/tcl LIST MD`');return}setView('terminal');await sendTerminalCommand(rest);addToolEvent({name:'D3 TCL',status:'done',result:'Sent to terminal: '+rest});return}if(command==='/aql'){if(!rest){addBubble('assistant','Usage: `/aql LIST CUSTOMERS NAME`');return}addToolEvent({name:'D3 AQL',status:'done',result:compactApiResult(await api('/api/aql',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query:rest})}))});return}if(command==='/manual-search'){if(!rest){addBubble('assistant','Usage: `/manual-search dictionary`');return}addToolEvent({name:'Manual search',status:'done',result:compactApiResult(await api('/api/manual-search?query='+encodeURIComponent(rest)))});return}if(command==='/read'||command==='/dict'){const [file,item]=parts;if(!file||!item){addBubble('assistant','Usage: `'+command+' <file> <item>`');return}const path=(command==='/read'?'/api/item?':'/api/dict?')+new URLSearchParams({file,item});addToolEvent({name:command==='/read'?'Read item':'Read dict',status:'done',result:compactApiResult(await api(path))});return}addBubble('assistant','Unknown command. Press `/` to pick a command.');}",
-    "function renderChatList(){const html=chatSessions.map(c=>{const last=c.messages[c.messages.length-1];return `<button class=\"chat-item ${c.id===activeChatId?'active':''}\" data-chat-id=\"${escapeHtml(c.id)}\"><b>${escapeHtml(c.title||'Session')}</b><span>${escapeHtml(last?previewText(last.text):'No messages yet')}</span></button>`}).join('');['chatList','terminalChatList'].forEach(id=>{if($(id))$(id).innerHTML=html});document.querySelectorAll('[data-chat-id]').forEach(btn=>btn.onclick=async()=>{activeChatId=btn.dataset.chatId;renderChatList();renderActiveChat();try{await api('/api/agent/reset',{method:'POST'})}catch{}})}",
-    "function renderChatInto(id){const out=$(id);if(!out)return;out.innerHTML='';const chat=currentChat();if(chat.messages.length===0){out.appendChild(messageNode({kind:'bubble',role:'assistant',createdAt:Date.now(),text:'Tell me what you want to do next. I can inspect the active account, list files, read dictionaries or BASIC, run safe TCL checks, and explain what the evidence means in plain English.'}));return}chat.messages.forEach(m=>out.appendChild(messageNode(m)));out.scrollTop=out.scrollHeight}",
-    "function renderActiveChat(){['chatOutput','agentOutput','terminalAgentOutput'].forEach(renderChatInto)}",
-    "async function newChat(){const chat=makeChat();chatSessions.unshift(chat);activeChatId=chat.id;saveChats();renderChatList();renderActiveChat();try{await api('/api/agent/reset',{method:'POST'})}catch{}}",
-    "function setView(view){const next=view==='editor'?'editor':view==='terminal'?'terminal':'chat';document.body.dataset.view=next;try{localStorage.setItem(CHAT_VIEW_STORE,next)}catch{}$('chatModeButton').classList.toggle('active',next==='chat');$('editorModeButton').classList.toggle('active',next==='editor');$('terminalModeButton').classList.toggle('active',next==='terminal');renderActiveChat();renderTerminal()}",
+    "async function runSlash(input){const [command,...parts]=input.trim().split(/\\s+/);const rest=parts.join(' ');if(command!=='/help'&&command!=='/chat'&&command!=='/terminal'&&command!=='/editor'&&!requireActiveChat()){addBubble('user',input);addBubble('assistant','Add and select a D3 profile in Sessions first.');return}addBubble('user',input);if(command==='/help'){addBubble('assistant','Browser commands:\\n'+slashCommands.map(c=>'- `'+c.name+'` - '+c.desc).join('\\n'));return}if(command==='/terminal'){setView('terminal');addBubble('assistant','Opened the D3 terminal.');return}if(command==='/editor'){setView('editor');addBubble('assistant','Opened the editor.');return}if(command==='/chat'){setView('chat');return}if(command==='/new'){await newChat();return}if(command==='/clear'){const chat=requireActiveChat();if(chat){chat.messages=[];saveChats();renderChatList();renderActiveChat();syncChatEmptyLayout()}return}if(command==='/files'){addToolEvent({name:'D3 files',status:'done',result:compactApiResult(await api('/api/files'))});return}if(command==='/locks'){addToolEvent({name:'D3 locks',status:'done',result:compactApiResult(await api('/api/locks'))});return}if(command==='/index'){addToolEvent({name:'D3 account index',status:'done',result:compactApiResult(await api('/api/index',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}))});return}if(command==='/tcl'){if(!rest){addBubble('assistant','Usage: `/tcl WHO` or `/tcl LIST MD`');return}setView('terminal');await sendTerminalCommand(rest);addToolEvent({name:'D3 TCL',status:'done',result:'Sent to terminal: '+rest});return}if(command==='/aql'){if(!rest){addBubble('assistant','Usage: `/aql LIST CUSTOMERS NAME`');return}addToolEvent({name:'D3 AQL',status:'done',result:compactApiResult(await api('/api/aql',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query:rest})}))});return}if(command==='/manual-search'){if(!rest){addBubble('assistant','Usage: `/manual-search dictionary`');return}addToolEvent({name:'Manual search',status:'done',result:compactApiResult(await api('/api/manual-search?query='+encodeURIComponent(rest)))});return}if(command==='/read'||command==='/dict'){const [file,item]=parts;if(!file||!item){addBubble('assistant','Usage: `'+command+' <file> <item>`');return}const path=(command==='/read'?'/api/item?':'/api/dict?')+new URLSearchParams({file,item});addToolEvent({name:command==='/read'?'Read item':'Read dict',status:'done',result:compactApiResult(await api(path))});return}addBubble('assistant','Unknown command. Press `/` to pick a command.');}",
+    "function closeChatContextMenu(){const menu=$('chatContextMenu');if(menu){menu.classList.remove('open');menu.setAttribute('aria-hidden','true')}chatContextTargetId=''}",
+    "function closeProfileContextMenu(){const menu=$('profileContextMenu');if(menu){menu.classList.remove('open');menu.setAttribute('aria-hidden','true')}profileContextTarget=''}",
+    "function closeSessionContextMenus(){closeChatContextMenu();closeProfileContextMenu()}",
+    "function placeContextMenu(menu,x,y){if(!menu)return;requestAnimationFrame(()=>{const left=Math.max(8,Math.min(x,window.innerWidth-menu.offsetWidth-8));const top=Math.max(8,Math.min(y,window.innerHeight-menu.offsetHeight-8));menu.style.left=left+'px';menu.style.top=top+'px'})}",
+    "function openChatContextMenu(chatId,x,y){closeSessionContextMenus();chatContextTargetId=chatId||'';const menu=$('chatContextMenu');if(!menu||!chatContextTargetId)return;menu.classList.add('open');menu.setAttribute('aria-hidden','false');placeContextMenu(menu,x,y)}",
+    "function openProfileContextMenu(profileName,x,y){closeSessionContextMenus();profileContextTarget=profileName||'';const menu=$('profileContextMenu');if(!menu||!profileContextTarget)return;menu.classList.add('open');menu.setAttribute('aria-hidden','false');placeContextMenu(menu,x,y)}",
+    "async function resetAgentThread(chatId){try{await api('/api/agent/reset',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chatId||activeChatId})})}catch{}}",
+    "async function deleteChat(chatId){const id=chatId||chatContextTargetId;if(!id)return;const index=chatSessions.findIndex(c=>c.id===id);if(index<0)return;const wasActive=activeChatId===id;const profile=chatSessions[index]?.profile||'';chatSessions=chatSessions.filter(c=>c.id!==id);if(wasActive){const next=chatsForProfile(profile)[0];activeChatId=next?next.id:''}closeChatContextMenu();saveChats();renderChatList();await resetAgentThread(id);if(wasActive)renderActiveChat();toast('Chat deleted')}",
+    "function profileChevron(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 6l6 6-6 6\"/></svg>'}",
+    "function iconPlusSvg(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>'}",
+    "function iconChatBubbleSvg(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z\"/></svg>'}",
+    "function iconDotsSvg(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"5\" cy=\"12\" r=\"1.8\"/><circle cx=\"12\" cy=\"12\" r=\"1.8\"/><circle cx=\"19\" cy=\"12\" r=\"1.8\"/></svg>'}",
+    "function iconSpinnerSvg(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-dasharray=\"42\" stroke-dashoffset=\"12\"/></svg>'}",
+    "function iconOnlineSvg(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"6\" fill=\"currentColor\"/></svg>'}",
+    "let profileOnlineStatus={};",
+    "let profileOnlineTimer=null;",
+    "function profileOnlineHtml(name){if(!profileOnlineStatus[name])return '';return '<span class=\"session-profile-online\" title=\"D3 account online\" aria-label=\"D3 account online\">'+iconOnlineSvg()+'</span>'}",
+    "async function refreshProfileOnlineStatus(){let payload;try{payload=await api('/api/profiles/online')}catch{return}const next=payload.profiles||{};const keys=new Set([...Object.keys(profileOnlineStatus),...Object.keys(next)]);const changed=[...keys].some(name=>Boolean(profileOnlineStatus[name])!==Boolean(next[name]));profileOnlineStatus=next;if(changed)renderChatList()}",
+    "function startProfileOnlinePolling(){if(profileOnlineTimer)clearInterval(profileOnlineTimer);profileOnlineTimer=setInterval(()=>{refreshProfileOnlineStatus().catch(()=>{})},30000)}",
+    "function pythonRuntimeLabel(){if(!pythonRuntime)return'';if(pythonRuntime.runtime==='node-only')return'Node tools';if(!pythonRuntime.available)return'FastAPI offline';const routing=pythonRuntime.routing||{};if(routing.d3pyAvailable||routing.uopyAvailable)return'FastAPI D3PY/UOPY spike';return'FastAPI D3PY blocked'}",
+    "async function refreshPythonRuntime(){try{pythonRuntime=await api('/api/python-runtime')}catch{pythonRuntime=null}}",
+    "function profileMetaLine(p){const bits=[p.type||'local'];if(p.account)bits.push(p.account);if(p.host)bits.push(p.host);if(p.sessionMode==='persistent')bits.push(p.promptPattern?'PTY ready':'PTY partial');else bits.push('one-shot');const py=pythonRuntimeLabel();if(py)bits.push(py);return bits.join(' · ')}",
+    "function loadD3BrowserCollapse(){try{const saved=JSON.parse(localStorage.getItem(D3_BROWSER_COLLAPSE_STORE)||'{}');d3BrowserCollapse=saved&&typeof saved==='object'?saved:{}}catch{d3BrowserCollapse={}}}",
+    "function saveD3BrowserCollapse(){try{localStorage.setItem(D3_BROWSER_COLLAPSE_STORE,JSON.stringify(d3BrowserCollapse))}catch{}}",
+    "function d3CategoryKey(profile,categoryId){return profile+'::'+categoryId}",
+    "function d3CategoryCollapsed(profile,categoryId){return d3BrowserCollapse[d3CategoryKey(profile,categoryId)]===true}",
+    "function toggleD3CategoryCollapsed(profile,categoryId){const key=d3CategoryKey(profile,categoryId);d3BrowserCollapse[key]=!d3CategoryCollapsed(profile,categoryId);saveD3BrowserCollapse();renderD3Browser()}",
+    "function d3KindLabel(kind){if(kind==='program')return 'prog';if(kind==='screen')return 'scr';if(kind==='system'||kind==='dictionary')return 'sys';if(kind==='data')return 'data';return 'file'}",
+    "function renderD3BrowserHtml(){loadD3BrowserCollapse();if(!profileCache.length)return '<div class=\"sessions-empty\">Add a D3 profile in Sessions first.</div>';return profileCache.map(p=>{const name=p.name;const collapsed=profileCollapsed(name);const profileActive=name===selectedProfile;const browser=d3BrowserCache[name]||{};const account=browser.account||p.account||'';const who=browser.who||'';const categories=browser.categories||[];const loading=profileActive&&browser.loading;const error=browser.error;return `<section class=\"session-profile d3-browser-profile ${collapsed?'collapsed':''} ${profileActive?'active':''}\" data-profile-name=\"${escapeHtml(name)}\"><div class=\"session-profile-head\"><div class=\"session-profile-row\"><button type=\"button\" class=\"session-profile-toggle\" data-profile-toggle=\"${escapeHtml(name)}\" aria-expanded=\"${collapsed?'false':'true'}\" aria-label=\"${collapsed?'Expand':'Collapse'} account for ${escapeHtml(name)}\">${profileChevron()}</button><button type=\"button\" class=\"session-profile-select\" data-profile-select=\"${escapeHtml(name)}\">${escapeHtml(name)}</button>${profileOnlineHtml(name)}</div><div class=\"session-profile-meta\">${escapeHtml(profileMetaLine(p))}</div></div><div class=\"d3-browser-body\">${profileActive?`<div class=\"d3-account-row\"><div class=\"d3-account-label\">Account ${escapeHtml(account||'unknown')}</div>${who?`<div class=\"d3-account-who\">${escapeHtml(who)}</div>`:''}</div><div class=\"d3-logto-row\"><input id=\"account\" placeholder=\"LOGTO account, e.g. SALES\" value=\"${escapeHtml(account)}\" /><button id=\"loginAccount\" type=\"button\">Switch</button></div>`:''}${loading?'<div class=\"sessions-empty\">Loading D3 files…</div>':''}${error?`<div class=\"d3-browser-error\">${escapeHtml(error)}</div>`:''}${categories.map(cat=>{const catCollapsed=d3CategoryCollapsed(name,cat.id);return `<section class=\"d3-category ${catCollapsed?'collapsed':''}\"><button type=\"button\" class=\"d3-category-head\" data-category-toggle=\"${escapeHtml(name)}::${escapeHtml(cat.id)}\"><span class=\"d3-category-toggle\">${profileChevron()}</span><span>${escapeHtml(cat.label)}</span><span class=\"d3-category-count\">${cat.files.length}</span></button><div class=\"d3-files\">${cat.files.map(file=>`<button type=\"button\" class=\"d3-file-item ${selectedD3File===file.name?'active':''}\" data-d3-file=\"${escapeHtml(file.name)}\" data-d3-kind=\"${escapeHtml(file.kind)}\"><span>${escapeHtml(file.name)}</span><span class=\"d3-file-kind\">${escapeHtml(d3KindLabel(file.kind))}</span></button>`).join('')}</div></section>`}).join('')}${profileActive&&!loading&&!error&&!categories.length?'<div class=\"sessions-empty\">No files listed yet. Refresh or check the D3 connection.</div>':''}</div></section>`}).join('')}",
+    "function bindD3Browser(){const root=$('d3Browser');if(!root)return;root.querySelectorAll('[data-profile-toggle]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();toggleProfileCollapsed(btn.dataset.profileToggle||'');renderD3Browser()});root.querySelectorAll('[data-profile-select]').forEach(btn=>btn.onclick=async()=>{await switchProfile(btn.dataset.profileSelect||'');await refreshD3Browser()});root.querySelectorAll('[data-category-toggle]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();const [profile,categoryId]=(btn.dataset.categoryToggle||'').split('::');if(profile&&categoryId)toggleD3CategoryCollapsed(profile,categoryId)});root.querySelectorAll('[data-d3-file]').forEach(btn=>btn.onclick=()=>{selectedD3File=btn.dataset.d3File||'';$('file').value=selectedD3File;const kind=btn.dataset.d3Kind||'';if(kind==='program'&&!$('item').value)$('item').value='';renderD3Browser();toast('Selected '+selectedD3File)});const login=$('loginAccount');if(login)login.onclick=async()=>{show('editorScreen',await api('/api/account/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account:$('account').value,confirmed:mutationConfirmed()})}));d3BrowserCache={};await boot();await refreshD3Browser()}}",
+    "function renderD3Browser(){const node=$('d3Browser');if(!node)return;node.innerHTML=renderD3BrowserHtml();bindD3Browser()}",
+    "function formatBrowserError(text){const line=String(text||'').split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean)[0]||'Could not load D3 files.';return line.length>120?line.slice(0,117)+'…':line}",
+    "async function refreshD3Browser(forceProfile){renderD3Browser();const targets=forceProfile?[forceProfile]:selectedProfile?[selectedProfile]:[];for(const profileName of targets){if(!profileName)continue;d3BrowserCache[profileName]={...(d3BrowserCache[profileName]||{}),loading:true,error:''};renderD3Browser();try{const data=await api('/api/browser?profile='+encodeURIComponent(profileName));if(data.error)d3BrowserCache[profileName]={error:formatBrowserError(data.error)};else d3BrowserCache[profileName]={account:data.account,who:data.who,categories:data.categories||[],loading:false}}catch(error){d3BrowserCache[profileName]={error:formatBrowserError(error?.message||String(error))}}}renderD3Browser()}",
+    "function renderSessionsTreeHtml(){if(!profileCache.length)return '<div class=\"sessions-empty\">Add a D3 profile to start chatting.</div>';return profileCache.map((p,i)=>{const name=p.name;const collapsed=profileCollapsed(name);const chats=chatsForProfile(name);const profileActive=name===selectedProfile;return `<section class=\"session-profile ${collapsed?'collapsed':''} ${profileActive?'active':''}\" data-profile-name=\"${escapeHtml(name)}\"><div class=\"session-profile-head\"><div class=\"session-profile-row\"><button type=\"button\" class=\"session-profile-toggle\" data-profile-toggle=\"${escapeHtml(name)}\" aria-expanded=\"${collapsed?'false':'true'}\" aria-label=\"${collapsed?'Expand':'Collapse'} chats for ${escapeHtml(name)}\">${profileChevron()}</button><button type=\"button\" class=\"session-profile-select\" data-profile-select=\"${escapeHtml(name)}\">${escapeHtml(name)}</button>${profileOnlineHtml(name)}<button type=\"button\" class=\"session-profile-menu icon-button\" data-profile-menu=\"${escapeHtml(name)}\" title=\"Profile options\" aria-label=\"Options for ${escapeHtml(name)}\">${iconDotsSvg()}</button><button type=\"button\" class=\"session-profile-new-chat icon-button\" data-profile-new-chat=\"${escapeHtml(name)}\" title=\"New chat\" aria-label=\"New chat for ${escapeHtml(name)}\">${iconPlusSvg()}</button></div><div class=\"session-profile-meta\">${escapeHtml(profileMetaLine(p))}</div></div><div class=\"session-chats\">${chats.map(c=>{const chatActive=c.id===activeChatId;const chatBusy=busyChatIds.has(c.id);return `<button type=\"button\" class=\"session-chat-item ${chatActive?'active':''} ${chatBusy?'is-busy':''}\" data-chat-id=\"${escapeHtml(c.id)}\"><span class=\"session-chat-icon\" aria-hidden=\"true\">${iconChatBubbleSvg()}</span><span class=\"session-chat-label\">${escapeHtml(c.title||'New chat')}</span>${chatActive?'<span class=\"session-chat-selected\">Selected</span>':''}${chatBusy?'<span class=\"session-chat-busy\" aria-label=\"Working\">'+iconSpinnerSvg()+'</span>':''}</button>`}).join('')}</div></section>`}).join('')}",
+    "function bindSessionsTree(root){const scope=root||document;scope.querySelectorAll('.session-chat-item[data-chat-id]').forEach(btn=>{btn.onclick=async()=>{closeSessionContextMenus();const chatId=btn.dataset.chatId||'';const chat=chatSessions.find(c=>c.id===chatId);if(chat?.profile&&chat.profile!==selectedProfile){await switchProfile(chat.profile);activeChatId=chatId;renderChatList();renderActiveChat();closeSessionsPanel();focusChatPrompt();return}activeChatId=chatId;renderChatList();renderActiveChat();closeSessionsPanel();focusChatPrompt()};btn.oncontextmenu=e=>{e.preventDefault();openChatContextMenu(btn.dataset.chatId,e.clientX,e.clientY)}});scope.querySelectorAll('[data-profile-toggle]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();toggleProfileCollapsed(btn.dataset.profileToggle||'')});scope.querySelectorAll('[data-profile-select]').forEach(btn=>btn.onclick=async()=>{closeSessionContextMenus();await switchProfile(btn.dataset.profileSelect||'')});scope.querySelectorAll('[data-profile-new-chat]').forEach(btn=>btn.onclick=async event=>{event.stopPropagation();closeSessionContextMenus();await newChatForProfile(btn.dataset.profileNewChat||'')});scope.querySelectorAll('[data-profile-menu]').forEach(btn=>btn.onclick=event=>{event.stopPropagation();closeSessionContextMenus();const rect=btn.getBoundingClientRect();openProfileContextMenu(btn.dataset.profileMenu||'',rect.right,rect.bottom)})}",
+    "function renderChatList(){const html=renderSessionsTreeHtml();if($('chatList'))$('chatList').innerHTML=html;document.querySelectorAll('.session-chat-list').forEach(list=>{list.innerHTML=html});bindSessionsTree();document.querySelectorAll('.session-chat-list').forEach(list=>bindSessionsTree(list))}",
+    "const SESSIONS_OPEN_STORE='d3code.ide.sessionsOpen';",
+    "const SESSIONS_HOVER_ZONE=0.7;",
+    "function activeRightWorkbench(){const view=document.body.dataset.view;return view==='terminal'?document.querySelector('#terminalView .right-workbench'):view==='editor'?document.querySelector('#editorView .right-workbench'):null}",
+    "function setSessionsOpen(open,{persist=true}={}){const workbench=activeRightWorkbench();document.querySelectorAll('.right-workbench').forEach(node=>node.classList.remove('sessions-open','sessions-peek'));document.querySelectorAll('.sessions-drawer').forEach(drawer=>{drawer.classList.remove('peek');drawer.setAttribute('aria-hidden','true')});if(!workbench||!open){if(persist){try{localStorage.setItem(SESSIONS_OPEN_STORE,'0')}catch{}}return}workbench.classList.add('sessions-open');const drawer=workbench.querySelector('.sessions-drawer');if(drawer)drawer.setAttribute('aria-hidden','false');if(persist){try{localStorage.setItem(SESSIONS_OPEN_STORE,'1')}catch{}}}",
+    "function peekSessions(open){const workbench=activeRightWorkbench();if(!workbench||workbench.classList.contains('sessions-open'))return;const drawer=workbench.querySelector('.sessions-drawer');if(!drawer)return;if(open){workbench.classList.add('sessions-peek');drawer.classList.add('peek')}else{workbench.classList.remove('sessions-peek');drawer.classList.remove('peek')}}",
+    "function pointerInWorkbench(workbench,clientX,clientY){if(!workbench)return false;const rect=workbench.getBoundingClientRect();return clientX>=rect.left&&clientX<=rect.right&&clientY>=rect.top&&clientY<=rect.bottom}",
+    "function sessionsHoverHot(workbench,clientX,clientY){if(!pointerInWorkbench(workbench,clientX,clientY))return false;const rect=workbench.getBoundingClientRect();return clientX>=rect.left+rect.width*SESSIONS_HOVER_ZONE}",
+    "let hoverPeekTimer=null;let hoverOpenTimer=null;let hoverZoneActive=false;let sessionsHoverSuppress=false;let lastPointer={x:0,y:0};function clearSessionsHoverTimers(){clearTimeout(hoverPeekTimer);clearTimeout(hoverOpenTimer);hoverPeekTimer=null;hoverOpenTimer=null}function closeSessionsPanel(){hoverZoneActive=false;sessionsHoverSuppress=true;clearSessionsHoverTimers();peekSessions(false);setSessionsOpen(false)}function openSettingsModal(){const modal=$('settingsModal');if(!modal)return;modal.classList.add('open');const choice=document.body.dataset.themeChoice||'dark';document.querySelectorAll('.theme-choice').forEach(btn=>btn.classList.toggle('active',btn.dataset.themeChoice===choice))}function closeSettingsModal(){const modal=$('settingsModal');if(modal)modal.classList.remove('open')}function initSessionsFooter(){document.querySelectorAll('.sessions-add-profile').forEach(btn=>btn.onclick=()=>openProfileForm(undefined));document.querySelectorAll('.sessions-settings').forEach(btn=>btn.onclick=()=>openSettingsModal())}function initSessionsDrawer(){document.querySelectorAll('.sessions-close').forEach(btn=>btn.onclick=()=>closeSessionsPanel());document.querySelectorAll('.sessions-backdrop').forEach(backdrop=>{backdrop.onclick=event=>{event.preventDefault();event.stopPropagation();closeSessionsPanel()};backdrop.onmousedown=event=>{event.preventDefault();event.stopPropagation()}});document.addEventListener('mousemove',event=>{lastPointer={x:event.clientX,y:event.clientY};const workbench=activeRightWorkbench();if(!workbench){clearSessionsHoverTimers();hoverZoneActive=false;return}const inside=pointerInWorkbench(workbench,event.clientX,event.clientY);const pinned=workbench.classList.contains('sessions-open');const peeking=workbench.classList.contains('sessions-peek');if(!inside){hoverZoneActive=false;clearSessionsHoverTimers();if(!pinned&&peeking)peekSessions(false);if(!pinned)sessionsHoverSuppress=false;return}const hot=sessionsHoverHot(workbench,event.clientX,event.clientY);if(sessionsHoverSuppress){if(!hot)sessionsHoverSuppress=false;else return}if(hot&&!hoverZoneActive&&!pinned){hoverZoneActive=true;hoverPeekTimer=setTimeout(()=>{const wb=activeRightWorkbench();if(!wb||!pointerInWorkbench(wb,lastPointer.x,lastPointer.y)||!sessionsHoverHot(wb,lastPointer.x,lastPointer.y))return;peekSessions(true)},160);hoverOpenTimer=setTimeout(()=>{const wb=activeRightWorkbench();if(!wb||!pointerInWorkbench(wb,lastPointer.x,lastPointer.y)||!sessionsHoverHot(wb,lastPointer.x,lastPointer.y))return;setSessionsOpen(true,{persist:false})},720)}if(!hot&&hoverZoneActive&&!pinned){hoverZoneActive=false;clearSessionsHoverTimers();peekSessions(false)}})}",
+    "function chatShellForPrompt(promptId){if(promptId==='chatPrompt')return document.querySelector('#chatView .chat-main');if(promptId==='terminalAgentPrompt')return document.querySelector('#terminalView .agent-shell');if(promptId==='agentPrompt')return document.querySelector('#editorView .agent-shell');return null}",
+    "function chatInputPlaceholder(){return selectedProfile?CHAT_INPUT_PLACEHOLDER:'Add a profile in Sessions to start…'}",
+    "function applyChatInputPlaceholders(){const text=chatInputPlaceholder();['chatPrompt','agentPrompt','terminalAgentPrompt'].forEach(id=>{const el=$(id);if(el)el.placeholder=text})}",
+    "function focusChatPrompt(){if(document.body.dataset.view!=='chat')setView('chat');const input=$('chatPrompt');if(!input)return;requestAnimationFrame(()=>{input.focus();try{input.setSelectionRange(input.value.length,input.value.length)}catch{}})}",
+    "function syncChatEmptyLayout(){const empty=isBlankChatSession(activeChatSession());const main=document.querySelector('#chatView .chat-main');if(main)main.classList.toggle('chat-empty',empty);applyChatInputPlaceholders();document.querySelectorAll('.agent-shell').forEach(shell=>shell.classList.toggle('chat-empty',empty))}",
+    "function animateComposerDock(shell){return new Promise(resolve=>{if(!shell||!shell.classList.contains('chat-empty'))return resolve();const composer=shell.querySelector('.chat-composer-main,.side-chat-composer');if(!composer)return resolve();const first=composer.getBoundingClientRect();shell.classList.remove('chat-empty');const thread=shell.querySelector('.chat-thread-main,.agent-thread');if(thread)thread.style.display='';void composer.offsetHeight;const last=composer.getBoundingClientRect();const dy=first.top-last.top;if(Math.abs(dy)<2)return resolve();composer.style.transform='translateY('+dy+'px)';composer.style.transition='none';requestAnimationFrame(()=>{composer.style.transition='transform .48s cubic-bezier(.22,1,.36,1)';composer.style.transform='translateY(0)';const finish=()=>{composer.style.transition='';composer.style.transform='';resolve()};composer.addEventListener('transitionend',finish,{once:true});setTimeout(finish,520)})})}",
+    "function renderChatInto(id){const out=$(id);if(!out)return;out.innerHTML='';const chat=activeChatSession();if(!chat)return;chat.messages.forEach(m=>out.appendChild(messageNode(m)));out.scrollTop=out.scrollHeight}",
+    "function syncLastToolFromChat(){const el=$('chatLastTool');if(!el)return;const last=activeChatSession()?.messages?.slice().reverse().find(m=>m.kind==='tool');if(!last){el.textContent='No D3 tool has run in this browser session.';return}el.textContent=toolTitle(last.name)+': '+previewText(last.detail||last.text||'')}",
+    "function renderActiveChat(){['chatOutput','agentOutput','terminalAgentOutput'].forEach(renderChatInto);if(busyChatIds.has(activeChatId))showTypingRows('Working...');syncLastToolFromChat();syncChatTitle();syncChatEmptyLayout()}",
+    "function chatTitleLabel(){const chat=activeChatSession();return chat?(chat.title||'New chat'):'New chat'}",
+    "function syncChatTitle(){const title=chatTitleLabel();document.querySelectorAll('[data-chat-title]').forEach(el=>{el.textContent=title})}",
+    "function syncMeta(status){const profile=status?.profile||selectedProfile||'';const account=status?.account||'';const meta=$('meta');if(!meta)return;if(!profile){meta.textContent='Sessions';return}meta.textContent=account&&account!=='none'?`${profile} · ${account}`:profile}",
+    "async function newChatForProfile(profileName){if(!profileName){toast('Add and select a D3 profile first');return}if(profileName!==selectedProfile)await switchProfile(profileName);const profileChats=chatsForProfile(profileName);const latest=profileChats[0];if(latest&&isBlankChatSession(latest)){if(activeChatId!==latest.id){activeChatId=latest.id;saveChats();renderChatList();renderActiveChat();await resetAgentThread(activeChatId)}closeSessionsPanel();focusChatPrompt();return}const chat=makeChat(profileName);chatSessions.unshift(chat);activeChatId=chat.id;saveChats();renderChatList();renderActiveChat();closeSessionsPanel();await resetAgentThread(activeChatId);focusChatPrompt()}",
+    "async function newChat(){await newChatForProfile(selectedProfile)}",
+    "function setView(view){const next=view==='editor'?'editor':view==='terminal'?'terminal':'chat';document.body.dataset.view=next;try{localStorage.setItem(CHAT_VIEW_STORE,next)}catch{}$('chatModeButton').classList.toggle('active',next==='chat');$('editorModeButton').classList.toggle('active',next==='editor');$('terminalModeButton').classList.toggle('active',next==='terminal');closeSessionsPanel();renderActiveChat();renderTerminal();if(next==='editor')refreshD3Browser()}",
     "function showAgent(v){if(v.error){addBubble('assistant',v.error);return}addBubble('assistant',v.output||JSON.stringify(v,null,2));(v.tools||[]).forEach(t=>addToolEvent(t))}",
+    "const AGENT_SEQ_STORE='d3code.ide.agentSeq.v1';",
+    "let agentPollers={};",
+    "let agentResuming=false;",
+    "function loadAgentSeqMap(){try{const saved=JSON.parse(localStorage.getItem(AGENT_SEQ_STORE)||'{}');return saved&&typeof saved==='object'?saved:{}}catch{return {}}}",
+    "function getAgentSeq(chatId){return Number(loadAgentSeqMap()[chatId]||0)}",
+    "function setAgentSeq(chatId,seq){const map=loadAgentSeqMap();map[chatId]=seq;try{localStorage.setItem(AGENT_SEQ_STORE,JSON.stringify(map))}catch{}}",
     "function parseSseEvent(block){let event='message';let data='';block.split(/\\r?\\n/).forEach(line=>{if(line.startsWith('event:'))event=line.slice(6).trim();if(line.startsWith('data:'))data+=line.slice(5).trim()});try{return {event,data:JSON.parse(data||'{}')}}catch{return {event,data:{}}}}",
-    "function removeIfEmpty(node){if(node&&!node.textContent.trim())node.remove()}",
-    "async function streamAgent(input){addBubble('user',input);setRunStatus('Streaming response...','streaming');let assistant=null;let buffer='';let suppress=false;const response=await fetch('/api/agent',{method:'POST',headers:{'content-type':'application/json','accept':'text/event-stream'},body:JSON.stringify({input})});if(!response.ok||!response.body){setRunStatus();showAgent(await response.json());return}const reader=response.body.getReader();const decoder=new TextDecoder();let pending='';while(true){const read=await reader.read();if(read.done)break;pending+=decoder.decode(read.value,{stream:true});let boundary;while((boundary=pending.indexOf('\\n\\n'))!==-1){const block=pending.slice(0,boundary);pending=pending.slice(boundary+2);if(!block.trim())continue;const msg=parseSseEvent(block);if(msg.event==='assistant_delta'){if(!assistant)assistant=appendMessage({kind:'bubble',role:'assistant',text:'',createdAt:Date.now()},{record:false});if(suppress)continue;buffer+=msg.data.token||'';const toolIndex=buffer.search(/<(d3_tool|tool_call)>/i);if(toolIndex!==-1){suppress=true;buffer=buffer.slice(0,toolIndex).trimEnd()}updateMessageNode(assistant,{role:'assistant',text:buffer});activeOutput().scrollTop=activeOutput().scrollHeight}if(msg.event==='tool_start'){suppress=true;removeIfEmpty(assistant);assistant=null;buffer='';setRunStatus('Running '+(msg.data.name||'D3 tool')+'...','running');addToolEvent({name:msg.data.name,reason:msg.data.reason,status:'running',result:msg.data.reason||'Working...'},{record:false})}if(msg.event==='tool_result'){suppress=false;setRunStatus('Streaming response...','streaming');addToolEvent({name:msg.data.name,result:msg.data.compact,status:'done'})}if(msg.event==='done'){setRunStatus();const finalText=cleanAgentText(msg.data.output||buffer);if(msg.data.output&&(!assistant||cleanAgentText(assistant.dataset.rawText).trim()!==finalText.trim())){addBubble('assistant',finalText)}else if(assistant){updateMessageNode(assistant,{role:'assistant',text:finalText});if(finalText.trim())recordChatMessage({kind:'bubble',role:'assistant',text:finalText,createdAt:Date.now()})}}if(msg.event==='error'){setRunStatus();addBubble('assistant',msg.data.error||'Agent failed')}}}}",
-    "document.querySelectorAll('.tab').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));btn.classList.add('active');$(btn.dataset.pane).classList.add('active')});",
-    "$('profileMenuButton').onclick=()=>$('profileMenu').classList.toggle('open');",
-    "document.addEventListener('click',e=>{if(!$('profileMenu').contains(e.target)&&!$('profileMenuButton').contains(e.target))$('profileMenu').classList.remove('open')});",
+    "function visibleAssistantText(buffer,suppress){let text=buffer;if(suppress){const toolIndex=text.search(/<(d3_tool|tool_call)>/i);if(toolIndex!==-1)text=text.slice(0,toolIndex)}return cleanAgentText(text).trimEnd()}",
+    "function createAgentStreamState(){return {buffer:'',suppress:false,streamIteration:-1}}",
+    "function noteAgentSeq(chatId,data){const seq=Number(data?.seq);if(Number.isFinite(seq)&&seq>=0)setAgentSeq(chatId,seq+1)}",
+    "function shouldSkipAssistantDeltaOnResume(runChatId){if(!agentResuming)return false;const chat=chatById(runChatId);const last=chat?.messages?.[chat.messages.length-1];return last?.kind==='bubble'&&last?.role==='assistant'&&Boolean(String(last.text||'').trim())}",
+    "function processAgentEvent(runChatId,msg,state){if(msg.event==='assistant_delta'){if(shouldSkipAssistantDeltaOnResume(runChatId))return;const iteration=Number(msg.data.iteration??0);if(iteration!==state.streamIteration){state.streamIteration=iteration;state.suppress=false;state.buffer='';removeTypingRows();ensureStreamingBubble()}if(state.suppress)return;state.buffer+=msg.data.token||'';if(state.buffer.search(/<(d3_tool|tool_call)>/i)!==-1)state.suppress=true;updateStreamingBubbles(visibleAssistantText(state.buffer,state.suppress))}if(msg.event==='tool_start'){state.suppress=true;const partial=visibleAssistantText(state.buffer,true);if(!partial)clearStreamingBubbles();else{finalizeStreamingBubbles(partial);recordChatMessage({kind:'bubble',role:'assistant',text:partial,createdAt:Date.now()},runChatId)}state.buffer='';state.streamIteration=-1;removeTypingRows();addToolEvent({name:msg.data.name,reason:msg.data.reason,status:'running',result:msg.data.reason||'Working...'},{record:false})}if(msg.event==='tool_result'){state.suppress=false;state.buffer='';state.streamIteration=-1;removeTypingRows();addToolEvent({name:msg.data.name,result:msg.data.compact,status:'done'})}if(msg.event==='done'){removeTypingRows();const finalText=cleanAgentText(msg.data.output||state.buffer);const hasStreaming=isAgentChatLive()&&document.querySelector('[data-streaming=\"1\"]');if(hasStreaming){finalizeStreamingBubbles(finalText);if(finalText.trim())recordChatMessage({kind:'bubble',role:'assistant',text:finalText,createdAt:Date.now()},runChatId)}else if(finalText.trim())recordChatMessage({kind:'bubble',role:'assistant',text:finalText},runChatId)}if(msg.event==='error'){removeTypingRows();clearStreamingBubbles();const err=msg.data.error||'Agent failed';if(isAgentChatLive())addBubble('assistant',err);else recordChatMessage({kind:'bubble',role:'assistant',text:err},runChatId)}}",
+    "function finishAgentRun(runChatId){setChatBusy(runChatId,false);if(agentRunChatId===runChatId)agentRunChatId='';activeToolNode=null;if(activeChatId===runChatId){removeTypingRows();renderActiveChat()}else saveChats()}",
+    "async function consumeAgentSseStream(runChatId,reader,state){const decoder=new TextDecoder();let pending='';while(true){const read=await reader.read();if(read.done)break;pending+=decoder.decode(read.value,{stream:true});let boundary;while((boundary=pending.indexOf('\\n\\n'))!==-1){const block=pending.slice(0,boundary);pending=pending.slice(boundary+2);if(!block.trim())continue;const msg=parseSseEvent(block);noteAgentSeq(runChatId,msg.data);processAgentEvent(runChatId,msg,state)}}}",
+    "async function pollAgentJob(runChatId,{since=0}={}){agentRunChatId=runChatId;setChatBusy(runChatId,true);agentResuming=true;const state=createAgentStreamState();let cursor=since;try{showTypingRows('Working...');while(true){const payload=await api('/api/agent/job?chat_id='+encodeURIComponent(runChatId)+'&since='+encodeURIComponent(String(cursor)));if(payload.status==='missing')break;for(const ev of payload.events||[]){cursor=Math.max(cursor,Number(ev.seq??0)+1);setAgentSeq(runChatId,cursor);processAgentEvent(runChatId,{event:ev.type,data:ev.data||{}},state)}if(payload.status==='done'||payload.status==='error')break;await new Promise(resolve=>setTimeout(resolve,400))}}catch(error){removeTypingRows();clearStreamingBubbles();const err=error?.message||String(error);recordChatMessage({kind:'bubble',role:'assistant',text:err},runChatId)}finally{agentResuming=false;finishAgentRun(runChatId)}}",
+    "async function resumeAgentJobs(){let payload;try{payload=await api('/api/agent/jobs')}catch{return}for(const job of payload.jobs||[]){const chatId=job.chat_id;if(!chatId||!chatById(chatId))continue;if(agentPollers[chatId])continue;agentPollers[chatId]=true;const since=getAgentSeq(chatId);pollAgentJob(chatId,{since}).finally(()=>{delete agentPollers[chatId]})}}",
+    "function chatHistoryForAgent(chat,currentInput){const rows=(chat?.messages||[]).flatMap(m=>{if(m.kind==='bubble'&&m.role==='user'){const text=String(m.text||'').trim();return text?[{role:'user',content:text}]:[]}if(m.kind==='bubble'&&m.role==='assistant'){const text=String(m.text||'').trim();return text?[{role:'assistant',content:text}]:[]}if(m.kind==='tool'){const detail=String(m.detail||m.text||'').trim();const label=toolTitle(m.name);return [{role:'assistant',content:'[D3 tool '+label+(m.status==='running'?' (running)':'')+(detail?': '+detail:'')+']'}]}return []});const input=String(currentInput||'').trim();if(rows.length&&rows[rows.length-1].role==='user'&&rows[rows.length-1].content===input)return rows.slice(0,-1);return rows}",
+    "async function streamAgent(input){const runChat=currentChat();if(!runChat)return;const runChatId=runChat.id;agentRunChatId=runChatId;setChatBusy(runChatId,true);const state=createAgentStreamState();try{showTypingRows('Thinking...');const response=await fetch('/api/agent',{method:'POST',headers:{'content-type':'application/json','accept':'text/event-stream'},body:JSON.stringify({input,chat_id:runChatId,history:chatHistoryForAgent(runChat,input)})});if(!response.ok||!response.body){removeTypingRows();const payload=await response.json();if(isAgentChatLive())showAgent(payload);else if(payload?.error)recordChatMessage({kind:'bubble',role:'assistant',text:payload.error},runChatId);return}await consumeAgentSseStream(runChatId,response.body.getReader(),state)}catch(error){removeTypingRows();clearStreamingBubbles();const err=error?.message||String(error);if(isAgentChatLive())addBubble('assistant',err);else recordChatMessage({kind:'bubble',role:'assistant',text:err},runChatId)}finally{finishAgentRun(runChatId)}}",
+    "document.querySelectorAll('.tab').forEach(btn=>{if(!btn.dataset.pane)return;btn.onclick=()=>{document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));btn.classList.add('active');const pane=$(btn.dataset.pane);if(pane)pane.classList.add('active')}});",
     "function systemTheme(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}",
     "function setTheme(choice){const actual=choice==='system'?systemTheme():choice;document.body.dataset.theme=actual;document.body.dataset.themeChoice=choice;try{localStorage.setItem('d3code.theme',choice)}catch{}document.querySelectorAll('.theme-choice').forEach(btn=>btn.classList.toggle('active',btn.dataset.themeChoice===choice))}",
     "document.querySelectorAll('.theme-choice').forEach(btn=>btn.onclick=()=>setTheme(btn.dataset.themeChoice));",
     "try{setTheme(localStorage.getItem('d3code.theme')||'dark')}catch{setTheme('dark')}",
     "if(window.matchMedia)window.matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{if(document.body.dataset.themeChoice==='system')setTheme('system')});",
     "loadChats();",
-    "initRightResize();",
+    "initColumnResize();",
+    "initSessionsDrawer();",
+    "initSessionsFooter();",
     "setView('chat');",
     "$('chatModeButton').onclick=()=>setView('chat');",
     "$('editorModeButton').onclick=()=>setView('editor');",
     "$('terminalModeButton').onclick=()=>setView('terminal');",
-    "$('newChat').onclick=newChat;",
-    "$('newTerminalChat').onclick=newChat;",
-    "let profileCache=[];",
-    "let selectedProfile='';",
-    "async function switchProfile(profile){if(!profile)return;show('terminal',await api('/api/profile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({profile})}));await boot();}",
+    "async function switchProfile(profile){if(!profile)return;show('editorScreen',await api('/api/profile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({profile})}));d3BrowserCache={};await boot();if(document.body.dataset.view==='editor')await refreshD3Browser(profile)}",
     "function defaultProfile(){return {name:'new-profile',type:'local',account:'DM',entryCommand:'d3',startupInput:'dm\\ndm\\n',promptPattern:':',sessionMode:'persistent',safetyDefault:'ask'}}",
     "function setValue(id,value){$(id).value=value||''}",
-    "function openProfileForm(profile){const p=profile||defaultProfile();$('profileFormTitle').textContent=profile?'Edit profile':'Add profile';$('profileModal').classList.add('open');$('profileMenu').classList.remove('open');setValue('profileName',p.name);setValue('profileType',p.type||'local');setValue('profileHost',p.host);setValue('profileUser',p.username);setValue('profileAccount',p.account);setValue('profileEntry',p.entryCommand);setValue('profileStartup',p.startupInput);setValue('profilePrompt',p.promptPattern||':');setValue('profileSession',p.sessionMode||'oneshot');setValue('profileSafety',p.safetyDefault||'ask')}",
-    "function closeProfileForm(){$('profileModal').classList.remove('open')}",
+    "function openProfileForm(profile){const p=profile?{...profile}:defaultProfile();editingProfileName=profile?.name||'';$('profileFormTitle').textContent=profile?'Edit profile':'Add profile';$('profileModal').classList.add('open');setValue('profileName',p.name);setValue('profileType',p.type||'local');setValue('profileHost',p.host);setValue('profileUser',p.username);setValue('profileAccount',p.account);setValue('profileEntry',p.entryCommand);setValue('profileStartup',p.startupInput);setValue('profilePrompt',p.promptPattern||':');setValue('profileSession',p.sessionMode||'oneshot');setValue('profileSafety',p.safetyDefault||'ask')}",
+    "function closeProfileForm(){editingProfileName='';$('profileModal').classList.remove('open')}",
+    "function migrateProfileRename(oldName,newName){if(!oldName||!newName||oldName===newName)return;chatSessions.forEach(c=>{if((c.profile||'')===oldName)c.profile=newName});if(profileCollapse[oldName]!==undefined){profileCollapse[newName]=profileCollapse[oldName];delete profileCollapse[oldName];saveProfileCollapse()}saveChats()}",
     "function collectProfileForm(){const type=$('profileType').value;const profile={name:$('profileName').value.trim(),type,account:$('profileAccount').value.trim()||undefined,entryCommand:$('profileEntry').value.trim()||undefined,startupInput:$('profileStartup').value.replace(/\\\\n/g,'\\n')||undefined,promptPattern:$('profilePrompt').value.trim()||undefined,sessionMode:$('profileSession').value,safetyDefault:$('profileSafety').value};if(type==='ssh'){profile.host=$('profileHost').value.trim()||undefined;profile.username=$('profileUser').value.trim()||undefined}return profile}",
-    "async function saveProfileForm(){const profile=collectProfileForm();if(!profile.name){alert('Profile name is required.');return}const result=await api('/api/profile/manage',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({profile,confirmed:true})});if(result.error){alert(result.error);return}closeProfileForm();await boot()}",
-    "$('addProfile').onclick=()=>openProfileForm(undefined);",
+    "async function saveProfileForm(){const profile=collectProfileForm();if(!profile.name){alert('Profile name is required.');return}const payload={profile,confirmed:true};if(editingProfileName)payload.previousName=editingProfileName;const result=await api('/api/profile/manage',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});if(result.error){alert(result.error);return}const previousName=editingProfileName||profile.name;migrateProfileRename(previousName,profile.name);closeProfileForm();await boot()}",
     "$('saveProfile').onclick=saveProfileForm;",
     "$('cancelProfile').onclick=closeProfileForm;",
+    "$('closeSettings').onclick=closeSettingsModal;",
+    "$('settingsModal').onclick=event=>{if(event.target===$('settingsModal'))closeSettingsModal()};",
     "async function removeProfile(profile){if(!profile)return;if(!confirm(`Remove profile ${profile}?`))return;const result=await api('/api/profile/manage',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({profile,confirmed:true})});if(result.error){alert(result.error);return}await boot();}",
-    "function renderProfiles(active){if(profileCache.length===0){$('profileChoices').innerHTML='';return}$('profileChoices').innerHTML=profileCache.map((p,i)=>`<div class=\"profile-row\"><button class=\"profile-choice ${p.name===active?'active':''}\" data-profile-index=\"${i}\"><b>${escapeHtml(p.name)}</b><span>${escapeHtml(p.type)}${p.account?' / '+escapeHtml(p.account):''}${p.host?' / '+escapeHtml(p.host):''}</span></button><button class=\"profile-action\" data-edit-profile-index=\"${i}\">Edit</button><button class=\"profile-action\" data-remove-profile-index=\"${i}\">Remove</button></div>`).join('');document.querySelectorAll('[data-profile-index]').forEach(btn=>btn.onclick=()=>switchProfile(profileCache[Number(btn.dataset.profileIndex)]?.name));document.querySelectorAll('[data-edit-profile-index]').forEach(btn=>btn.onclick=()=>openProfileForm(profileCache[Number(btn.dataset.editProfileIndex)]));document.querySelectorAll('[data-remove-profile-index]').forEach(btn=>btn.onclick=()=>removeProfile(profileCache[Number(btn.dataset.removeProfileIndex)]?.name));}",
     "function safetyLabel(value){if(value==='trust')return 'Full access';if(value==='plan')return 'Plan';return 'Ask'}",
     "function modelParts(ref){const parts=String(ref||'').split('/');return {provider:parts.shift()||'',model:parts.join('/')}}",
     "function setModelKeyNeeded(data){const needed=Boolean(data.needsKey);$('modelKeyPanel').classList.toggle('open',needed);$('modelChoiceWrap').style.display=needed?'none':'grid';$('saveModelChoice').style.display=needed?'none':'';$('modelKeyMessage').textContent=data.message||'Please provide an API key for this provider before choosing a model.';$('modelApiKey').value=''}",
     "async function refreshModels(provider,current){$('modelMenuNote').textContent='Loading models...';const data=await api('/api/models?provider='+encodeURIComponent(provider));setModelKeyNeeded(data);const models=data.models||[];$('modelChoice').innerHTML=models.map(m=>`<option value=\"${escapeHtml(m)}\">${escapeHtml(m)}</option>`).join('');const parsed=modelParts(current||'');const model=parsed.provider===provider?parsed.model:(models[0]||'');if(model&&models.includes(model))$('modelChoice').value=model;$('modelMenuNote').textContent=data.warning||''}",
-    "async function applyStatus(status){selectedProfile=status.profile||'';const account=status.account||'none';$('meta').textContent='Current chat';$('profileButtonLabel').textContent=status.profile||'Profiles';$('agentSafety').textContent='';$('terminalAgentSafety').textContent='';$('chatSubtitle').textContent='';$('chatInfoSafety').textContent='';$('chatInfoProfile').textContent=status.profile||'none';$('chatInfoAccount').textContent=account;$('chatInfoModel').textContent=status.model||'unknown';$('chatInfoSafetyValue').textContent=status.safety||'ask';$('composerSafetyLabel').textContent=safetyLabel(status.safety||'ask');$('composerModel').textContent=status.model||'model';document.querySelectorAll('[data-safety-option]').forEach(b=>b.classList.toggle('active',b.dataset.safetyOption===(status.safety||'ask')))}",
-    "async function boot(){const status=await api('/api/status');await applyStatus(status);const providersData=await api('/api/model-providers');$('modelProvider').innerHTML=(providersData.providers||[]).map(p=>`<option value=\"${escapeHtml(p.id)}\">${escapeHtml(p.name)}</option>`).join('');const parsed=modelParts(status.model);if(parsed.provider)$('modelProvider').value=parsed.provider;await refreshModels($('modelProvider').value,status.model);const profiles=await api('/api/profiles');profileCache=profiles.profiles||[];renderProfiles(status.profile||'');renderChatList();renderActiveChat();renderTerminal()}",
-    "$('loginAccount').onclick=async()=>{show('terminal',await api('/api/account/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({account:$('account').value,confirmed:$('confirmLogin').checked})}));await boot();};",
-    "function terminalConfirmed(){return Boolean($('confirmTerminal')?.checked||$('terminalConfirm')?.checked)}",
-    "async function sendTerminalCommand(command){const line=(command??$('command')?.value??$('terminalCommand')?.value??'').trim();if(!line)return;const out=terminalEls()[0]?.dataset.output||'';terminalEls().forEach(el=>el.dataset.output=(out.replace(/\\s*$/,'')+'\\n> '+line+'\\nRunning...').trim());terminalDraft='';renderTerminal();show('terminal',await api('/api/terminal/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({command:line,confirmed:terminalConfirmed()})}))}",
-    "$('send').onclick=async()=>sendTerminalCommand();",
-    "if($('terminalSend'))$('terminalSend').onclick=async()=>sendTerminalCommand();",
-    "$('command').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendTerminalCommand()}});",
-    "if($('terminalCommand'))$('terminalCommand').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendTerminalCommand()}});",
-    "$('command').addEventListener('input',()=>{terminalDraft=$('command').value;renderTerminal()});",
-    "if($('terminalCommand'))$('terminalCommand').addEventListener('input',()=>{terminalDraft=$('terminalCommand').value;renderTerminal()});",
-    "$('terminal').addEventListener('click',()=>$('terminal').focus());",
-    "$('terminalMain').addEventListener('click',()=>$('terminalMain').focus());",
-    "$('terminal').addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey||e.altKey)return;if(e.key==='Backspace'){e.preventDefault();terminalDraft=terminalDraft.slice(0,-1);renderTerminal();return}if(e.key==='Delete'||e.key==='ArrowLeft'||e.key==='ArrowRight'||e.key==='Home'||e.key==='End'||e.key==='Tab'){e.preventDefault();return}if(e.key==='Enter'){e.preventDefault();sendTerminalCommand(terminalDraft);return}if(e.key.length===1){e.preventDefault();terminalDraft+=e.key;renderTerminal()}});",
-    "$('terminalMain').addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey||e.altKey)return;if(e.key==='Backspace'){e.preventDefault();terminalDraft=terminalDraft.slice(0,-1);renderTerminal();return}if(e.key==='Delete'||e.key==='ArrowLeft'||e.key==='ArrowRight'||e.key==='Home'||e.key==='End'||e.key==='Tab'){e.preventDefault();return}if(e.key==='Enter'){e.preventDefault();sendTerminalCommand(terminalDraft);return}if(e.key.length===1){e.preventDefault();terminalDraft+=e.key;renderTerminal()}});",
-    "$('listFiles').onclick=async()=>show('files',await api('/api/files'));",
-    "$('locks').onclick=async()=>show('files',await api('/api/locks'));",
-    "$('indexAccount').onclick=async()=>show('files',await api('/api/index',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}));",
+    "async function applyStatus(status){selectedProfile=status.profile||'';currentSafety=status.safety||'ask';const account=status.account||'none';syncMeta(status);syncChatTitle();$('chatInfoSafety').textContent='';$('chatInfoProfile').textContent=status.profile||'none';$('chatInfoAccount').textContent=account;$('chatInfoModel').textContent=status.model||'unknown';$('chatInfoSafetyValue').textContent=status.safety||'ask';$('composerSafetyLabel').textContent=safetyLabel(status.safety||'ask');$('composerModel').textContent=status.model||'model';document.querySelectorAll('[data-safety-option]').forEach(b=>b.classList.toggle('active',b.dataset.safetyOption===(status.safety||'ask')))}",
+    "async function refreshTerminalState(){try{const state=await api('/api/terminal/state');if(state&&typeof state.transcript==='string')setTerminalTranscript(state.transcript)}catch{}}",
+    "async function boot(){const status=await api('/api/status');await applyStatus(status);const providersData=await api('/api/model-providers');$('modelProvider').innerHTML=(providersData.providers||[]).map(p=>`<option value=\"${escapeHtml(p.id)}\">${escapeHtml(p.name)}</option>`).join('');const parsed=modelParts(status.model);if(parsed.provider)$('modelProvider').value=parsed.provider;await refreshModels($('modelProvider').value,status.model);const profiles=await api('/api/profiles');profileCache=profiles.profiles||[];await refreshPythonRuntime();migrateChatProfiles(status.profile||'');syncActiveChatForProfile();renderChatList();renderD3Browser();renderActiveChat();await refreshTerminalState();renderTerminal();await refreshProfileOnlineStatus();startProfileOnlinePolling();await resumeAgentJobs();if(document.body.dataset.view==='editor')await refreshD3Browser()}",
+    "function mutationConfirmed(){return currentSafety==='trust'}",
+    "async function sendTerminalCommand(command){const line=(command??terminalDraft??'').trim();if(!line)return;const out=terminalEls()[0]?.dataset.output||'';terminalEls().forEach(el=>el.dataset.output=(out.replace(/\\s*$/,'')+'\\n> '+line+'\\nRunning...').trim());terminalDraft='';renderTerminal();show('editorScreen',await api('/api/terminal/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({command:line,confirmed:mutationConfirmed()})}))}",
+    "function bindTerminalInput(el){if(!el)return;el.addEventListener('click',()=>el.focus());el.addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey||e.altKey)return;if(e.key==='Backspace'){e.preventDefault();terminalDraft=terminalDraft.slice(0,-1);renderTerminal();return}if(e.key==='Delete'||e.key==='ArrowLeft'||e.key==='ArrowRight'||e.key==='Home'||e.key==='End'||e.key==='Tab'){e.preventDefault();return}if(e.key==='Enter'){e.preventDefault();sendTerminalCommand(terminalDraft);return}if(e.key.length===1){e.preventDefault();terminalDraft+=e.key;renderTerminal()}})}",
+    "function bindTerminalCommandInput(inputId,buttonId){const input=$(inputId);const button=$(buttonId);if(!input||!button)return;const send=()=>{const value=input.value.trim();if(!value)return;input.value='';terminalDraft='';sendTerminalCommand(value)};button.onclick=send;input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});input.addEventListener('input',()=>{terminalDraft=input.value;renderTerminal()})}",
+    "bindTerminalInput($('terminalMain'));",
+    "bindTerminalInput($('editorScreen'));",
+    "bindTerminalCommandInput('terminalCommand','terminalSend');",
+    "bindTerminalCommandInput('editorTerminalCommand','editorTerminalSend');",
+    "if($('refreshBrowser'))$('refreshBrowser').onclick=async()=>{d3BrowserCache={};await refreshD3Browser(selectedProfile)};",
     "$('readItem').onclick=async()=>{const q=new URLSearchParams({file:$('file').value,item:$('item').value});const v=await api('/api/item?'+q);$('itemBody').value=v.result||JSON.stringify(v,null,2)};",
-    "$('readDict').onclick=async()=>{const q=new URLSearchParams({file:$('file').value,item:$('item').value});show('terminal',await api('/api/dict?'+q));};",
-    "$('readDictPanel').onclick=async()=>{const q=new URLSearchParams({file:$('dictFile').value,item:$('dictItem').value});show('dictResults',await api('/api/dict?'+q));};",
-    "$('writeItem').onclick=async()=>show('terminal',await api('/api/item',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,body:$('itemBody').value,confirmed:$('confirmWrite').checked})}));",
-    "$('compileBasic').onclick=async()=>show('terminal',await api('/api/basic/compile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,confirmed:$('confirmWrite').checked})}));",
-    "$('catalogBasic').onclick=async()=>show('terminal',await api('/api/basic/catalog',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,confirmed:$('confirmWrite').checked})}));",
-    "$('compileBasicPanel').onclick=async()=>show('terminal',await api('/api/basic/compile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('basicFile').value,item:$('basicItem').value,confirmed:$('confirmCall').checked})}));",
-    "$('catalogBasicPanel').onclick=async()=>show('terminal',await api('/api/basic/catalog',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('basicFile').value,item:$('basicItem').value,confirmed:$('confirmCall').checked})}));",
-    "$('runAql').onclick=async()=>show('searchResults',await api('/api/aql',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query:$('aql').value})}));",
-    "$('searchBtn').onclick=async()=>show('searchResults',await api('/api/search?query='+encodeURIComponent($('search').value)));",
-    "$('manualBtn').onclick=async()=>show('searchResults',await api('/api/manual-search?query='+encodeURIComponent($('manual').value)));",
-    "$('callSubroutine').onclick=async()=>show('searchResults',await api('/api/subroutine/call',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('subroutine').value,args:$('subArgs').value.split(/\\s+/).filter(Boolean),confirmed:$('confirmCall').checked})}));",
-    "async function sendPrompt(id){const input=$(id).value.trim();if(!input&&!composerAttachments.length)return;$(id).value='';closeSlashPalette();closeActionPopover();const payload=attachmentPromptPrefix()+input;clearAttachments();try{if(input.startsWith('/'))await runSlash(input);else await streamAgent(payload)}catch(error){addBubble('assistant',error.message||String(error))}}",
+    "$('readDict').onclick=async()=>{const q=new URLSearchParams({file:$('file').value,item:$('item').value});show('editorScreen',await api('/api/dict?'+q));};",
+    "$('writeItem').onclick=async()=>show('editorScreen',await api('/api/item',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,body:$('itemBody').value,confirmed:mutationConfirmed()})}));",
+    "$('compileBasic').onclick=async()=>show('editorScreen',await api('/api/basic/compile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,confirmed:mutationConfirmed()})}));",
+    "$('catalogBasic').onclick=async()=>show('editorScreen',await api('/api/basic/catalog',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,confirmed:mutationConfirmed()})}));",
+    "$('buildBasic').onclick=async()=>show('editorScreen',await api('/api/basic/build',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,source:$('itemBody').value,compile:true,catalog:false,confirmed:mutationConfirmed()})}));",
+    "$('writeDict').onclick=async()=>show('editorScreen',await api('/api/dict',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({file:$('file').value,item:$('item').value,body:$('itemBody').value,confirmed:mutationConfirmed()})}));",
+    "$('createFile').onclick=async()=>{const file=prompt('D3 file name',$('file').value||'');if(!file)return;const dictModulo=Number(prompt('Dictionary modulo','3')||'3');const dataModulo=Number(prompt('Data modulo','11')||'11');show('editorScreen',await api('/api/file/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file,dictModulo,dataModulo,confirmed:mutationConfirmed()})}))};",
+    "$('ragSearchEditor').onclick=async()=>{const query=prompt('Search D3/SB+ references',$('itemBody').value.split(/\\n/).slice(0,3).join(' ')||$('file').value||'SB+ screen definition');if(!query)return;show('editorScreen',await api('/api/rag-search?query='+encodeURIComponent(query)+'&limit=6'))};",
+    "$('sbplusDiscover').onclick=async()=>show('editorScreen',await api('/api/sbplus/discover'));",
+    "$('sbplusPlan').onclick=async()=>{const process=prompt('SB+ process name',$('item').value||'');if(!process)return;const fields=(prompt('Fields/prompts, comma separated','')||'').split(',').map(x=>x.trim()).filter(Boolean);show('editorScreen',await api('/api/sbplus/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({process,kind:'input process',file:$('file').value,fields})}))};",
+    "async function sendPrompt(id){const input=$(id).value.trim();if(!input&&!composerAttachments.length)return;if(!selectedProfile&&!input.startsWith('/')){toast('Add and select a D3 profile first');return}const payload=attachmentPromptPrefix()+input;const shell=chatShellForPrompt(id);const firstMessage=isBlankChatSession(activeChatSession());$(id).value='';closeSlashPalette();closeActionPopover();clearAttachments();try{if(firstMessage&&shell&&!input.startsWith('/'))await animateComposerDock(shell);if(input.startsWith('/'))await runSlash(input);else{if(!requireActiveChat()){toast('Add and select a D3 profile first');return}addBubble('user',payload);await streamAgent(payload)}}catch(error){addBubble('assistant',error.message||String(error))}finally{syncChatEmptyLayout()}}",
     "$('agentSend').onclick=async()=>sendPrompt('agentPrompt');",
     "$('chatSend').onclick=async()=>sendPrompt('chatPrompt');",
     "$('composerAdd').onclick=toggleActionPopover;",
@@ -284,20 +644,77 @@ function html(): string {
     "$('modelProvider').onchange=()=>refreshModels($('modelProvider').value,'');",
     "$('saveModelChoice').onclick=async()=>{const provider=$('modelProvider').value;const modelId=$('modelChoice').value;if(!modelId){toast('Choose a model first');return}const status=await api('/api/config/model',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:provider+'/'+modelId})});await applyStatus(status);closeControlMenus();toast('Model set to '+status.model)};",
     "$('saveModelKey').onclick=async()=>{const provider=$('modelProvider').value;const key=$('modelApiKey').value.trim();if(!key){toast('Paste an API key first');return}const saved=await api('/api/config/model-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({provider,key})});if(saved.error){toast(saved.error);return}toast('Key saved for '+provider);await refreshModels(provider,'')};",
-    "document.addEventListener('click',e=>{if(!e.target.closest('.control-menu')&&!e.target.closest('#composerSafety')&&!e.target.closest('#composerModel'))closeControlMenus();if(!e.target.closest('#actionPopover')&&!e.target.closest('#composerAdd'))closeActionPopover()});",
-    "boot().catch(e=>show('terminal',String(e.stack||e)));",
+    "document.addEventListener('click',e=>{if(!e.target.closest('.control-menu')&&!e.target.closest('#composerSafety')&&!e.target.closest('#composerModel'))closeControlMenus();if(!e.target.closest('#actionPopover')&&!e.target.closest('#composerAdd'))closeActionPopover();if(!e.target.closest('#chatContextMenu')&&!e.target.closest('.session-chat-item'))closeChatContextMenu();if(!e.target.closest('#profileContextMenu')&&!e.target.closest('[data-profile-menu]'))closeProfileContextMenu()});",
+    "document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSessionContextMenus()});",
+    "$('chatContextMenu')?.querySelector('[data-chat-action=\"delete\"]')?.addEventListener('click',()=>deleteChat(chatContextTargetId));",
+    "$('profileContextMenu')?.querySelector('[data-profile-action=\"edit\"]')?.addEventListener('click',()=>{const profile=profileCache.find(p=>p.name===profileContextTarget);closeProfileContextMenu();openProfileForm(profile)});",
+    "$('profileContextMenu')?.querySelector('[data-profile-action=\"remove\"]')?.addEventListener('click',()=>{const name=profileContextTarget;closeProfileContextMenu();removeProfile(name)});",
+    "boot().catch(e=>show('editorScreen',String(e.stack||e)));",
     "</script>",
     "</body></html>",
   ].join("")
 }
 
 function toolResultPayload(result: { compact: string; raw: unknown }): { result: string; raw: unknown } {
-  return { result: result.compact, raw: result.raw }
+  return { result: formatD3ToolResultForDisplay(result), raw: result.raw }
+}
+
+function editorReadPayload(result: { compact: string; raw: unknown }): { result: string; raw: unknown } {
+  if (result.raw && typeof result.raw === "object" && "stdout" in result.raw) {
+    const raw = result.raw as D3CommandResult
+    const hint = humanD3SessionError(raw.stdout, raw.stderr)
+    if (hint) return { result: hint, raw: result.raw }
+    const body = (raw.stdout || raw.stderr || "").trimEnd()
+    if (body) return { result: body, raw: result.raw }
+  }
+  return toolResultPayload(result)
+}
+
+async function probeProfileOnline(config: D3CodeConfig, profileName: string, timeoutMs = 8000): Promise<boolean> {
+  const profile = selectProfile(config, profileName)
+  if (!profile) return false
+  const session = createD3Session(profile)
+  try {
+    const result = await session.run("WHO", timeoutMs)
+    if (humanD3SessionError(result.stdout, result.stderr)) return false
+    if (result.exitCode !== null && result.exitCode !== 0) return false
+    return `${result.stdout}\n${result.stderr}`.trim().length > 0
+  } catch {
+    return false
+  } finally {
+    await session.close().catch(() => {})
+  }
+}
+
+async function probeAllProfileOnline(config: D3CodeConfig): Promise<Record<string, boolean>> {
+  const entries = await Promise.all(config.profiles.map(async (profile) => [profile.name, await probeProfileOnline(config, profile.name)] as const))
+  return Object.fromEntries(entries)
+}
+
+function normalizeManagedSshProfile(
+  profile: D3CodeConfig["profiles"][number],
+  existing?: D3CodeConfig["profiles"][number],
+): D3CodeConfig["profiles"][number] {
+  const account = (profile.account || existing?.account || "DM").trim()
+  const login = account.toLowerCase() || "dm"
+  const startupInput = (profile.startupInput ?? existing?.startupInput)?.replace(/\\n/g, "\n")
+    || `${login}\n${login}\n`
+  return {
+    ...(existing ?? {}),
+    ...profile,
+    startupInput,
+    promptPattern: normalizeD3PromptPattern(profile.promptPattern)
+      ?? normalizeD3PromptPattern(existing?.promptPattern)
+      ?? D3_TCL_PROMPT_PATTERN,
+    entryCommand: profile.entryCommand ?? existing?.entryCommand ?? "d3",
+    sessionMode: profile.sessionMode ?? existing?.sessionMode ?? "persistent",
+  }
 }
 
 async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeConfig, state: IdeRuntimeState, options: IdeServerOptions): Promise<void> {
   const url = new URL(req.url ?? "/", "http://127.0.0.1")
   if (req.method === "GET" && url.pathname === "/") return send(res, 200, html(), "text/html; charset=utf-8")
+  if (req.method === "GET" && url.pathname === "/favicon.ico") return send(res, 204, "")
   if (req.method === "GET" && url.pathname === "/api/status") {
     const profile = selectProfile(config, state.profile)
     return sendJson(res, 200, { ...state, profile: profile?.name, account: profile?.account })
@@ -379,18 +796,30 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   if (req.method === "GET" && url.pathname === "/api/profiles") {
     return sendJson(res, 200, { profiles: config.profiles.map((profile) => ({ ...profile })) })
   }
+  if (req.method === "GET" && url.pathname === "/api/profiles/online") {
+    return sendJson(res, 200, { profiles: await probeAllProfileOnline(config) })
+  }
   if (req.method === "POST" && url.pathname === "/api/profile") {
     const body = await readJson(req) as { profile?: string }
     if (!body.profile) return sendJson(res, 400, { error: "profile is required" })
     const profile = selectProfile(config, body.profile)
     if (!profile) return sendJson(res, 404, { error: `unknown profile: ${body.profile}` })
     state.profile = profile.name
-    return sendJson(res, 200, { profile: profile.name, account: profile.account })
+    state.safety = profile.safetyDefault ?? config.defaultSafety ?? state.safety
+    config.defaultProfile = profile.name
+    await (options.saveConfigFn ?? saveConfig)(config)
+    return sendJson(res, 200, { ...state, profile: profile.name, account: profile.account })
   }
   if (req.method === "PUT" && url.pathname === "/api/profile/manage") {
-    const body = await readJson(req) as { profile?: D3CodeConfig["profiles"][number]; confirmed?: boolean }
+    const body = await readJson(req) as {
+      profile?: D3CodeConfig["profiles"][number]
+      previousName?: string
+      confirmed?: boolean
+    }
     if (!body.confirmed) return sendJson(res, 409, { error: "profile edit requires confirmation" })
     if (!body.profile?.name) return sendJson(res, 400, { error: "profile.name is required" })
+    const previousName = (body.previousName?.trim() || body.profile.name).trim()
+    const existing = config.profiles.find((profile) => profile.name === previousName)
     const nextProfile = body.profile.type === "local"
       ? await createLocalD3Profile({
         name: body.profile.name,
@@ -400,18 +829,25 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
         prompt: body.profile.promptPattern,
         session: body.profile.sessionMode,
         safety: body.profile.safetyDefault,
-        allowedAccounts: body.profile.allowedAccounts,
+        allowedAccounts: body.profile.allowedAccounts ?? existing?.allowedAccounts,
       })
-      : {
+      : normalizeManagedSshProfile(
+        {
           ...body.profile,
           startupInput: body.profile.startupInput?.replace(/\\n/g, "\n"),
           promptPattern: normalizeD3PromptPattern(body.profile.promptPattern),
-        }
-    config.profiles = [...config.profiles.filter((profile) => profile.name !== nextProfile.name), nextProfile]
+        },
+        existing,
+      )
+    config.profiles = [
+      ...config.profiles.filter((profile) => profile.name !== previousName && profile.name !== nextProfile.name),
+      nextProfile,
+    ]
+    if (config.defaultProfile === previousName) config.defaultProfile = nextProfile.name
     config.defaultProfile ??= nextProfile.name
-    state.profile = nextProfile.name
+    if (state.profile === previousName) state.profile = nextProfile.name
     await (options.saveConfigFn ?? saveConfig)(config)
-    return sendJson(res, 200, { profile: nextProfile.name, saved: true })
+    return sendJson(res, 200, { profile: nextProfile.name, saved: true, previousName })
   }
   if (req.method === "DELETE" && url.pathname === "/api/profile/manage") {
     const body = await readJson(req) as { profile?: string; confirmed?: boolean }
@@ -434,53 +870,153 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   if (req.method === "GET" && url.pathname === "/api/tools") {
     return sendJson(res, 200, { tools: d3Tools.map((tool) => ({ name: tool.name, description: tool.description, mutates: tool.mutates })) })
   }
+  if (req.method === "GET" && url.pathname === "/api/capabilities") {
+    return sendJson(res, 200, { capabilities: d3Capabilities })
+  }
+  if (req.method === "GET" && url.pathname === "/api/tool-routing") {
+    return sendJson(res, 200, createD3ToolRoutingStatus(selectProfile(config, state.profile)))
+  }
+  if (req.method === "GET" && url.pathname === "/api/python-runtime") {
+    if (!options.pythonApiUrl) return sendJson(res, 200, { runtime: "node-only", available: false, url: null })
+    try {
+      const target = new URL("/tool-routing", options.pythonApiUrl)
+      const profile = selectProfile(config, state.profile)
+      if (profile?.name) target.searchParams.set("profile", profile.name)
+      const response = await fetch(target, { signal: AbortSignal.timeout(2000) })
+      const payload = await response.json()
+      return sendJson(res, 200, { runtime: "fastapi-python", available: response.ok, url: options.pythonApiUrl, routing: payload })
+    } catch (error) {
+      return sendJson(res, 200, { runtime: "fastapi-python", available: false, url: options.pythonApiUrl, error: (error as Error).message })
+    }
+  }
+  if (req.method === "GET" && url.pathname === "/api/rag/status") {
+    return sendJson(res, 200, await ragIndexStatus())
+  }
   if (req.method === "POST" && url.pathname === "/api/agent/reset") {
-    state.agentHistory = undefined
-    return sendJson(res, 200, { reset: true })
+    const body = await readJson(req) as { chat_id?: string }
+    const chatId = body.chat_id?.trim()
+    resetAgentHistory(state, chatId)
+    return sendJson(res, 200, { reset: true, chat_id: chatId })
+  }
+  if (req.method === "GET" && url.pathname === "/api/agent/jobs") {
+    const jobs = [...agentJobsFor(state).values()]
+      .filter((job) => job.status === "running" || job.status === "pending")
+      .map((job) => ({ chat_id: job.chatId, status: job.status, started_at: job.startedAt }))
+    return sendJson(res, 200, { jobs })
+  }
+  if (req.method === "GET" && url.pathname === "/api/agent/job") {
+    const chatId = url.searchParams.get("chat_id")
+    if (!chatId) return sendJson(res, 400, { error: "chat_id is required" })
+    const job = agentJobsFor(state).get(chatId)
+    if (!job) return sendJson(res, 404, { error: "no agent job for this chat", status: "missing" })
+    const since = Number(url.searchParams.get("since") ?? "0")
+    return sendJson(res, 200, {
+      chat_id: job.chatId,
+      status: job.status,
+      events: agentJobEventsSince(job, since),
+    })
   }
   if (req.method === "POST" && url.pathname === "/api/agent") {
-    const body = await readJson(req) as { input?: string }
+    const body = await readJson(req) as { input?: string; chat_id?: string; history?: ChatMessage[] }
     if (!body.input) return sendJson(res, 400, { error: "input is required" })
-    if ((req.headers.accept ?? "").includes("text/event-stream") || url.searchParams.get("stream") === "1") {
+    const chatId = body.chat_id?.trim() || "default"
+    const clientHistory = Array.isArray(body.history)
+      ? body.history.filter((message) => message && typeof message.content === "string" && (message.role === "user" || message.role === "assistant" || message.role === "system"))
+      : undefined
+    const jobs = agentJobsFor(state)
+    const existing = jobs.get(chatId)
+    const wantsStream = (req.headers.accept ?? "").includes("text/event-stream") || url.searchParams.get("stream") === "1"
+    if (existing && (existing.status === "running" || existing.status === "pending")) {
+      if (wantsStream) {
+        const since = Number(url.searchParams.get("since") ?? "0")
+        startSse(res)
+        try {
+          await streamAgentJobToSse(res, existing, since)
+        } catch (error) {
+          if (!res.writableEnded) writeSse(res, "error", { error: (error as Error).message })
+          if (!res.writableEnded) res.end()
+        }
+        return
+      }
+      return sendJson(res, 409, { error: "agent already running for this chat" })
+    }
+    const job = startAgentJob(config, state, options, chatId, body.input, clientHistory)
+    if (wantsStream) {
       startSse(res)
       try {
-        const turn = await runD3AgentTurn(config, defaultSecretStore(), {
-          ...state,
-          input: body.input,
-          history: state.agentHistory,
-          chatFn: options.agentChatFn,
-          onEvent: (event) => writeSse(res, event.type, event),
-        })
-        state.agentHistory = turn.messages
-        writeSse(res, "done", {
-          output: turn.output,
-          tools: turn.toolEvents.map((event) => ({ name: event.name, input: event.input, reason: event.reason, result: event.result.compact })),
-          usage: turn.usage,
-        })
+        await streamAgentJobToSse(res, job, 0)
       } catch (error) {
-        writeSse(res, "error", { error: (error as Error).message })
-      } finally {
-        res.end()
+        if (!res.writableEnded) writeSse(res, "error", { error: (error as Error).message })
+        if (!res.writableEnded) res.end()
       }
       return
     }
-    const turn = await runD3AgentTurn(config, defaultSecretStore(), {
-      ...state,
-      input: body.input,
-      history: state.agentHistory,
-      chatFn: options.agentChatFn,
-    })
-    state.agentHistory = turn.messages
-    return sendJson(res, 200, {
-      output: turn.output,
-      tools: turn.toolEvents.map((event) => ({ name: event.name, input: event.input, reason: event.reason, result: event.result.compact })),
-    })
+    try {
+      const finished = await waitForAgentJob(job)
+      const done = finished.events.find((event) => event.type === "done")?.data as { output?: string; tools?: unknown[] } | undefined
+      const err = finished.events.find((event) => event.type === "error")?.data as { error?: string } | undefined
+      if (finished.status === "error" || err) return sendJson(res, 500, { error: err?.error ?? "agent failed" })
+      return sendJson(res, 200, {
+        output: done?.output ?? "",
+        tools: done?.tools ?? [],
+      })
+    } catch (error) {
+      return sendJson(res, 500, { error: (error as Error).message })
+    }
   }
   if (req.method === "POST" && url.pathname === "/api/terminal/send") {
     const body = await readJson(req) as { command?: string; confirmed?: boolean }
     if (!body.command) return sendJson(res, 400, { error: "command is required" })
-    const result = await runToolByName(config, { name: "d3_tcl", input: { command: body.command, confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
-    return sendJson(res, 200, toolResultPayload(result))
+    try {
+      const terminal = await runTerminalCommand(config, state, body.command, body.confirmed)
+      return sendJson(res, 200, {
+        result: formatD3ToolResultForDisplay({ compact: terminal.result.stdout, raw: terminal.result }),
+        raw: terminal.result,
+        transcript: terminal.transcript,
+        mechanism: terminal.mechanism,
+      })
+    } catch (error) {
+      return sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  if (req.method === "GET" && url.pathname === "/api/terminal/state") {
+    const profile = selectProfile(config, state.profile)
+    const key = terminalKey(profile?.name)
+    return sendJson(res, 200, {
+      profile: profile?.name,
+      account: profile?.account,
+      transcript: terminalTranscriptsFor(state).get(key) ?? "",
+      connected: terminalSessionsFor(state).has(key),
+      mechanism: profile?.sessionMode === "persistent" ? "persistent-pty" : profile ? "oneshot-command" : "not-configured",
+    })
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/reset") {
+    const profile = selectProfile(config, state.profile)
+    const key = terminalKey(profile?.name)
+    terminalTranscriptsFor(state).delete(key)
+    await closeTerminalSession(state, profile?.name)
+    return sendJson(res, 200, { reset: true, profile: profile?.name })
+  }
+  if (req.method === "GET" && url.pathname === "/api/browser") {
+    const profileName = url.searchParams.get("profile") ?? state.profile
+    const profile = selectProfile(config, profileName)
+    if (!profile) return sendJson(res, 404, { error: "profile not found" })
+    const session = createD3Session(profile)
+    try {
+      const timeoutMs = profile.type === "ssh" ? 45_000 : 15_000
+      const report = await inspectD3Browser(session, { limit: 200, timeoutMs })
+      return sendJson(res, 200, {
+        profile: profile.name,
+        account: profile.account,
+        who: report.who,
+        fileCount: report.fileCount,
+        categories: report.categories,
+      })
+    } catch (error) {
+      return sendJson(res, 500, { error: humanizeD3ConnectError((error as Error).message, profile) })
+    } finally {
+      await session.close().catch(() => {})
+    }
   }
   if (req.method === "GET" && url.pathname === "/api/files") {
     const result = await runToolByName(config, { name: "d3_list_files", safety: state.safety, profile: state.profile })
@@ -497,15 +1033,25 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   }
   if (req.method === "GET" && url.pathname === "/api/item") {
     const result = await runToolByName(config, { name: "d3_read_item", input: { file: url.searchParams.get("file"), item: url.searchParams.get("item") }, safety: state.safety, profile: state.profile })
-    return sendJson(res, 200, toolResultPayload(result))
+    return sendJson(res, 200, editorReadPayload(result))
   }
   if (req.method === "PUT" && url.pathname === "/api/item") {
     const body = await readJson(req) as { file?: string; item?: string; body?: string; confirmed?: boolean }
     const result = await runToolByName(config, { name: "d3_write_item", input: { file: body.file, item: body.item, body: body.body ?? "", confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
+  if (req.method === "POST" && url.pathname === "/api/file/create") {
+    const body = await readJson(req) as { file?: string; dictModulo?: number; dataModulo?: number; dictionaryOnly?: boolean; dataOnlyDictionary?: string; confirmed?: boolean }
+    const result = await runToolByName(config, { name: "d3_create_file", input: body, safety: state.safety, profile: state.profile })
+    return sendJson(res, 200, toolResultPayload(result))
+  }
   if (req.method === "GET" && url.pathname === "/api/dict") {
     const result = await runToolByName(config, { name: "d3_read_dict", input: { file: url.searchParams.get("file"), item: url.searchParams.get("item") }, safety: state.safety, profile: state.profile })
+    return sendJson(res, 200, editorReadPayload(result))
+  }
+  if (req.method === "PUT" && url.pathname === "/api/dict") {
+    const body = await readJson(req) as { file?: string; item?: string; body?: string; confirmed?: boolean }
+    const result = await runToolByName(config, { name: "d3_write_dict", input: { file: body.file, item: body.item, body: body.body ?? "", confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
   if (req.method === "POST" && url.pathname === "/api/aql") {
@@ -524,6 +1070,20 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     const result = await runToolByName(config, { name: "d3_catalog", input: { file: body.file, item: body.item, global: body.global, confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
+  if (req.method === "POST" && url.pathname === "/api/basic/build") {
+    const body = await readJson(req) as { file?: string; item?: string; source?: string; compile?: boolean; catalog?: boolean; global?: boolean; confirmed?: boolean }
+    const result = await runToolByName(config, { name: "d3_build_basic_program", input: body, safety: state.safety, profile: state.profile })
+    return sendJson(res, 200, toolResultPayload(result))
+  }
+  if (req.method === "POST" && url.pathname === "/api/sbplus/plan") {
+    const body = await readJson(req) as { system?: string; process?: string; kind?: string; file?: string; fields?: string[]; notes?: string }
+    const result = await runToolByName(config, { name: "d3_sbplus_plan", input: body, safety: state.safety, profile: state.profile })
+    return sendJson(res, 200, toolResultPayload(result))
+  }
+  if (req.method === "GET" && url.pathname === "/api/sbplus/discover") {
+    const result = await runToolByName(config, { name: "d3_sbplus_discover", input: { limit: Number(url.searchParams.get("limit") ?? "300") }, safety: state.safety, profile: state.profile })
+    return sendJson(res, 200, toolResultPayload(result))
+  }
   if (req.method === "POST" && url.pathname === "/api/subroutine/call") {
     const body = await readJson(req) as { name?: string; args?: string[]; confirmed?: boolean }
     if (!body.name) return sendJson(res, 400, { error: "subroutine name is required" })
@@ -536,6 +1096,10 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   }
   if (req.method === "GET" && url.pathname === "/api/manual-search") {
     const result = await runToolByName(config, { name: "d3_manual_search", input: { query: url.searchParams.get("query") ?? "" }, safety: state.safety, profile: state.profile })
+    return sendJson(res, 200, toolResultPayload(result))
+  }
+  if (req.method === "GET" && url.pathname === "/api/rag-search") {
+    const result = await runToolByName(config, { name: "d3_rag_search", input: { query: url.searchParams.get("query") ?? "", limit: Number(url.searchParams.get("limit") ?? "8") }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
   return sendJson(res, 404, { error: "not found" })

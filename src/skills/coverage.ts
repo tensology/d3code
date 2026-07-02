@@ -15,6 +15,11 @@ export interface SkillCoverageReport {
 
 const coverageItems: Array<Omit<SkillCoverageItem, "covered">> = [
   {
+    source: "jcode",
+    expected: "doctor diagnostics, event-stream runs, scoped reference projection, session recovery, and safety reporting adapted to D3Code",
+    evidence: ["skill:harness-doctor", "skill:event-stream-runs", "skill:scoped-reference-projection", "skill:session-recovery", "skill:safety-reporting", "mode:plan", "mode:gsd", "mode:qa", "command:harness-doctor", "command:reference-skill-scout", "command:agent-run", "command:bundle-context-pack", "command:bundle-skill-pack"],
+  },
+  {
     source: "superpowers",
     expected: "brainstorming/spec-first planning",
     evidence: ["skill:brainstorming", "skill:spec-first", "mode:plan", "command:runbook"],
@@ -77,7 +82,7 @@ const coverageItems: Array<Omit<SkillCoverageItem, "covered">> = [
   {
     source: "d3code",
     expected: "D3 BASIC modernization",
-    evidence: ["mode:modernize", "command:basic-lint", "command:code-map", "command:bundle-code-plan", "command:bundle-screen-plan", "command:terminal-capture", "command:screen-parse", "command:compile-errors", "command:modernization-proof", "command:agent-run"],
+    evidence: ["mode:modernize", "skill:d3-screen-workflow", "command:basic-lint", "command:code-map", "command:bundle-code-plan", "command:bundle-screen-plan", "command:screen-audit", "command:sbplus-screen-plan", "command:terminal-capture", "command:screen-parse", "command:compile-errors", "command:modernization-proof", "command:agent-run"],
   },
   {
     source: "rocket-mvbasic",
@@ -88,6 +93,16 @@ const coverageItems: Array<Omit<SkillCoverageItem, "covered">> = [
     source: "d3code",
     expected: "explicit reference skill map with adapted and out-of-scope decisions",
     evidence: ["command:reference-skills", "command:reference-audit", "skill:d3-release-readiness"],
+  },
+  {
+    source: "hermes",
+    expected: "Hermes operator memory and workflow import discipline adapted to D3Code",
+    evidence: ["skill:hermes-operator-memory", "skill:hermes-workflow-imports", "command:hermes-status", "command:operator-memory-add", "command:ecc-hermes-skills"],
+  },
+  {
+    source: "ecc",
+    expected: "ECC harness construction, evals, retrieval, orchestration, debugging, terminal ops, style, and token budgeting adapted to D3Code",
+    evidence: ["skill:ecc-agent-harness-construction", "skill:ecc-eval-harness", "skill:ecc-iterative-retrieval", "skill:ecc-team-agent-orchestration", "skill:ecc-agent-introspection-debugging", "skill:ecc-coding-standards", "skill:ecc-terminal-ops", "skill:ecc-token-budget-advisor", "command:hermes-setup", "command:ecc-hermes-skills"],
   },
 ]
 
@@ -120,6 +135,8 @@ const commandNames = new Set([
   "delegate-prompts",
   "bundle-delegate",
   "agent-run",
+  "harness-doctor",
+  "reference-skill-scout",
   "tool-compact",
   "models",
   "resolve-model",
@@ -141,6 +158,8 @@ const commandNames = new Set([
   "live-proof-init",
   "live-proof-check",
   "screen-parse",
+  "screen-audit",
+  "sbplus-screen-plan",
   "bundle-artifacts",
   "bundle-brief",
   "webapp-skeleton",
@@ -155,6 +174,10 @@ const commandNames = new Set([
   "mvbasic-reference-audit",
   "acceptance",
   "product-audit",
+  "hermes-setup",
+  "hermes-status",
+  "ecc-hermes-skills",
+  "operator-memory-add",
 ])
 
 const scripts = new Set(["regression"])

@@ -36,8 +36,12 @@ test("recipes surface executable agent loops for audit api and modernize", () =>
   assert.match(renderRecipe("api"), /webapp-smoke/)
   assert.match(renderRecipe("modernize"), /agent-run basic-check/)
   assert.match(renderRecipe("modernize"), /modernization-proof/)
+  assert.match(renderRecipe("basic-program"), /build-basic/)
+  assert.match(renderRecipe("dictionary-field"), /write-dict/)
+  assert.match(renderRecipe("sbplus-screen"), /sbplus-discover/)
+  assert.match(renderRecipe("legacy-screen"), /screen-parse/)
 })
 
 test("lists recipe definitions", () => {
-  assert.deepEqual(Object.keys(recipes).sort(), ["api", "audit", "migrate", "modernize"])
+  assert.deepEqual(Object.keys(recipes).sort(), ["api", "audit", "basic-program", "dictionary-field", "legacy-screen", "migrate", "modernize", "sbplus-screen"])
 })

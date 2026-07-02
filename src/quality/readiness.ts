@@ -55,9 +55,22 @@ export async function createReadinessReport(config: D3CodeConfig, secrets?: Secr
       status: coverage.ready ? "ok" : "missing",
       evidence: [
         `${coverage.items.filter((item) => item.covered).length}/${coverage.items.length} coverage items implemented`,
-        "covers GSD, superpowers, gstack, rtk, D3 audit, migration, API, and modernization surfaces",
+        "covers GSD, superpowers, gstack, rtk, ECC/Hermes, D3 audit, migration, API, and modernization surfaces",
       ],
       next: "Run `d3code skill-coverage` for the detailed map.",
+    },
+    {
+      id: "hermes-ecc-bridge",
+      title: "Hermes / ECC Operator Harness",
+      status: (config.hermes?.enabled ?? true) && config.hermes?.eccRoot ? "ok" : "action",
+      evidence: [
+        `enabled:${(config.hermes?.enabled ?? true) ? "yes" : "no"}`,
+        `ecc-root:${config.hermes?.eccRoot ?? "not-configured"}`,
+        `memory:${config.hermes?.memoryEnabled === false ? "disabled" : "enabled"}`,
+      ],
+      next: (config.hermes?.enabled ?? true) && config.hermes?.eccRoot
+        ? "Run `d3code hermes-status` and keep it with operator handoff evidence."
+        : "Run `d3code hermes-setup --ecc-root <path-to-ecc>` to enable the optional operator harness bridge.",
     },
     {
       id: "setup-proof",

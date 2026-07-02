@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises"
-import { basename } from "node:path"
-import { defaultD3ReferenceManual, defaultD3UserGuide } from "../config/paths.js"
-import { readManualText } from "./manual.js"
+import { basename, join } from "node:path"
+import { defaultD3ReferenceManual, defaultD3UserGuide, defaultReferenceDir } from "../config/paths.js"
+import { manualTopics, readManualText, scopeManual } from "./manual.js"
 
 export interface ManualSearchHit {
   path: string
@@ -16,15 +16,33 @@ export interface ManualSearchResult {
   hits: ManualSearchHit[]
 }
 
+export interface ManualSearchStatusEntry {
+  path: string
+  basename: string
+  present: boolean
+  searchable: boolean
+  lines?: number
+  topics?: Array<{ id: string; status: "ok" | "thin" | "missing"; hits: number }>
+  error?: string
+}
+
+export interface ManualSearchStatus {
+  candidates: ManualSearchStatusEntry[]
+  present: number
+  searchable: number
+  topics: Array<{ id: string; label: string; status: "ok" | "thin" | "missing"; hits: number }>
+}
+
 function defaultManualCandidates(): string[] {
   return [
+    join(defaultReferenceDir, "operations/crystallogic-d3-pick0-service.md"),
     defaultD3ReferenceManual,
     defaultD3UserGuide,
-    "../reference/d3_reference_manual_10.3.4_5-28-2026.txt",
-    "../reference/d3_reference_manual_10_3_4.md",
-    "../reference/d3_user_guide_10_3_4.md",
-    "../reference/d3_reference_manual_10.3.4_5-28-2026.pdf",
-    "../reference/d3_user_guide_version_10_3_4.pdf",
+    join(defaultReferenceDir, "d3_reference_manual_10.3.4_5-28-2026.txt"),
+    join(defaultReferenceDir, "d3_reference_manual_10_3_4.md"),
+    join(defaultReferenceDir, "d3_user_guide_10_3_4.md"),
+    join(defaultReferenceDir, "d3_reference_manual_10.3.4_5-28-2026.pdf"),
+    join(defaultReferenceDir, "d3_user_guide_version_10_3_4.pdf"),
   ]
 }
 
@@ -75,6 +93,56 @@ export async function searchManualPaths(paths: string[], query: string, limit = 
 
 export async function searchDefaultManuals(query: string, limit = 8, extraPaths: string[] = []): Promise<ManualSearchResult> {
   return searchManualPaths([...extraPaths, ...defaultManualCandidates()], query, limit)
+}
+
+export async function manualSearchStatus(extraPaths: string[] = []): Promise<ManualSearchStatus> {
+  const paths = [...extraPaths, ...defaultManualCandidates()]
+  const candidates: ManualSearchStatusEntry[] = []
+  const topicTotals = new Map(manualTopics.map((topic) => [topic.id, { id: topic.id, label: topic.label, hits: 0, status: "missing" as const }]))
+  for (const path of paths) {
+    let present = false
+    try {
+      await access(path)
+      present = true
+    } catch {
+      candidates.push({ path, basename: basename(path), present: false, searchable: false })
+      continue
+    }
+    try {
+      const text = await readManualText(path)
+      const scoped = scopeManual(text)
+      for (const topic of scoped.topics) {
+        const total = topicTotals.get(topic.id)
+        if (total) total.hits += topic.hits
+      }
+      candidates.push({
+        path,
+        basename: basename(path),
+        present,
+        searchable: true,
+        lines: scoped.totalLines,
+        topics: scoped.topics.map((topic) => ({ id: topic.id, status: topic.status, hits: topic.hits })),
+      })
+    } catch (error) {
+      candidates.push({ path, basename: basename(path), present, searchable: false, error: (error as Error).message })
+    }
+  }
+  const topics = manualTopics.map((topic) => {
+    const total = topicTotals.get(topic.id)
+    const hits = total?.hits ?? 0
+    return {
+      id: topic.id,
+      label: topic.label,
+      hits,
+      status: hits === 0 ? "missing" as const : hits < topic.minimumHits ? "thin" as const : "ok" as const,
+    }
+  })
+  return {
+    candidates,
+    present: candidates.filter((entry) => entry.present).length,
+    searchable: candidates.filter((entry) => entry.searchable).length,
+    topics,
+  }
 }
 
 export function formatManualSearchResult(result: ManualSearchResult): string {

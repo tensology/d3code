@@ -59,6 +59,18 @@ In practical terms, D3 Code is made of five pieces:
 | **Safety and proof layer** | Risky operations are classified before they run. Writes, compile/catalog, and subroutine calls require explicit confirmation, and proof commands record what was actually checked. |
 | **Application workbench** | Captured D3 evidence can become bundles, audits, resource models, screen plans, OpenAPI contracts, adapter code, mock data, runnable web/API scaffolds, QA evidence, readiness reports, and release handoffs. |
 
+Current `0.1.1` capabilities add a stricter D3-only execution layer around that foundation:
+
+| Capability | What changed |
+|---|---|
+| **Harness diagnostics** | `harness-doctor`, profile doctor, model proof, RAG status, reference audits, skill coverage, sidecar status, and setup proof can be combined into concrete readiness evidence. |
+| **D3 scope guard** | Agent/tool requests are classified against D3 runtime, D3 code, D3 reference, migration, screen/SB+, and D3Code-ops boundaries before execution. |
+| **Reference grounding** | Rocket D3 manuals, Rocket MV BASIC references, SB+/System Builder material, ECC/Hermes references, and local operator notes are routed through scoped RAG/reference indexes. |
+| **Sidecar support** | A Rust sidecar can autostart with sanitized profile context for fast helper operations while leaving TypeScript fallbacks in place. |
+| **Browser IDE workbench** | The IDE now covers sessions, profile management, D3 browser categories, item/dictionary reads, compile/catalog/CALL actions, persistent terminal transcripts, RAG/manual search, SB+ discovery/planning, safety/model controls, and visible slash-command tool output. |
+| **Screen and SB+ migration** | BASIC screen audits, terminal/screen transcript parsing, and SB+ screen plans are first-class migration workflows with explicit evidence gates. |
+| **Machine-readable runs** | Bounded `agent-run` tasks can emit JSON/NDJSON progress events for repeatable audits, file checks, and migration slices. |
+
 So the short version is:
 
 ```text
@@ -294,6 +306,37 @@ You can switch modes inside the session, for example: `/mode audit`, `/mode mode
 
 ---
 
+## Reference RAG And Hermes Memory
+
+D3 Code has a local reference RAG layer for Rocket D3, MV BASIC, System Builder/SB+, Crystal Logic operator notes, and verified operator memory.
+
+Build and search it with:
+
+```bash
+d3code rag-build
+d3code rag-status
+d3code rag-search "System Builder menu template"
+d3code rag-search "PICK BASIC curl upload"
+```
+
+Hermes-style memory is the learning layer around D3Code. It records only verified, sanitized lessons, such as local coding style, repeated D3 runtime failures, and operator workflows that should become D3-specific skills later.
+
+```bash
+d3code hermes-setup --ecc-root /path/to/ecc
+d3code hermes-status
+d3code ecc-hermes-skills
+
+d3code operator-memory-add \
+  --project crystallogic \
+  --kind fix \
+  --summary "curl exit code 26 means Unix curl cannot read the upload file" \
+  --evidence "Verified from D3 screen output"
+```
+
+The System Builder manual inventory lives in `reference/system-builder/manifest.json`.
+
+---
+
 ## Proof And Safety
 
 D3 Code deliberately separates inspection from mutation.
@@ -314,6 +357,8 @@ Inside the session, proof usually appears as the next thing D3 Code tells you to
 ## Escape Hatches
 
 D3 Code is session-first, but the underlying commands remain available for automation, CI, and exact repro. Use them when you want a scriptable action instead of a conversation:
+
+The browser IDE uses a FastAPI Python backend by default so D3PY/UOPY can be integrated as first-class D3 connectors. The frontend is still JavaScript in the browser. The legacy TypeScript server is only an explicit fallback with `d3code ide --server node`.
 
 | Need | Session request | Exact command shape |
 |---|---|---|

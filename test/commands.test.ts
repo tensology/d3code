@@ -195,6 +195,22 @@ test("slash command parses D3 screen transcript", async () => {
   assert.match(result.output, /Name/)
 })
 
+test("slash commands audit legacy screens and plan SB+ screens", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "d3code-screen-audit-command-"))
+  const basic = join(dir, "ORDER.SCREEN.b")
+  const transcript = join(dir, "screen.txt")
+  await writeFile(basic, "CRT @(-1):'Order Entry'\nCRT @(5,5):'Customer:'\nINPUT CUSTOMER.ID\n")
+  await writeFile(transcript, "@(-1)Order Entry@(5,5)Customer:")
+
+  const audit = await handleSlashCommand(`/screen-audit ${basic} --transcript ${transcript}`, config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
+  assert.match(audit.output, /D3 Screen Audit/)
+  assert.match(audit.output, /input-form/)
+
+  const sbplus = await handleSlashCommand("/sbplus-screen-plan SALES ORDER.ENTRY ORDERS CUSTOMER TOTAL", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
+  assert.match(sbplus.output, /SB\+ Screen Plan: SALES\/ORDER\.ENTRY/)
+  assert.match(sbplus.output, /No direct SB\+ definition-record writes/)
+})
+
 test("slash command captures terminal transcript artifacts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "d3code-terminal-capture-command-"))
   const result = await handleSlashCommand(`/terminal-capture ${dir} printf '@(-1)MENU@(5,2)Choice:'`, localConfig, { model: "openai/gpt-5", safety: "ask", profile: "local", mode: "migrate" })

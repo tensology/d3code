@@ -1,4 +1,4 @@
-export type RecipeID = "audit" | "migrate" | "api" | "modernize"
+export type RecipeID = "audit" | "migrate" | "api" | "modernize" | "basic-program" | "dictionary-field" | "sbplus-screen" | "legacy-screen"
 
 export interface Recipe {
   id: RecipeID
@@ -98,6 +98,55 @@ export const recipes: Record<RecipeID, Recipe> = {
       "d3code compile-errors compile-output.txt",
       "d3code modernization-proof --before BP_ITEM.before.txt --after BP_ITEM.txt --compile-output compile-output.txt",
       "d3code goal --mode modernize <modernization title>",
+    ],
+  },
+  "basic-program": {
+    id: "basic-program",
+    title: "D3 BASIC Program Builder Recipe",
+    commands: [
+      "d3code rag-search 'D3 BASIC ED BASIC CATALOG program source subroutine'",
+      "d3code estate --profile <profile>",
+      "d3code read-item BP <PROGRAM> --profile <profile>",
+      "d3code basic-lint ./<PROGRAM>.b",
+      "d3code build-basic BP <PROGRAM> --profile <profile> --body-file ./<PROGRAM>.b --compile --confirm",
+      "d3code catalog-basic BP <PROGRAM> --profile <profile> --confirm",
+      "d3code agent-run basic-check BP <PROGRAM> --profile <profile> --compile --catalog --confirm",
+    ],
+  },
+  "dictionary-field": {
+    id: "dictionary-field",
+    title: "D3 Dictionary Field Builder Recipe",
+    commands: [
+      "d3code rag-search 'D3 dictionary attribute defining item DICT AQL conversion correlative'",
+      "d3code read-dict <FILE> <FIELD> --profile <profile>",
+      "d3code query-aql LIST <FILE> <FIELD> --profile <profile>",
+      "d3code write-dict <FILE> <FIELD> --profile <profile> --body-file ./DICT.<FIELD>.txt --confirm",
+      "d3code query-aql LIST <FILE> <FIELD> --profile <profile>",
+      "d3code agent-run file-audit <FILE> --profile <profile> --sample-limit 5",
+    ],
+  },
+  "sbplus-screen": {
+    id: "sbplus-screen",
+    title: "SB+ Screen and Process Builder Recipe",
+    commands: [
+      "d3code rag-search 'SB+ input process screen definition validation F1 F3 help drivers'",
+      "d3code sbplus-discover --profile <profile>",
+      "d3code sbplus-screen-plan --system <system> --process <process> --kind 'input process' --file <FILE> --field <FIELD1> --field <FIELD2>",
+      "d3code terminal-capture --profile <profile> --out ./sbplus-proof '<SB+ maintenance command or process name>'",
+      "d3code screen-parse ./sbplus-proof/terminal-transcript.txt",
+    ],
+  },
+  "legacy-screen": {
+    id: "legacy-screen",
+    title: "Legacy D3 Screen Modernization Recipe",
+    commands: [
+      "d3code terminal-plan --profile <profile>",
+      "d3code terminal-capture --profile <profile> --out ./screen-proof '<screen command>'",
+      "d3code screen-parse ./screen-proof/terminal-transcript.txt",
+      "d3code screen-audit ./BP_ITEM.txt --transcript ./screen-proof/terminal-transcript.txt",
+      "d3code bundle-screen-plan d3-app-bundle.json",
+      "d3code bundle-ui-plan d3-app-bundle.json",
+      "d3code modernization-proof --before ./before.b --after ./after.b --compile-output ./compile-output.txt",
     ],
   },
 }

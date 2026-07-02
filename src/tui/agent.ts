@@ -3,9 +3,11 @@ import type { SafetyMode } from "../domain/types.js"
 import { chat, type ChatMessage, type ChatRequest, type ChatResponse, type ChatUsage } from "../llm/client.js"
 import type { ProjectContext } from "./project-context.js"
 import type { SecretStore } from "../security/secrets.js"
+import { formatD3ToolResultForDisplay } from "../d3/connection-message.js"
 import { d3Tools, getTool } from "../d3/tools.js"
 import { runToolByName, type ToolRunResult } from "../tools/runner.js"
 import { createChatSystemPrompt } from "./context.js"
+import { assertD3Scope, classifyD3Scope, renderD3ScopeDecision } from "../scope/d3-scope.js"
 
 export interface D3AgentState {
   model: string
@@ -18,6 +20,7 @@ export interface D3AgentState {
 export interface D3AgentTurnRequest extends D3AgentState {
   input: string
   history?: ChatMessage[]
+  /** When set, caps tool rounds (tests). Omit for unlimited until the model finishes without a tool request. */
   maxToolIterations?: number
   chatFn?: AgentChatFunction
   onToken?: (token: string) => void
@@ -78,8 +81,15 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
     "- Do not start general-purpose coding in unrelated languages or frameworks unless the user is building a D3-backed application slice from D3 evidence.",
     "- Ground D3 behavior in the active profile, captured D3 evidence, and repo-local Rocket D3 manuals/reference material. If manual-backed clarity is missing, ask for or run D3/manual/search evidence instead of guessing.",
     "- Use D3 tools when you need facts from the current account, dictionaries, BASIC, locks, indexes, terminal evidence, or generated D3 application artifacts.",
+    "- Prefer the most specific registered D3 tool over raw d3_tcl. Use d3_read_item/d3_read_dict/d3_query_aql/d3_list_files/d3_locks/d3_create_file/d3_write_dict/d3_build_basic_program/d3_compile_basic/d3_catalog/d3_call_subroutine when they fit, and reserve raw d3_tcl for commands without a typed wrapper or explicitly terminal-like operator work.",
+    "- For D3/SB+ coding, call d3_rag_search or d3_manual_search before relying on memory for syntax, System Builder behavior, dictionary semantics, or screen/process rules.",
+    "- For BASIC program creation, use d3_build_basic_program so the write/compile/catalog evidence stays together.",
+    "- For SB+ screen and process work, use d3_sbplus_discover and d3_sbplus_plan first. Do not invent SB+ definition record layouts; discover the local SB+ files/conventions or route through SB+ maintenance screens before writing.",
+    "- For terminal, menu, login, System Builder, and legacy screen flows, prefer the persistent PTY/terminal route and screen-buffer evidence over one-shot TCL. Do not treat screen programs as plain command output.",
+    "- D3PY/UOPY is optional and environment-dependent. Only choose it after tooling status or parity evidence says it is configured and suitable; otherwise say it is blocked/spike-only and fall back to typed TCL or persistent PTY.",
     "- Storage model: do not treat D3 data as Linux files you can browse by mounting ext/xfs paths. The manuals describe the VME as the D3 computer-system layer, FSI/OSFI as D3-managed file access, mds as the system dictionary, each account as a master-dictionary environment, and data files as dictionary/data sections reached through D-pointers or Q-pointers. Inspect D3 through D3 sessions, TCL/AQL, dictionaries, accounts, and registered D3 tools. If host storage details such as raw/encrypted partitions matter, verify them from operator or server evidence before acting.",
     "- Assume the user may not know D3 terminology. Explain D3 concepts in plain language as you work: accounts, master dictionaries, data files, dictionaries, items, attributes, values, BASIC programs, cataloged subroutines, AQL, locks, and indexes.",
+    "- In the browser IDE, act like a copilot inside the workbench: run tools, offer Editor mode for BP/item edits, and reserve Terminal mode for explicit raw TCL — not a textbook of command lines.",
     "- For BASIC, remember this is procedural MultiValue BASIC, not an object-oriented application stack. Prefer inspect-plan-confirm loops, preserve attribute/value/subvalue shape, and avoid broad rewrites without compile/catalog proof.",
     "- Never invent D3 output. Ask for a tool call or say which profile/manual evidence is missing.",
     "- For writes, compile/catalog, CALL, LOGTO, destructive TCL, shell-like TCL, or account-changing work, explain the risk and rely on the tool safety layer to require confirmation.",
@@ -87,11 +97,25 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
     "<d3_tool>",
     "{\"name\":\"d3_list_files\",\"input\":{},\"reason\":\"inspect active account file pointers\"}",
     "</d3_tool>",
-    "- After a tool result is returned, continue naturally and summarize what the D3 evidence proves.",
+    "- After each tool result, keep requesting D3 tools until you have enough evidence for the task; then give a final answer with no <d3_tool> block.",
+    "- After a tool result is returned, continue naturally and summarize what the D3 evidence proves when you are done investigating.",
     "",
     "Available D3 tools:",
     toolCatalog,
   ].join("\n")
+}
+
+function parseToolJson(raw: string): Partial<D3AgentToolRequest> {
+  const trimmed = raw.trim()
+  try {
+    return JSON.parse(trimmed) as Partial<D3AgentToolRequest>
+  } catch (firstError) {
+    try {
+      return JSON.parse(trimmed.replace(/\\(?!["\\/bfnrtu])/g, "\\\\")) as Partial<D3AgentToolRequest>
+    } catch {
+      throw firstError
+    }
+  }
 }
 
 export function parseD3ToolRequest(content: string): D3AgentToolRequest | undefined {
@@ -99,7 +123,7 @@ export function parseD3ToolRequest(content: string): D3AgentToolRequest | undefi
   if (d3ToolMatch) {
     let parsed: Partial<D3AgentToolRequest>
     try {
-      parsed = JSON.parse(d3ToolMatch[1] ?? "{}") as Partial<D3AgentToolRequest>
+      parsed = parseToolJson(d3ToolMatch[1] ?? "{}")
     } catch (error) {
       throw new Error(`Malformed D3 tool request JSON. The model must emit a complete JSON object inside <d3_tool>...</d3_tool>. ${(error as Error).message}`)
     }
@@ -137,7 +161,7 @@ function toolResultMessage(request: D3AgentToolRequest, result: ToolRunResult): 
       `D3 tool result: ${request.name}`,
       request.reason ? `Reason: ${request.reason}` : undefined,
       "Compact result:",
-      result.compact,
+      formatD3ToolResultForDisplay(result),
     ].filter(Boolean).join("\n"),
   }
 }
@@ -151,7 +175,18 @@ function blockedToolMessage(request: D3AgentToolRequest): string {
   ].join("\n")
 }
 
+function blockedScopeMessage(message: string): string {
+  return [
+    "Blocked non-D3 tool request: out-of-scope",
+    message,
+  ].join("\n")
+}
+
 export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore, request: D3AgentTurnRequest): Promise<D3AgentTurnResult> {
+  const initialScope = classifyD3Scope(request.input)
+  if (!initialScope.allowed) {
+    return { output: blockedScopeMessage(renderD3ScopeDecision(initialScope)), messages: [], toolEvents: [] }
+  }
   const chatFn = request.chatFn ?? chat
   const messages: ChatMessage[] = request.history?.length
     ? [...request.history]
@@ -159,10 +194,23 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
   messages.push({ role: "user", content: request.input })
 
   const toolEvents: D3AgentToolEvent[] = []
-  const maxToolIterations = request.maxToolIterations ?? 4
+  const maxToolIterations = request.maxToolIterations
   let usage: ChatUsage | undefined
+  let iteration = 0
 
-  for (let iteration = 0; iteration <= maxToolIterations; iteration += 1) {
+  while (true) {
+    if (request.signal?.aborted) {
+      return { output: "Stopped.", messages, toolEvents, usage }
+    }
+    if (maxToolIterations !== undefined && iteration > maxToolIterations) {
+      return {
+        output: "Stopped after the D3 tool-iteration limit. Ask me to continue if you want the session to keep investigating with the same evidence.",
+        messages,
+        toolEvents,
+        usage,
+      }
+    }
+
     const response = await chatFn(config, secrets, {
       modelRef: request.model,
       messages,
@@ -181,6 +229,11 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
 
     const blocked = blockedToolMessage(toolRequest)
     if (blocked) return { output: blocked, messages, toolEvents, usage }
+    try {
+      assertD3Scope({ mode: request.mode, toolName: toolRequest.name, input: toolRequest.input, text: toolRequest.reason })
+    } catch (error) {
+      return { output: (error as Error).message, messages, toolEvents, usage }
+    }
 
     request.onEvent?.({ type: "tool_start", name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason })
     const result = await runToolByName(config, {
@@ -190,16 +243,11 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
       safety: request.safety,
       signal: request.signal,
       commandTimeoutMs: 0,
+      mode: request.mode,
     })
-    request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: result.compact })
+    request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: formatD3ToolResultForDisplay(result) })
     toolEvents.push({ name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason, result })
     messages.push(toolResultMessage(toolRequest, result))
-  }
-
-  return {
-    output: "Stopped after the D3 tool-iteration limit. Ask me to continue if you want the session to keep investigating with the same evidence.",
-    messages,
-    toolEvents,
-    usage,
+    iteration += 1
   }
 }

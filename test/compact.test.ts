@@ -40,4 +40,15 @@ test("compactToolOutput summarizes LIST MD file pointers", () => {
   assert.doesNotMatch(compact, /spawn ssh/)
 })
 
-// Re-export summarizeListOutput for test - wait I didn't export it. Fix test to not use it or export it.
+test("compactToolOutput reports persistent session completion without exit unknown", () => {
+  const compact = compactToolOutput({
+    command: "CT BP GET.CUSTOMER",
+    stdout: "CRT @(-1):'Order Entry'",
+    stderr: "",
+    exitCode: null,
+    durationMs: 55,
+  })
+
+  assert.match(compact, /completed · 55ms/)
+  assert.doesNotMatch(compact, /exit unknown/)
+})

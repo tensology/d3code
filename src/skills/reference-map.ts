@@ -3,7 +3,7 @@ import { getSkill } from "./modes.js"
 export type ReferenceSkillStatus = "baked" | "adapted" | "out-of-scope"
 
 export interface ReferenceSkillFamily {
-  source: "superpowers" | "gsd" | "gstack" | "rtk" | "opencode" | "rocket-mvbasic"
+  source: "superpowers" | "gsd" | "gstack" | "rtk" | "opencode" | "rocket-mvbasic" | "jcode"
   reference: string
   status: ReferenceSkillStatus
   productSkills: string[]
@@ -12,6 +12,14 @@ export interface ReferenceSkillFamily {
 }
 
 export const referenceSkillFamilies: ReferenceSkillFamily[] = [
+  {
+    source: "jcode",
+    reference: "jcode harness patterns",
+    status: "adapted",
+    productSkills: ["harness-doctor", "event-stream-runs", "scoped-reference-projection", "session-recovery", "safety-reporting"],
+    productSurfaces: ["harness-doctor", "agent-run --ndjson", "reference-skill-scout", "sessions", "resume", "bundle-context-pack", "bundle-skill-pack", "rag-build", "rag-search"],
+    rationale: "JCode runtime ideas are adapted into D3Code-native diagnostics, event streams, scoped skill/reference projection, resumable context, and safety reports without adding a JCode runtime dependency.",
+  },
   {
     source: "superpowers",
     reference: "skills/*/SKILL.md",

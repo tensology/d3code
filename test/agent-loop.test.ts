@@ -74,6 +74,45 @@ test("agent loop blocks non-D3 tool requests", async () => {
   assert.equal(result.toolEvents.length, 0)
 })
 
+test("agent loop blocks out-of-scope requests before calling the model", async () => {
+  let calls = 0
+  const chatFn: AgentChatFunction = async () => {
+    calls += 1
+    return { provider: "test", model: "test", content: "should not be called" }
+  }
+
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "build a generic React todo app",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn,
+  })
+
+  assert.equal(calls, 0)
+  assert.match(result.output, /Blocked non-D3 tool request/)
+  assert.match(result.output, /Which D3 account, file, program, bundle, manual section, or migration artifact/)
+})
+
+test("agent loop blocks registered D3 tools that are outside the active mode contract", async () => {
+  const chatFn: AgentChatFunction = async () => ({
+    provider: "test",
+    model: "test",
+    content: "<d3_tool>{\"name\":\"d3_write_item\",\"input\":{\"file\":\"CUSTOMERS\",\"item\":\"100\",\"body\":\"X\"},\"reason\":\"write from chat\"}</d3_tool>",
+  })
+
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "Update the D3 CUSTOMERS item 100",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn,
+  })
+
+  assert.match(result.output, /Tool d3_write_item is blocked in chat mode/)
+  assert.equal(result.toolEvents.length, 0)
+})
+
 test("agent loop forwards streaming tokens from the first model response", async () => {
   let streamed = ""
   const deltas: string[] = []
@@ -181,6 +220,11 @@ test("agent system prompt is D3-only and names reference-manual grounding", () =
   assert.match(prompt, /master-dictionary environment/)
   assert.match(prompt, /Do not start general-purpose coding/)
   assert.match(prompt, /After D3 tool output, explain the practical meaning/)
+  assert.match(prompt, /Prefer the most specific registered D3 tool/)
+  assert.match(prompt, /persistent PTY/)
+  assert.match(prompt, /D3PY\/UOPY is optional/)
+  assert.match(prompt, /Hermes is the backbone memory\/orchestration layer/)
+  assert.match(prompt, /ECC harness discipline/)
   assert.match(prompt, /<d3_tool>/)
 })
 
@@ -226,6 +270,12 @@ test("parser accepts malformed d_value close emitted by chat models", () => {
   assert.equal(request?.name, "d3_estate_report")
   assert.deepEqual(request?.input, {})
   assert.equal(request?.reason, "overview of active D3 account state and visible files")
+})
+
+test("parser repairs lightly escaped D3 tool JSON from chat models", () => {
+  const request = parseD3ToolRequest("<d3_tool>{\"name\":\"d3_tcl\",\"input\":{\"command\":\"LIST MD\\CUSTOMERS\"}}</d3_tool>")
+  assert.equal(request?.name, "d3_tcl")
+  assert.deepEqual(request?.input, { command: "LIST MD\\CUSTOMERS" })
 })
 
 test("parser reports malformed D3 tool JSON clearly", () => {

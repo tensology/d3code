@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
-import { renderAgentRunReport, runAgentTask } from "../src/agents/run.js"
+import { createAgentRunEvents, renderAgentRunReport, runAgentTask } from "../src/agents/run.js"
 
 async function fakeConfig(): Promise<D3CodeConfig> {
   const home = await mkdtemp(join(tmpdir(), "d3code-agent-run-"))
@@ -53,6 +53,22 @@ test("agent-run basic-check reads, lints, compiles, and catalogs with evidence",
   assert.equal(report.steps.find((step) => step.id === "compile-basic")?.status, "ok")
   assert.match(renderAgentRunReport(report), /D3 Agent Run: basic-check/)
   assert.match(renderAgentRunReport(report), /CATALOG OK/)
+})
+
+test("agent-run reports can be emitted as stable NDJSON-style events", async () => {
+  const report = await runAgentTask(await fakeConfig(), {
+    task: "file-audit",
+    file: "CUSTOMERS",
+    sampleLimit: 2,
+  })
+
+  const events = createAgentRunEvents(report)
+
+  assert.deepEqual(events.map((event) => event.type), ["start", "step", "step", "step", "step", "step", "step", "result"])
+  assert.equal(events[0]?.task, "file-audit")
+  assert.equal(events[0]?.target, "CUSTOMERS")
+  assert.equal(events.at(-1)?.ready, true)
+  assert.equal(events.find((event) => event.type === "step" && event.step?.id === "dictionary-inventory")?.step?.status, "ok")
 })
 
 test("agent-run file-audit inventories dictionary, indexes, and samples", async () => {

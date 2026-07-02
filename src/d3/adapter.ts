@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import type { ConnectionProfile, D3CommandResult, D3RunOptions, D3Session } from "../domain/types.js"
-import { normalizeD3PromptPattern } from "./prompts.js"
+import { D3_TCL_PROMPT_PATTERN, normalizeD3PromptPattern } from "./prompts.js"
 
 function timeoutEnabled(timeoutMs: number | undefined): timeoutMs is number {
   return typeof timeoutMs === "number" && timeoutMs > 0
@@ -27,6 +27,12 @@ export function d3StackedInput(startupInput: string | undefined, command: string
     .replace(/\r{2,}/g, "\r")
   const normalized = parts.endsWith("\r") ? parts : `${parts}\r`
   return normalized.replace(/\r/g, "\\r")
+}
+
+function commandTimeoutLabel(command: string, args: string[]): string {
+  if (command === "expect" && args[0] === "-c") return "SSH D3 session"
+  if (command === "ssh") return `ssh ${args.slice(-1)[0] ?? ""}`.trim()
+  return [command, ...args].join(" ").slice(0, 120)
 }
 
 function runProcess(command: string, args: string[], input: string | undefined, timeoutMs: number | undefined, options: D3RunOptions = {}, env?: NodeJS.ProcessEnv): Promise<D3CommandResult> {
@@ -56,7 +62,7 @@ function runProcess(command: string, args: string[], input: string | undefined, 
     }
     const timer = timeoutEnabled(timeoutMs) ? setTimeout(() => {
       child.kill("SIGTERM")
-      finishReject(new Error(`Command timed out after ${timeoutMs}ms: ${command} ${args.join(" ")}`))
+      finishReject(new Error(`Command timed out after ${timeoutMs}ms: ${commandTimeoutLabel(command, args)}`))
     }, timeoutMs) : undefined
     if (options.signal?.aborted) {
       onAbort()
@@ -245,58 +251,109 @@ function stripPrompt(output: string, promptPattern: RegExp): string {
     .trim()
 }
 
+function withSshLoginDefaults(profile: ConnectionProfile): ConnectionProfile {
+  if (profile.type !== "ssh") return profile
+  const login = (profile.account || "DM").trim().toLowerCase() || "dm"
+  return {
+    ...profile,
+    startupInput: profile.startupInput?.trim() ? profile.startupInput : `${login}\n${login}\n`,
+    promptPattern: profile.promptPattern ?? D3_TCL_PROMPT_PATTERN,
+    entryCommand: profile.entryCommand ?? "d3",
+    sessionMode: profile.sessionMode ?? "persistent",
+  }
+}
+
 export class SshD3Session implements D3Session {
-  constructor(readonly profile: ConnectionProfile) {
+  readonly profile: ConnectionProfile
+
+  constructor(profile: ConnectionProfile) {
     if (!profile.host || !profile.username) throw new Error("SSH profiles require host and username")
+    this.profile = withSshLoginDefaults(profile)
   }
 
   async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     const target = `${this.profile.username}@${this.profile.host}`
     const port = String(this.profile.port ?? 22)
     if (this.profile.entryCommand || this.profile.startupInput || this.profile.promptPattern) {
-      const script = [
-        "set timeout -1",
-        "set target $env(D3CODE_TARGET)",
-        "set port $env(D3CODE_PORT)",
-        "set entry $env(D3CODE_ENTRY)",
-        "if {$entry eq \"\"} {",
-        "  spawn ssh -tt -p $port $target",
-        "} else {",
-        "  spawn ssh -tt -p $port $target $entry",
-        "}",
-        "foreach line [split $env(D3CODE_STARTUP) \"\\n\"] {",
-        "  if {$line eq \"\"} { continue }",
-        "  expect -re {Enter your user id:|master dictionary:|user password:|:}",
-        "  send -- \"$line\\r\"",
-        "}",
-        "expect \":\"",
-        "foreach line [split $env(D3CODE_COMMAND) \"\\n\"] {",
-        "  if {$line eq \"\"} { continue }",
-        "  send -- \"$line\\r\"",
-        "  expect \":\"",
-        "}",
-        "send -- \"OFF\\r\"",
-        "expect {",
-        "  -re {Enter your user id:} {}",
-        "  eof {}",
-        "  timeout {}",
-        "}",
-        "close",
-        "wait",
-      ].join("\n")
-      return runProcess("expect", ["-c", script], undefined, timeoutMs, options, {
+      return runProcess("expect", ["-c", sshExpectScript()], undefined, timeoutMs, options, {
         ...process.env,
         D3CODE_TARGET: target,
         D3CODE_PORT: port,
         D3CODE_ENTRY: this.profile.entryCommand ?? "",
-        D3CODE_STARTUP: this.profile.startupInput ?? "",
+        D3CODE_STARTUP: normalizeStartupInput(this.profile.startupInput),
         D3CODE_COMMAND: command,
+        D3CODE_TIMEOUT: String(expectTimeoutSeconds(timeoutMs)),
       })
     }
     return runProcess("ssh", ["-p", port, target, command], undefined, timeoutMs, options)
   }
 
   async close(): Promise<void> {}
+}
+
+export function normalizeStartupInput(startupInput?: string): string {
+  if (!startupInput) return ""
+  return startupInput.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim()
+}
+
+function expectTimeoutSeconds(timeoutMs?: number): number {
+  if (typeof timeoutMs === "number" && timeoutMs > 0) return Math.max(5, Math.ceil(timeoutMs / 1000))
+  return 120
+}
+
+function sshExpectScript(): string {
+  return [
+    "set timeout $env(D3CODE_TIMEOUT)",
+    "set target $env(D3CODE_TARGET)",
+    "set port $env(D3CODE_PORT)",
+    "set entry $env(D3CODE_ENTRY)",
+    "if {$entry eq \"\"} {",
+    "  spawn ssh -tt -p $port $target",
+    "} else {",
+    "  spawn ssh -tt -p $port $target $entry",
+    "}",
+    "set loginPrompt {Enter your user id:|user password:|master dictionary:|Choose dictionary}",
+    "set readyPrompt {(?n)(^|\\n):\\s*$}",
+    "foreach line [split $env(D3CODE_STARTUP) \"\\n\"] {",
+    "  if {$line eq \"\"} { continue }",
+    "  expect {",
+    "    -re $loginPrompt {}",
+    "    -re $readyPrompt { break }",
+    "    timeout {",
+    "      puts \"Timed out waiting for D3 login prompt during startup input.\"",
+    "      exit 2",
+    "    }",
+    "  }",
+    "  if {[regexp $readyPrompt $expect_out(buffer)]} { break }",
+    "  send -- \"$line\\r\"",
+    "}",
+    "expect {",
+    "  -re $readyPrompt {}",
+    "  -re $loginPrompt {",
+    "    puts \"D3 login is incomplete. Set profile startup input with user id and master dictionary or password on separate lines.\"",
+    "    exit 3",
+    "  }",
+    "  timeout {",
+    "    puts \"Timed out waiting for the D3 TCL prompt after startup input.\"",
+    "    exit 4",
+    "  }",
+    "}",
+    "foreach line [split $env(D3CODE_COMMAND) \"\\n\"] {",
+    "  if {$line eq \"\"} { continue }",
+    "  send -- \"$line\\r\"",
+    "  expect {",
+    "    -re $readyPrompt {}",
+    "    timeout {",
+    "      puts \"Timed out waiting for the D3 TCL prompt after command.\"",
+    "      exit 5",
+    "    }",
+    "  }",
+    "}",
+    "send -- \"OFF\\r\"",
+    "expect eof",
+    "close",
+    "wait",
+  ].join("\n")
 }
 
 function streamDelta(output: string, streamed: number, callback?: (chunk: string) => void): number {
@@ -307,7 +364,7 @@ function streamDelta(output: string, streamed: number, callback?: (chunk: string
 
 export function createD3Session(profile: ConnectionProfile): D3Session {
   if (profile.type === "ssh") return new SshD3Session(profile)
-  if (isD3EntryCommand(profile.entryCommand)) return new LocalD3Session(profile)
   if (profile.sessionMode === "persistent") return new PersistentLocalD3Session(profile)
+  if (isD3EntryCommand(profile.entryCommand)) return new LocalD3Session(profile)
   return new LocalD3Session(profile)
 }

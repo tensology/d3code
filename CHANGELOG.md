@@ -2,6 +2,19 @@
 
 All notable changes to D3 Code will be documented in this file.
 
+## 0.1.1 - 2026-07-02
+
+- Expanded D3 Code from the initial IDE release into a broader D3-native harness with doctor-grade readiness checks, reference skill scouting, NDJSON agent-run events, scoped reference/RAG routing, and machine-readable safety/reporting surfaces.
+- Added strict D3 scope enforcement across agent and tool execution so the harness fails closed on unrelated work and keeps chat, audit, migration, modernization, QA, and D3Code-ops modes bound to D3/manual-backed behavior.
+- Added the Rust sidecar and TypeScript sidecar client for fast profile-aware helper operations, with autostart support, status/health commands, scope prefiltering, and TypeScript fallback behavior.
+- Added Rocket D3, SB+/System Builder, ECC/Hermes, and operator-reference grounding through new manifests, RAG indexes, imported skill gating, and local operator memory utilities.
+- Added SB+/screen workflow support for legacy BASIC screen audits, terminal/screen transcript parsing, and SB+ screen planning that explicitly avoids unverified direct definition-record writes.
+- Upgraded the browser IDE into a fuller D3 workbench with profile/session management, D3 browser categories, editor-safe item and dictionary reads, persistent terminal transcripts, profile online probes, RAG/manual search, SB+ discovery/planning controls, model/safety controls, and visible slash-command tool results.
+- Added an optional Python FastAPI runtime spike and D3 connector routing documentation/tests so D3PY/UOPY remains evidence-gated rather than assumed.
+- Improved D3 command compaction and editor output handling so persistent PTY results no longer leak `exit unknown` into code buffers.
+- Added reference and workflow tests covering harness doctor, RAG routing, sidecar behavior, D3 scoping, screen workflow, reference skill scouting, IDE server behavior, and compact D3 output.
+- Validated the IDE with a Playwright full-spectrum audit against a deterministic fake D3 profile: 35/35 checks across API surfaces, slash commands, editor, terminal, profile lifecycle, settings, SB+ controls, RAG/manual search, and desktop/mobile overflow.
+
 ## 0.1.0 - 2026-05-30
 
 - Added `/ide` and `d3code ide` to start a local browser-based D3 Code IDE server with profile context, D3 terminal sends, file/dictionary reads, guarded item writes, file listing, and indexed evidence search.

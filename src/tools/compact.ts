@@ -69,16 +69,19 @@ function compactD3CommandResult(result: D3CommandResult, toolName?: string): str
       : undefined
 
   const core = sanitized || body.trim()
+  const status = result.exitCode === null
+    ? `completed · ${result.durationMs}ms`
+    : `exit ${result.exitCode} · ${result.durationMs}ms`
   if (!core) {
     return [
       header,
-      `exit ${result.exitCode ?? "unknown"} · ${result.durationMs}ms`,
+      status,
     ].filter(Boolean).join("\n")
   }
 
   return [
     header,
-    `exit ${result.exitCode ?? "unknown"} · ${result.durationMs}ms`,
+    status,
     compactText(core, { maxLines: 18, maxChars: 3500 }),
   ].filter(Boolean).join("\n")
 }

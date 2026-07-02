@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIN_NODE_MAJOR=20
 SKIP_NODE_INSTALL="${D3CODE_SKIP_NODE_INSTALL:-0}"
 SKIP_NPM_LINK="${D3CODE_SKIP_NPM_LINK:-0}"
+SKIP_HERMES_SETUP="${D3CODE_SKIP_HERMES_SETUP:-0}"
 NODE_DIST_BASE="${D3CODE_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v20.x}"
 LOCAL_NODE_DIR="$ROOT_DIR/.local/node"
 LOCAL_NODE_BIN="$LOCAL_NODE_DIR/bin"
@@ -218,6 +219,48 @@ install_global_command_links() {
   ok "d3code command is available at $GLOBAL_BIN_DIR/d3code."
 }
 
+detect_ecc_root() {
+  if [ -n "${D3CODE_ECC_REPO:-}" ] && [ -f "$D3CODE_ECC_REPO/skills/hermes-imports/SKILL.md" ]; then
+    printf '%s\n' "$D3CODE_ECC_REPO"
+    return
+  fi
+
+  local candidates=(
+    "$HOME/development/TENSOLOGY/DECISIONS/COMPETITION/ecc"
+    "$ROOT_DIR/../ecc"
+    "$ROOT_DIR/reference/ecc"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [ -f "$candidate/skills/hermes-imports/SKILL.md" ]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+}
+
+setup_hermes() {
+  if [ "$SKIP_HERMES_SETUP" = "1" ]; then
+    warn "Skipping Hermes/ECC setup because D3CODE_SKIP_HERMES_SETUP=1."
+    return
+  fi
+
+  local ecc_root
+  ecc_root="$(detect_ecc_root || true)"
+  if [ -z "$ecc_root" ]; then
+    warn "Hermes/ECC source checkout was not found."
+    warn "Set D3CODE_ECC_REPO=/path/to/ecc and run:"
+    warn "  d3code hermes-setup --ecc-root \"\$D3CODE_ECC_REPO\""
+    warn "  d3code rag-build --ecc-root \"\$D3CODE_ECC_REPO\""
+    return
+  fi
+
+  info "Configuring required Hermes/ECC operator harness from $ecc_root..."
+  node dist/src/cli.js hermes-setup --ecc-root "$ecc_root" >/dev/null
+  node dist/src/cli.js rag-build --ecc-root "$ecc_root" >/dev/null
+  ok "Hermes/ECC operator harness configured and RAG index built."
+}
+
 main() {
   info "D3 Code setup"
   cd "$ROOT_DIR"
@@ -239,6 +282,8 @@ main() {
 
   install_global_command_links
 
+  setup_hermes
+
   detect_d3
 
   ok "D3 Code setup complete."
@@ -248,6 +293,8 @@ main() {
   fi
   printf '\nNext steps:\n'
   printf '  d3code setup\n'
+  printf '  d3code hermes-status\n'
+  printf '  d3code rag-status\n'
   printf '  d3code profile-add-local --name prod --account DM --entry "d3"\n'
   printf '  d3code profile-release prod\n'
   printf '  d3code\n'

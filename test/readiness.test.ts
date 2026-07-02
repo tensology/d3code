@@ -6,6 +6,8 @@ import { createReadinessReport, renderReadinessReport } from "../src/quality/rea
 import { EnvSecretStore } from "../src/security/secrets.js"
 import { createSetupProofReport, renderSetupProofReport } from "../src/setup/proof.js"
 
+const localEccRoot = "/Users/paul/development/TENSOLOGY/DECISIONS/COMPETITION/ecc"
+
 test("readiness report distinguishes implemented features from proof gates", async () => {
   const config: D3CodeConfig = {
     version: 1,
@@ -19,6 +21,7 @@ test("readiness report distinguishes implemented features from proof gates", asy
 
   assert.equal(report.ready, false)
   assert.equal(report.gates.find((gate) => gate.id === "reference-skills")?.status, "ok")
+  assert.equal(report.gates.find((gate) => gate.id === "hermes-ecc-bridge")?.status, "action")
   assert.equal(report.gates.find((gate) => gate.id === "setup-proof")?.status, "missing")
   assert.equal(report.gates.find((gate) => gate.id === "d3-profile")?.status, "missing")
   assert.equal(report.gates.find((gate) => gate.id === "live-d3-proof")?.status, "action")
@@ -58,6 +61,7 @@ test("setup proof audits first-run model, secret, profile, account, session, pro
     defaultProfile: "prod",
     profiles: [{ name: "prod", type: "ssh", host: "d3.example", username: "d3", account: "SALES", sessionMode: "persistent", promptPattern: ">", allowedAccounts: ["SALES", "DM"] }],
     modelSecrets: { anthropic: "env:ANTHROPIC_API_KEY" },
+    hermes: { enabled: true, eccRoot: localEccRoot, memoryEnabled: true },
   })
   assert.equal(ready.ready, true)
   assert.ok(ready.items.every((item) => item.status === "ok"))
@@ -72,6 +76,7 @@ test("setup proof audits first-run model, secret, profile, account, session, pro
     modelSecrets: {},
   })
   assert.equal(missing.ready, false)
+  assert.equal(missing.items.find((item) => item.id === "hermes-ecc-bridge")?.status, "action")
   assert.equal(missing.items.find((item) => item.id === "model-secret-reference")?.status, "action")
   assert.equal(missing.items.find((item) => item.id === "persistent-session")?.status, "action")
   assert.equal(missing.items.find((item) => item.id === "prompt-pattern")?.status, "action")

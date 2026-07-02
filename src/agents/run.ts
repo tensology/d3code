@@ -40,6 +40,41 @@ export interface AgentRunReport {
   steps: AgentRunStep[]
 }
 
+export interface AgentRunEvent {
+  type: "start" | "step" | "result" | "error"
+  task: string
+  agent: string
+  target: string
+  profile?: string
+  ready?: boolean
+  step?: AgentRunStep
+  evidence?: string[]
+}
+
+export function createAgentRunEvents(report: AgentRunReport): AgentRunEvent[] {
+  return [
+    { type: "start", task: report.task, agent: report.agent, target: report.target, profile: report.profile },
+    ...report.steps.map((step) => ({
+      type: "step" as const,
+      task: report.task,
+      agent: report.agent,
+      target: report.target,
+      profile: report.profile,
+      step,
+      evidence: step.evidence,
+    })),
+    {
+      type: "result",
+      task: report.task,
+      agent: report.agent,
+      target: report.target,
+      profile: report.profile,
+      ready: report.ready,
+      evidence: [`steps:${report.steps.length}`, `ready:${report.ready ? "yes" : "no"}`],
+    },
+  ]
+}
+
 function commandOutput(raw: unknown): string {
   if (raw && typeof raw === "object" && "stdout" in raw && typeof (raw as { stdout?: unknown }).stdout === "string") return (raw as { stdout: string }).stdout
   return typeof raw === "string" ? raw : JSON.stringify(raw)
