@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { defaultConfig } from "../src/config/config.js"
 import { resolveModel } from "../src/providers/catalog.js"
 import { createModelProofReport, renderModelProofReport } from "../src/providers/proof.js"
 import { createModelRoutingPlan, renderModelRoutingPlan } from "../src/providers/routing.js"
@@ -9,6 +10,13 @@ test("resolves provider/model refs", () => {
   const resolved = resolveModel("openai/gpt-5")
   assert.equal(resolved.provider.id, "openai")
   assert.equal(resolved.model, "gpt-5")
+})
+
+test("uses Muse Glimmer as the repository default model", () => {
+  assert.equal(defaultConfig.defaultModel, "ollama/muse-glimmer:30b-mlx")
+  const resolved = resolveModel()
+  assert.equal(resolved.provider.id, "ollama")
+  assert.equal(resolved.model, "muse-glimmer:30b-mlx")
 })
 
 test("resolves Kilo Code Gateway model refs", () => {
@@ -65,7 +73,7 @@ test("legacy local model bias resolves to Ollama", () => {
 test("resolves legacy local model refs to Ollama", () => {
   const resolved = resolveModel("local/local/default")
   assert.equal(resolved.provider.id, "ollama")
-  assert.equal(resolved.model, "llama3.1")
+  assert.equal(resolved.model, "muse-glimmer:30b-mlx")
 })
 
 test("model proof verifies default provider and routing readiness", async () => {

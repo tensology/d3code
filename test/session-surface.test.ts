@@ -46,6 +46,23 @@ test("session surface meta matches the compact prompt footer style", () => {
   }), "openai/gpt-5 | D3 prod attached | d3/ask | tok -- | files -- | cwd D3Code | no instr")
 })
 
+test("session surface meta keeps footer segments single-line and bounded", () => {
+  const meta = formatPromptMeta({
+    model: `openrouter/${"very-long-model-name-".repeat(5)}\u001B]8;;https://example.com\u0007link`,
+    profile: "New Office\nInjected",
+    d3Attached: false,
+    mode: "chat\nbad",
+    safety: "ask",
+    project: { cwd: "/work/D3Code-with-a-very-long-folder-name-that-would-break-the-footer", root: "/work", instructions: Array.from({ length: 14 }, (_, index) => ({ path: `AGENTS-${index}.md`, label: `AGENTS-${index}.md`, content: "x" })) },
+  })
+
+  assert.doesNotMatch(meta, /[\n\r\u001B\u0007]/)
+  assert.ok(meta.length <= 190, meta)
+  assert.match(meta, /^openrouter\//)
+  assert.match(meta, /D3 New Office Injected profile/)
+  assert.match(meta, /14 instr$/)
+})
+
 test("live shell output summary mirrors Claude-style recent-line progress", () => {
   const summary = summarizeLiveOutput("one\ntwo\nthree\nfour\nfive\nsix\n", 7)
   assert.equal(summary.preview, "two\nthree\nfour\nfive\nsix")
@@ -79,4 +96,11 @@ test("live terminal chunks preserve stderr text without synthetic labels", () =>
   assert.equal(output, "stdout: ready\nwarning from stderr\n")
   assert.equal(summary.preview, "stdout: ready\nwarning from stderr")
   assert.equal(summary.preview.includes("stderr:"), false)
+})
+
+test("live output summary strips OSC and control noise while preserving visible terminal text", () => {
+  const summary = summarizeLiveOutput("\u001B]8;;https://example.com\u0007click\u001B]8;;\u0007\nok\u0000\n", 1)
+
+  assert.equal(summary.preview, "click\nok")
+  assert.doesNotMatch(summary.preview, /[\u001B\u0000\u0007]/)
 })

@@ -1,4 +1,5 @@
 import type { TranscriptEntry } from "./transcript.js"
+import { compactDisplaySegment } from "./session-surface.js"
 
 export type SubmittedTurnKind = "chat" | "shell" | "d3" | "slash"
 export type SubmittedTurnRole = "user" | "shell-input" | "d3-input"
@@ -15,11 +16,15 @@ export interface SubmittedTurnView extends SubmittedTurn {
 
 function compactTaskLabel(label: string, maxLength = 30): string {
   if (label.length <= maxLength) return label
-  return `${label.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
+  const head = label.slice(0, Math.max(0, maxLength - 3)).trimEnd()
+  const wordEnd = head.lastIndexOf(" ")
+  const compact = wordEnd > 8 ? head.slice(0, wordEnd).trimEnd() : head
+  return `${compact}...`
 }
 
 function slashName(line: string): string {
-  return line.trim().split(/\s+/)[0] ?? line.trim()
+  const clean = compactDisplaySegment(line, 120)
+  return clean.split(/\s+/)[0] ?? clean
 }
 
 export function inputRoleForLine(line: string, mode: string): SubmittedTurn {
@@ -40,7 +45,7 @@ export function formatSubmittedTurn(turn: SubmittedTurn): SubmittedTurnView {
 }
 
 export function formatLiveTurnLabel(input: { kind: SubmittedTurnKind; detail: string }): string {
-  const detail = input.kind === "slash" ? slashName(input.detail) : input.detail.trim()
+  const detail = input.kind === "slash" ? slashName(input.detail) : compactDisplaySegment(input.detail, 120)
   if (input.kind === "chat") return "Thinking"
   if (input.kind === "shell") return compactTaskLabel(detail ? `Bash: ${detail}` : "Bash")
   if (input.kind === "d3") return compactTaskLabel(detail ? `D3 TCL: ${detail}` : "D3 TCL")

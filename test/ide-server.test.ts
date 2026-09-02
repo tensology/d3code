@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
 import { createServer } from "node:http"
+import { mkdir, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
 import { basicAuthHeader, defaultIdeAuth } from "../src/ide/auth.js"
@@ -40,7 +43,11 @@ test.afterEach(async () => {
 test("IDE server serves browser shell and D3 profile APIs", async () => {
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
 
-  const html = await fetch(server.url).then((response) => response.text())
+  const shellResponse = await fetch(server.url)
+  const html = await shellResponse.text()
+  assert.equal(shellResponse.headers.get("x-content-type-options"), "nosniff")
+  assert.equal(shellResponse.headers.get("x-frame-options"), "DENY")
+  assert.match(shellResponse.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/)
   assert.match(html, /D3 Code IDE/)
   assert.match(html, /D3 Browser/)
   assert.match(html, /D3 Screen/)
@@ -84,6 +91,29 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.match(html, /id="photoUpload"/)
   assert.match(html, /id="planModeAction"/)
   assert.match(html, /attachmentPromptPrefix/)
+  assert.match(html, /sameBubble/)
+  assert.match(html, /normalizeChatMessages/)
+  assert.match(html, /AGENT_EVENT_STORE/)
+  assert.match(html, /shouldProcessAgentEvent/)
+  assert.match(html, /runKey/)
+  assert.match(html, /id="mobilePanelButton"/)
+  assert.match(html, /class="chat-welcome"/)
+  assert.match(html, /editor-action-group/)
+  assert.match(html, /aria-pressed="true"/)
+  assert.match(html, /prefers-reduced-motion:reduce/)
+  assert.match(html, /role="dialog"/)
+  assert.match(html, /Review connection/)
+  assert.match(html, /id="profileConnectionBanner"/)
+  assert.match(html, /renderProfileConnectionBanner/)
+  assert.match(html, /profile-connection-retry/)
+  assert.match(html, /composer-wrap textarea:focus-visible\{outline:none\}/)
+  assert.match(html, /markdownHtmlV2/)
+  assert.match(html, /<table><thead>/)
+  assert.match(html, /message-body blockquote/)
+  assert.match(html, /message-body ol/)
+  assert.match(html, /\/harness-context/)
+  assert.match(html, /\/api\/agent\/cancel/)
+  assert.match(html, /slice\(-200\)/)
 
   const status = await fetch(`${server.url}/api/status`).then((response) => response.json()) as { profile: string; account: string; mode: string }
   assert.equal(status.profile, "fake")
@@ -95,6 +125,59 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
 
   const favicon = await fetch(`${server.url}/favicon.ico`)
   assert.equal(favicon.status, 204)
+})
+
+test("IDE exposes the same project memory and skill harness context as the terminal", async () => {
+  const root = join(tmpdir(), `d3code-ide-context-${Date.now()}`)
+  await mkdir(join(root, ".d3code", "memory"), { recursive: true })
+  await writeFile(join(root, ".d3code", "memory", "active.md"), "Current D3 evidence: preserve CUSTOMER multivalues.")
+  const server = await startTestIdeServer(config, {
+    model: "openai/gpt-5",
+    safety: "ask",
+    profile: "fake",
+    mode: "audit",
+    project: { cwd: root, root, instructions: [] },
+  }, { port: 0 })
+
+  const context = await fetch(`${server.url}/api/harness-context?request=review%20CUSTOMER%20D3`).then((response) => response.json()) as { text: string; workspaceMemoryFiles: string[] }
+  assert.match(context.text, /preserve CUSTOMER multivalues/)
+  assert.equal(context.workspaceMemoryFiles.length, 1)
+  const statusText = await fetch(`${server.url}/api/status`).then((response) => response.text())
+  assert.doesNotMatch(statusText, /preserve CUSTOMER multivalues/)
+})
+
+test("IDE blocks cross-origin state changes", async () => {
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const response = await fetch(`${server.url}/api/config/safety`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "https://attacker.example" },
+    body: JSON.stringify({ safety: "trust" }),
+  })
+  assert.equal(response.status, 403)
+  assert.equal(config.defaultSafety, "ask")
+})
+
+test("IDE can cancel a running agent job", async () => {
+  const agentChatFn: NonNullable<IdeServerOptions["agentChatFn"]> = async (_config, _secrets, request) => new Promise((_resolve, reject) => {
+    request.signal?.addEventListener("abort", () => reject(request.signal?.reason ?? new Error("aborted")), { once: true })
+  })
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0, agentChatFn })
+  const chatId = "cancel-test"
+  const pending = fetch(`${server.url}/api/agent`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, input: "inspect D3 files" }),
+  })
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  const cancelled = await fetch(`${server.url}/api/agent/cancel`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId }),
+  }).then((response) => response.json()) as { cancelled: boolean }
+  const result = await pending.then((response) => response.json()) as { output: string }
+
+  assert.equal(cancelled.cancelled, true)
+  assert.match(result.output, /Stopped/)
 })
 
 test("IDE server exposes categorized D3 browser data", async () => {
@@ -157,7 +240,8 @@ test("IDE server updates model and permission defaults from browser controls", a
 })
 
 test("IDE server requires basic auth when public", async () => {
-  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { host: "0.0.0.0", port: 0 })
+  const secureConfig = { ...config, ideAuth: defaultIdeAuth }
+  const server = await startTestIdeServer(secureConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { host: "0.0.0.0", port: 0 })
   const url = `http://127.0.0.1:${server.port}`
 
   const denied = await fetch(url)
@@ -167,6 +251,13 @@ test("IDE server requires basic auth when public", async () => {
   const allowed = await fetch(url, { headers: { authorization: basicAuthHeader(defaultIdeAuth) } })
   assert.equal(allowed.status, 200)
   assert.match(await allowed.text(), /D3 Code IDE/)
+})
+
+test("IDE refuses public binding with default implicit credentials", async () => {
+  await assert.rejects(
+    startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { host: "0.0.0.0", port: 0 }),
+    /setup-auth/,
+  )
 })
 
 test("IDE server normalizes browser-created D3 profiles for terminal emulation", async () => {
@@ -257,10 +348,14 @@ test("IDE server exposes terminal send through guarded D3 tool layer", async () 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ command: "WHO" }),
   })
-  const payload = await response.json() as { result: string }
+  const payload = await response.json() as { result: string; clean: string; label: string; transcript: string; rawTranscript: string }
 
   assert.equal(response.status, 200)
+  assert.equal(payload.label, "TCL output")
+  assert.equal(payload.clean, payload.result)
   assert.match(payload.result, /DM|OK/)
+  assert.match(payload.transcript, /> WHO/)
+  assert.equal(payload.rawTranscript, payload.transcript)
 })
 
 test("IDE terminal keeps a profile-scoped transcript and persistent local session", async () => {
@@ -281,23 +376,26 @@ test("IDE terminal keeps a profile-scoped transcript and persistent local sessio
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ command: "D3CODE_STATE=kept", confirmed: true }),
-  }).then((response) => response.json()) as { transcript: string; mechanism: string }
+  }).then((response) => response.json()) as { transcript: string; displayTranscript: string; mechanism: string }
   assert.equal(first.mechanism, "persistent-pty")
   assert.match(first.transcript, /> D3CODE_STATE=kept/)
+  assert.match(first.displayTranscript, /> D3CODE_STATE=kept/)
 
   const second = await fetch(`${server.url}/api/terminal/send`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ command: "printf %s \"$D3CODE_STATE\"", confirmed: true }),
-  }).then((response) => response.json()) as { transcript: string; result: string }
+  }).then((response) => response.json()) as { transcript: string; displayTranscript: string; result: string }
   assert.match(second.transcript, /> D3CODE_STATE=kept/)
   assert.match(second.transcript, /> printf %s/)
   assert.match(second.transcript, /kept/)
+  assert.match(second.displayTranscript, /> printf %s/)
 
-  const state = await fetch(`${server.url}/api/terminal/state`).then((response) => response.json()) as { transcript: string; connected: boolean; mechanism: string }
+  const state = await fetch(`${server.url}/api/terminal/state`).then((response) => response.json()) as { transcript: string; displayTranscript: string; connected: boolean; mechanism: string }
   assert.equal(state.connected, true)
   assert.equal(state.mechanism, "persistent-pty")
   assert.match(state.transcript, /kept/)
+  assert.match(state.displayTranscript, /kept/)
 
   await fetch(`${server.url}/api/terminal/reset`, { method: "POST" })
 })
@@ -440,6 +538,18 @@ test("IDE server exposes database, BASIC, dictionary, and subroutine workbench A
     body: JSON.stringify({ query: "LIST CUSTOMERS" }),
   }).then((response) => response.json()) as { result: string }
   assert.match(aql.result, /Alice/)
+
+  const injectedAql = await fetch(`${server.url}/api/aql`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ query: "LIST CUSTOMERS\nDELETE CUSTOMERS 100" }),
+  })
+  assert.equal(injectedAql.status, 400)
+  assert.match(await injectedAql.text(), /must be one line/)
+
+  const injectedRead = await fetch(`${server.url}/api/item?file=${encodeURIComponent("BP\nWHO")}&item=GET.CUSTOMER`)
+  assert.equal(injectedRead.status, 400)
+  assert.match(await injectedRead.text(), /Invalid d3_read_item input/)
 
   const dict = await fetch(`${server.url}/api/dict?file=CUSTOMERS&item=NAME`).then((response) => response.json()) as { result: string }
   assert.equal(dict.result, "DICT ITEM")
@@ -590,6 +700,8 @@ test("IDE server streams browser agent tokens and D3 tool events", async () => {
   assert.equal(response.status, 200)
   assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/)
   assert.match(stream, /event: assistant_delta/)
+  assert.match(stream, /"job_id":"agent-/)
+  assert.match(stream, /"seq":0/)
   assert.match(stream, /event: tool_start/)
   assert.match(stream, /"name":"d3_list_files"/)
   assert.match(stream, /event: tool_result/)
@@ -598,13 +710,34 @@ test("IDE server streams browser agent tokens and D3 tool events", async () => {
 })
 
 test("IDE server reports profile online status from WHO probes", async () => {
-  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const offlineProfile: D3CodeConfig["profiles"][number] = {
+    name: "offline",
+    type: "local",
+    entryCommand: "node -e \"console.log('ssh: Could not resolve hostname missing.example')\"",
+    sessionMode: "oneshot",
+  }
+  const fullProfile: D3CodeConfig["profiles"][number] = {
+    name: "full",
+    type: "local",
+    entryCommand: "node -e \"process.stdin.on('data',()=>console.log('Connected to Virtual Machine pick0:LINUX\\nToo many users'))\"",
+    sessionMode: "oneshot",
+  }
+  const onlineConfig = { ...config, profiles: [...config.profiles, offlineProfile, fullProfile] }
+  const server = await startTestIdeServer(onlineConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
   const response = await fetch(`${server.url}/api/profiles/online`)
-  const payload = await response.json() as { profiles: Record<string, boolean> }
+  const payload = await response.json() as {
+    profiles: Record<string, boolean>
+    details: Record<string, { online: boolean; issue?: string }>
+  }
 
   assert.equal(response.status, 200)
   assert.equal(payload.profiles.fake, true)
   assert.equal(payload.profiles.alt, true)
+  assert.equal(payload.profiles.offline, false)
+  assert.equal(payload.profiles.full, false)
+  assert.equal(payload.details.fake.online, true)
+  assert.match(payload.details.full.issue ?? "", /D3 login blocked: too many users/i)
+  assert.match(payload.details.full.issue ?? "", /server and SSH connection are available/i)
 })
 
 test("IDE server agent job survives client disconnect and can be polled", async () => {
@@ -637,9 +770,12 @@ test("IDE server agent job survives client disconnect and can be polled", async 
   let finished = false
   while (Date.now() - started < 15_000) {
     const poll = await fetch(`${server.url}/api/agent/job?chat_id=${encodeURIComponent(chatId)}&since=0`)
-    const payload = await poll.json() as { status: string; events: Array<{ type: string; data: { output?: string } }> }
+    const payload = await poll.json() as { job_id: string; status: string; events: Array<{ job_id: string; seq: number; type: string; data: { output?: string } }> }
     if (payload.status === "done") {
       finished = true
+      assert.match(payload.job_id, /^agent-/)
+      assert.ok(payload.events.every((event) => event.job_id === payload.job_id))
+      assert.deepEqual(payload.events.map((event) => event.seq), payload.events.map((_event, index) => index))
       assert.match(payload.events.find((event) => event.type === "done")?.data.output ?? "", /Recovered after refresh/)
       break
     }
@@ -665,7 +801,7 @@ test("slash /ide starts the IDE server and returns a browser URL", async () => {
 })
 
 test("slash /ide explains public network binding when requested", async () => {
-  const result = await handleSlashCommand("/ide public --port 0", config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
+  const result = await handleSlashCommand("/ide public --port 0", { ...config, ideAuth: defaultIdeAuth }, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
 
   assert.match(result.output, /D3 Code IDE started/)
   assert.doesNotMatch(result.output, /http:\/\/0\.0\.0\.0:\d+/)

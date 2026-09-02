@@ -1,7 +1,7 @@
 import { assertD3Allowed } from "../core/permissions.js"
 import type { D3CommandResult, ToolContext, ToolDefinition } from "../domain/types.js"
 import { indexD3Account, loadIndex, saveIndex, searchDocuments } from "../indexing/indexer.js"
-import { buildRagIndex, formatRagSearchResult, loadRagIndex, saveRagIndex, searchRagIndex } from "../rag/reference-rag.js"
+import { formatRagSearchResult, loadFreshRagIndex, searchRagIndex } from "../rag/reference-rag.js"
 import { d3Capabilities, renderD3Capabilities } from "./capabilities.js"
 import { detectLocalD3 } from "./detect.js"
 import { inspectD3Estate } from "./estate.js"
@@ -26,6 +26,21 @@ function requireName(value: unknown, label: string): string {
   const text = String(value ?? "").trim()
   if (!/^[A-Za-z0-9_.:-]+$/.test(text)) throw new Error(`${label} must contain only letters, numbers, underscore, dot, colon, or hyphen.`)
   return text
+}
+
+function requireSingleLine(value: unknown, label: string): string {
+  const text = String(value ?? "").trim()
+  if (!text) throw new Error(`${label} is required.`)
+  if (/[\r\n\u0000-\u001f\u007f]/.test(text)) throw new Error(`${label} must be one line without control characters.`)
+  return text
+}
+
+function requireReadOnlyAql(value: unknown): string {
+  const query = requireSingleLine(value, "AQL query")
+  if (!/^(?:LIST|SORT|SELECT|SSELECT|COUNT)\b/i.test(query)) {
+    throw new Error("AQL query must begin with LIST, SORT, SELECT, SSELECT, or COUNT. Use d3_tcl for other TCL commands so the safety policy can classify them.")
+  }
+  return query
 }
 
 function requireModulo(value: unknown, label: string): number {
@@ -96,7 +111,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT ${args.file} ${args.item}`, true)
+      return runTcl(context, `CT ${requireName(args.file, "file")} ${requireName(args.item, "item")}`, true)
     },
   },
   {
@@ -131,7 +146,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT DICT ${args.file} ${args.item}`, true)
+      return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${requireName(args.item, "dictionary item")}`, true)
     },
   },
   {
@@ -151,7 +166,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { query: string }
-      return runTcl(context, args.query, true)
+      return runTcl(context, requireReadOnlyAql(args.query), true)
     },
   },
   {
@@ -160,7 +175,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: true,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string; confirmed?: boolean }
-      return runTcl(context, `BASIC ${args.file} ${args.item}`, args.confirmed)
+      return runTcl(context, `BASIC ${requireName(args.file, "file")} ${requireName(args.item, "item")}`, args.confirmed)
     },
   },
   {
@@ -169,7 +184,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: true,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string; global?: boolean; confirmed?: boolean }
-      return runTcl(context, `CATALOG ${args.file} ${args.item}${args.global ? " (G" : ""}`, args.confirmed)
+      return runTcl(context, `CATALOG ${requireName(args.file, "file")} ${requireName(args.item, "item")}${args.global ? " (G" : ""}`, args.confirmed)
     },
   },
   {
@@ -199,7 +214,7 @@ export const d3Tools: ToolDefinition[] = [
     execute: async (input: unknown, context) => {
       const args = input as { name: string; args?: string[]; confirmed?: boolean }
       const callArgs = (args.args ?? []).map(quoteTclArg).join(" ")
-      return runTcl(context, `CALL ${args.name}${callArgs ? ` ${callArgs}` : ""}`, args.confirmed)
+      return runTcl(context, `CALL ${requireName(args.name, "subroutine name")}${callArgs ? ` ${callArgs}` : ""}`, args.confirmed)
     },
   },
   {
@@ -244,13 +259,7 @@ export const d3Tools: ToolDefinition[] = [
     execute: async (input: unknown) => {
       const args = input as { query: string; limit?: number; index?: string }
       const indexName = args.index ?? "reference-rag"
-      let index
-      try {
-        index = await loadRagIndex(indexName)
-      } catch {
-        index = await buildRagIndex()
-        await saveRagIndex(index, indexName)
-      }
+      const index = await loadFreshRagIndex(indexName)
       const result = searchRagIndex(index, args.query, { limit: args.limit })
       return { ...result, compact: formatRagSearchResult(result) }
     },
@@ -269,13 +278,7 @@ export const d3Tools: ToolDefinition[] = [
         (args.fields ?? []).join(" "),
         "validation F1 F3 help process definition drivers",
       ].join(" ")
-      let index
-      try {
-        index = await loadRagIndex("reference-rag")
-      } catch {
-        index = await buildRagIndex()
-        await saveRagIndex(index, "reference-rag")
-      }
+      const index = await loadFreshRagIndex("reference-rag")
       const result = searchRagIndex(index, query, { limit: 5 })
       const lines = [
         "# SB+ Builder Plan",

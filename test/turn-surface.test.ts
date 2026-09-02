@@ -20,6 +20,16 @@ test("turn surface names the live turn without leaking implementation language",
   assert.equal(formatLiveTurnLabel({ kind: "chat", detail: "show me the files in this account" }), "Thinking")
 })
 
+test("turn surface keeps live command labels single-line and terminal-control-free", () => {
+  const shellLabel = formatLiveTurnLabel({ kind: "shell", detail: "printf ready\nnext command" })
+  const d3Label = formatLiveTurnLabel({ kind: "d3", detail: "LIST MD\u001B]8;;https://example.com\u0007link\u001B]8;;\u0007" })
+
+  assert.equal(shellLabel, "Bash: printf ready next...")
+  assert.match(d3Label, /^D3 TCL: LIST MD/)
+  assert.doesNotMatch(shellLabel, /[\n\r\u001B\u0007]/)
+  assert.doesNotMatch(d3Label, /[\n\r\u001B\u0007]/)
+})
+
 test("turn surface creates one tool-start label for work that actually runs", () => {
   assert.deepEqual(toolStartEntryForLine("! npm test", "chat"), { role: "tool-start", content: "Bash: npm test" })
   assert.deepEqual(toolStartEntryForLine("LIST MD", "d3"), { role: "tool-start", content: "D3 TCL: LIST MD" })

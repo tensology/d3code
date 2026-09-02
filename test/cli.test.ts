@@ -16,10 +16,10 @@ async function cli(args: string[]) {
   })
 }
 
-async function runBlockingCliUntilReady(args: string[]): Promise<{ stdout: string; stderr: string; code: number | null }> {
+async function runBlockingCliUntilReady(args: string[], envOverrides: NodeJS.ProcessEnv = {}): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const child = spawn("node", ["dist/src/cli.js", ...args], {
     cwd: process.cwd(),
-    env: { ...process.env, D3CODE_HOME: join(tmpdir(), `d3code-test-${Date.now()}`) },
+    env: { ...process.env, D3CODE_HOME: join(tmpdir(), `d3code-test-${Date.now()}`), ...envOverrides },
     stdio: ["ignore", "pipe", "pipe"],
   })
   let stdout = ""
@@ -250,7 +250,12 @@ test("CLI renders baked workflow", async () => {
 })
 
 test("CLI ide accepts public visibility and prints reachable access notes", async () => {
-  const result = await runBlockingCliUntilReady(["ide", "public", "--port", "0"])
+  const home = await mkdtemp(join(tmpdir(), "d3code-public-ide-"))
+  await execFileAsync("node", ["dist/src/cli.js", "ide", "setup-auth", "admin", "test-password"], {
+    cwd: process.cwd(),
+    env: { ...process.env, D3CODE_HOME: home },
+  })
+  const result = await runBlockingCliUntilReady(["ide", "public", "--port", "0"], { D3CODE_HOME: home })
 
   assert.ok(result.code === 0 || result.code === null)
   assert.match(result.stdout, /D3 Code IDE running \((LAN\/VPN URL|Interface URL)\):/)
@@ -258,6 +263,7 @@ test("CLI ide accepts public visibility and prints reachable access notes", asyn
   assert.match(result.stdout, /Access: listening on all server interfaces/)
   assert.match(result.stdout, /(LAN\/VPN URL|Interface URL):/)
   assert.match(result.stdout, /http:\/\//)
+  assert.doesNotMatch(result.stdout, /Backend: FastAPI Python/)
   assert.doesNotMatch(result.stderr, /too many arguments/)
 })
 

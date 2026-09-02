@@ -15,3 +15,7 @@ test("command suggestions filter by typed command prefix", () => {
 test("command suggestions respect the visible limit", () => {
   assert.equal(commandSuggestions("/", 3).length, 3)
 })
+
+test("command suggestions expose live harness context", () => {
+  assert.equal(commandSuggestions("/harness", 5)[0]?.name, "/harness-context")
+})

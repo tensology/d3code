@@ -1,4 +1,5 @@
 import type { D3CommandResult, D3Session } from "../domain/types.js"
+import { humanD3SessionError, humanizeD3ConnectError } from "./connection-message.js"
 
 export interface D3EstateFile {
   name: string
@@ -32,6 +33,17 @@ export interface D3EstateReport {
 
 function outputOf(result: D3CommandResult): string {
   return (result.stdout || result.stderr || "").replace(/\0/g, "").trim()
+}
+
+function assertUsableProbe(result: D3CommandResult): void {
+  const connectionIssue = humanD3SessionError(result.stdout, result.stderr)
+  if (connectionIssue) throw new Error(connectionIssue)
+  if (/\bssh:/i.test(`${result.stdout}\n${result.stderr}`)) {
+    throw new Error(humanizeD3ConnectError(outputOf(result)))
+  }
+  if (result.exitCode !== null && result.exitCode !== 0) {
+    throw new Error(humanizeD3ConnectError(outputOf(result) || `D3 command failed with exit code ${result.exitCode}`))
+  }
 }
 
 function classifyFile(name: string, detail = "", typeCode = ""): D3EstateFile["kind"] {
@@ -122,7 +134,9 @@ export function renderEstateReport(report: Omit<D3EstateReport, "compact">): str
 export async function inspectD3Browser(session: D3Session, options: { limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<D3BrowserReport> {
   const timeoutMs = options.timeoutMs ?? 0
   const whoResult = await session.run("WHO", timeoutMs, { signal: options.signal })
+  assertUsableProbe(whoResult)
   const filesResult = await session.run("LIST MD A0 A1 A2 (N", timeoutMs, { signal: options.signal })
+  assertUsableProbe(filesResult)
   const who = outputOf(whoResult).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1)
   const filesOutput = outputOf(filesResult)
   const files = parseFileListing(filesOutput, options.limit ?? 200)

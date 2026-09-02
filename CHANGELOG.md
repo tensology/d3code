@@ -2,6 +2,17 @@
 
 All notable changes to D3 Code will be documented in this file.
 
+## Unreleased
+
+- Hardened the D3 agent runtime with strict schema-first tool inputs, read-only TCL/AQL validation, model-confirmation rejection, bounded tool loops, request timeouts, repeated-call detection, cancellable browser jobs, and recoverable provider/tool failures.
+- Added live project, Hermes memory, ECC skill-procedure, and fresh RAG context to every agent turn with bounded retrieval, secret filtering, stale-index rebuilding, and browser/TUI harness parity.
+- Added atomic operator-memory writes, active/superseded lifecycle records, corrupt-record recovery, owner-only permissions, and the `operator-memory-supersede` command.
+- Upgraded browser responses to render GitHub-flavored Markdown structure, including headings, ordered and unordered lists, tables, blockquotes, links, inline code, and fenced code blocks. Existing stored conversations are reformatted on reload.
+- Hardened the browser IDE with explicit authentication for public binding, timing-safe credential checks, same-origin mutation enforcement, CSP and response security headers, request/job/event/history limits, and operator stop controls.
+- Improved project-instruction discovery, narrow-terminal table layout, D3 connection diagnostics, SSH login handling, estate probe validation, and the local Ollama default model path.
+- Added regression coverage for tool injection, schema enforcement, agent convergence, cancellation, harness context, history compaction, memory lifecycle, RAG freshness, Markdown tables, public IDE authentication, and connection recovery.
+- Verified the complete TypeScript, Rust, Python, browser, mock-D3, and generated-application suite with 424 passing tests.
+
 ## 0.1.1 - 2026-07-02
 
 - Expanded D3 Code from the initial IDE release into a broader D3-native harness with doctor-grade readiness checks, reference skill scouting, NDJSON agent-run events, scoped reference/RAG routing, and machine-readable safety/reporting surfaces.

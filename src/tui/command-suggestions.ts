@@ -20,6 +20,7 @@ const suggestions: CommandSuggestion[] = [
   { name: "/files", description: "list D3 files for the selected account" },
   { name: "/locks", description: "inspect D3 locks" },
   { name: "/manual-search", description: "search the local Rocket D3 manuals" },
+  { name: "/harness-context", description: "show live memory and task-matched skills" },
 ]
 
 export function commandSuggestions(input: string, limit = 6): CommandSuggestion[] {
@@ -30,4 +31,3 @@ export function commandSuggestions(input: string, limit = 6): CommandSuggestion[
     .filter((suggestion) => suggestion.name.startsWith(query))
     .slice(0, Math.max(0, limit))
 }
-

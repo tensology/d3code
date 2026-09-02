@@ -880,7 +880,7 @@ export function App(props: AppProps) {
   const d3Label = d3Attached
     ? `D3 ${profile}${d3Account ? `/${d3Account}` : ""}`
     : profile ? `D3 ${profile}` : `D3 ${d3Status}`
-  const d3StatusColor = d3Attached ? "green" : profile ? "yellow" : d3Status === "connected" ? "green" : "yellow"
+  const d3StatusColor = d3Attached ? "green" : "yellow"
   const prompt = formatComposerPrompt({ mode, busy })
   const composerTitle = formatComposerTitle({ mode, busy })
   const composerHint = formatComposerHint({ busy, draftText: draft.text, queuedCount: queuedLines.length })
@@ -907,7 +907,7 @@ export function App(props: AppProps) {
               <Text dimColor>Rocket D3 agent shell</Text>
               <Box marginTop={1} flexDirection="column">
                 <Text color={providerStatus === "connected" ? "green" : "yellow"}>{providerStatus === "connected" ? "●" : "○"} AI {providerStatus}</Text>
-                <Text color={d3Status === "connected" ? "green" : "yellow"}>{d3Status === "connected" ? "●" : "○"} D3 {d3Status}</Text>
+                <Text color={d3Status === "attached" ? "green" : "yellow"}>{d3Status === "attached" ? "●" : "○"} D3 {d3Status}</Text>
               </Box>
               <Box marginTop={1} flexDirection="column">
                 <Text dimColor>{welcome?.providerName ?? "Checking provider"}</Text>

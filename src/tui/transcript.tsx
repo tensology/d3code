@@ -1,5 +1,6 @@
 import React from "react"
 import { Box, Text } from "ink"
+import { MarkdownView } from "./markdown.js"
 
 export interface TranscriptEntry {
   role: string
@@ -123,6 +124,18 @@ function ResponseBlock({ content, titleColor = "cyan", maxLines = 8 }: { content
   )
 }
 
+function AssistantBlock({ content, interrupted = false }: { content: string; interrupted?: boolean }) {
+  return (
+    <Box flexDirection="row">
+      <Text dimColor>{transcriptPrefix("tool")}</Text>
+      <Box flexDirection="column" flexGrow={1}>
+        <Text color={interrupted ? "yellow" : "green"}>{interrupted ? "d3code interrupted" : "d3code"}</Text>
+        <MarkdownView content={content} />
+      </Box>
+    </Box>
+  )
+}
+
 function FileChangeBlock({ content }: { content: string }) {
   const [summary = "Changed files", ...files] = compactTranscriptContent(content, 9)
   return (
@@ -200,8 +213,8 @@ export function TranscriptEntryView({ entry }: { entry: TranscriptEntry }) {
   if (entry.role === "user" || entry.role === "shell-input" || entry.role === "d3-input") return <InputBlock content={entry.content} role={entry.role} />
   if (entry.role === "pending") return <PendingBlock content={entry.content} />
   if (entry.role === "queued") return <QueuedBlock content={entry.content} />
-  if (entry.role === "assistant" || entry.role === "assistant-stream") return <ResponseBlock content={`d3code\n${entry.content}`} titleColor="green" maxLines={transcriptMaxLines(entry.role)} />
-  if (entry.role === "assistant-interrupted") return <ResponseBlock content={`d3code interrupted\n${entry.content}`} titleColor="yellow" maxLines={transcriptMaxLines(entry.role)} />
+  if (entry.role === "assistant" || entry.role === "assistant-stream") return <AssistantBlock content={entry.content} />
+  if (entry.role === "assistant-interrupted") return <AssistantBlock content={entry.content} interrupted />
   if (entry.role === "tool-live") return <LiveToolBlock content={entry.content} />
   if (entry.role === "tool") return <ResponseBlock content={entry.content} />
   if (entry.role === "shell-output") return <ResponseBlock content={entry.content} />

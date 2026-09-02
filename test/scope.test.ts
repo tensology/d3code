@@ -15,6 +15,9 @@ test("D3 scope classifier accepts runtime, code, reference, and D3Code operation
   assert.equal(classifyD3Scope("Modernize this BP BASIC program and compile it").scope, "d3-code")
   assert.equal(classifyD3Scope("What does the Rocket D3 manual say about CREATE-FILE?").scope, "d3-reference")
   assert.equal(classifyD3Scope("Run harness-doctor and check the sidecar profile context").scope, "d3code-ops")
+  assert.equal(classifyD3Scope("try connect").scope, "d3code-ops")
+  assert.equal(classifyD3Scope("can you connect to the server?").scope, "d3code-ops")
+  assert.equal(classifyD3Scope("is the server back up?").scope, "d3code-ops")
 })
 
 test("D3 scope classifier fails closed for unrelated work and asks for a D3 anchor", () => {
@@ -29,6 +32,8 @@ test("D3 scope guard applies mode-specific tool boundaries", () => {
   assert.doesNotThrow(() => assertD3Scope({ mode: "audit", toolName: "d3_read_item", input: { file: "CUSTOMERS", item: "100" } }))
   assert.doesNotThrow(() => assertD3Scope({ mode: "chat", toolName: "d3_manual_search", input: { query: "D3 CREATE-FILE syntax" } }))
   assert.doesNotThrow(() => assertD3Scope({ mode: "chat", toolName: "d3_list_files", input: {}, text: "show D3 account files" }))
+  assert.doesNotThrow(() => assertD3Scope({ mode: "chat", toolName: "d3_tcl", input: { command: "WHO" }, text: "check the active D3 account" }))
+  assert.doesNotThrow(() => assertD3Scope({ mode: "chat", toolName: "d3_login", input: {}, text: "verify active D3 account connection" }))
   assert.doesNotThrow(() => assertD3Scope({ mode: "modernize", toolName: "d3_build_basic_program", input: { file: "BP", item: "CALC.TAX" } }))
 
   assert.throws(

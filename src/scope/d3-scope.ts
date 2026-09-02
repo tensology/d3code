@@ -102,6 +102,16 @@ const genericEngineeringTerms = [
   "calendar",
 ]
 
+const d3OperatorIntentPatterns: Array<[RegExp, string]> = [
+  [/\btry\s+(?:to\s+)?connect\b/, "try connect"],
+  [/\bcan\s+you\s+connect\b/, "can you connect"],
+  [/\bcheck\s+(?:the\s+)?connection\b/, "check connection"],
+  [/\bconnect\s+to\s+(?:the\s+)?server\b/, "connect to server"],
+  [/\bserver\s+(?:(?:back\s+)?up|online|reachable|available)\b/, "server reachable"],
+  [/\bvm\s+(?:back|up|online|running)\b/, "vm reachable"],
+  [/\b(?:login|session)\s+(?:check|proof|test)\b/, "session proof"],
+]
+
 function normalized(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
 }
@@ -129,9 +139,13 @@ export function classifyD3Scope(text: string): D3ScopeDecision {
   const code = matches(value, d3CodeTerms)
   const reference = matches(value, d3ReferenceTerms)
   const ops = matches(value, d3CodeOpsTerms)
+  const operatorIntent = d3OperatorIntentPatterns
+    .filter(([pattern]) => pattern.test(value))
+    .map(([, reason]) => reason)
   const generic = matches(value, genericEngineeringTerms)
 
   if (ops.length > 0) return { scope: "d3code-ops", allowed: true, confidence: "high", reasons: ops.map((term) => `D3Code operation term: ${term}`) }
+  if (operatorIntent.length > 0) return { scope: "d3code-ops", allowed: true, confidence: "medium", reasons: operatorIntent.map((term) => `D3Code operator intent: ${term}`) }
   if (reference.length > 0) return { scope: "d3-reference", allowed: true, confidence: "high", reasons: reference.map((term) => `D3 reference term: ${term}`) }
   if (code.length > 0) return { scope: "d3-code", allowed: true, confidence: "high", reasons: code.map((term) => `D3 coding term: ${term}`) }
   if (runtime.length > 0) return { scope: "d3-runtime", allowed: true, confidence: "high", reasons: runtime.map((term) => `D3 runtime term: ${term}`) }
@@ -148,12 +162,12 @@ export function classifyD3Scope(text: string): D3ScopeDecision {
 }
 
 const modeToolAllowlist: Record<string, Set<string>> = {
-  chat: new Set(["d3_detect", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_sbplus_discover", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
-  audit: new Set(["d3_detect", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_sbplus_discover", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
-  modernize: new Set(["d3_detect", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_search", "d3_manual_search", "d3_rag_search", "d3_compile_basic", "d3_catalog", "d3_build_basic_program", "d3_builder_capabilities", "d3_sbplus_plan"]),
-  migrate: new Set(["d3_detect", "d3_login", "d3_list_files", "d3_read_item", "d3_write_item", "d3_create_file", "d3_read_dict", "d3_write_dict", "d3_query_aql", "d3_compile_basic", "d3_catalog", "d3_build_basic_program", "d3_locks", "d3_call_subroutine", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_sbplus_plan", "d3_sbplus_discover", "d3_estate_report", "d3_builder_capabilities"]),
-  api: new Set(["d3_detect", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
-  qa: new Set(["d3_detect", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_search", "d3_manual_search", "d3_rag_search", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
+  chat: new Set(["d3_detect", "d3_tcl", "d3_login", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_sbplus_discover", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
+  audit: new Set(["d3_detect", "d3_tcl", "d3_login", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_sbplus_discover", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
+  modernize: new Set(["d3_detect", "d3_tcl", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_search", "d3_manual_search", "d3_rag_search", "d3_compile_basic", "d3_catalog", "d3_build_basic_program", "d3_builder_capabilities", "d3_sbplus_plan"]),
+  migrate: new Set(["d3_detect", "d3_tcl", "d3_login", "d3_list_files", "d3_read_item", "d3_write_item", "d3_create_file", "d3_read_dict", "d3_write_dict", "d3_query_aql", "d3_compile_basic", "d3_catalog", "d3_build_basic_program", "d3_locks", "d3_call_subroutine", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_sbplus_plan", "d3_sbplus_discover", "d3_estate_report", "d3_builder_capabilities"]),
+  api: new Set(["d3_detect", "d3_tcl", "d3_login", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_index_account", "d3_search", "d3_manual_search", "d3_rag_search", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
+  qa: new Set(["d3_detect", "d3_tcl", "d3_login", "d3_list_files", "d3_read_item", "d3_read_dict", "d3_query_aql", "d3_locks", "d3_search", "d3_manual_search", "d3_rag_search", "d3_estate_report", "d3_builder_capabilities", "d3_sbplus_plan"]),
   gsd: new Set(["d3_detect", "d3_manual_search", "d3_rag_search", "d3_search", "d3_builder_capabilities", "d3_sbplus_plan"]),
   plan: new Set(["d3_detect", "d3_manual_search", "d3_rag_search", "d3_search", "d3_builder_capabilities", "d3_sbplus_plan"]),
 }

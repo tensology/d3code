@@ -68,6 +68,8 @@ import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes } from 
 import { resolveIdeAuth, setIdeAuth } from "../ide/auth.js"
 import { createScreenAudit, renderScreenAudit } from "../screens/audit.js"
 import { createSbplusScreenPlan, renderSbplusScreenPlan } from "../screens/sbplus-plan.js"
+import { buildHarnessTurnContext } from "../operator/harness-context.js"
+import { loadProjectContext } from "./project-context.js"
 
 export interface RuntimeState {
   model: string
@@ -190,7 +192,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return {
         output: [
           "Commands:",
-          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [public|stop] [--port N] [--host 127.0.0.1|0.0.0.0], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /screen-audit <basic-file> [--transcript <file>], /sbplus-screen-plan <system> <process> [file] [field...], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
+          "/help, /setup, /profile [name], /d3 [profile], /chat, /status, /ide|/id [public|stop] [--port N] [--host 127.0.0.1|0.0.0.0], /harness-context [request], /terminal-plan [profile], /ide-terminal [profile], /connector-strategy [profile], /terminal-capture <out-dir> <command...>, /screen-parse <transcript-file> [width] [height], /screen-audit <basic-file> [--transcript <file>], /sbplus-screen-plan <system> <process> [file] [field...], /models, /model <provider/model>, /model-proof [mode] [--bias quality|balanced|speed|ollama], /model-routing [mode] [--bias quality|balanced|speed|ollama], /agents, /tools, /skills, /skill-coverage, /reference-skills, /reference-audit, /setup-proof, /readiness, /product-audit [--with-acceptance] [--live-proof-dir <dir>], /acceptance, /live-proof, /live-proof-init <dir>, /live-proof-check <dir>, /modes",
           "/login [profile] [account], /logout, /account, /estate, /files, /read <file> <item>, /write <file> <item> <body>, /dict <file> <item>, /locks",
           "/diff <file> <item> <proposed-body>, /index [name], /search <query>, /manual-search <query>, /compile <file> <item>, /catalog <file> <item>, /call <subroutine> [args...]",
           "/mode <chat|plan|gsd|migrate|audit|api|modernize|qa>, /workflow [mode], /runbook [mode], /delegate [mode], /delegate-prompts [mode], /agent-run basic-check <file> <item> [--compile] [--catalog] [--confirm], /agent-run file-audit <file> [--sample-limit N], /agent-run migration-slice <bundle.json> --out <dir>, /skill <id>, /goal <title>",
@@ -259,7 +261,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       const port = portValue ? Number(portValue) : 3737
       if (!Number.isInteger(port) || port < 0 || port > 65535) return { output: "Usage: /ide [public|stop] [--port 3737] [--host 127.0.0.1|0.0.0.0]" }
       const host = flagValue(args, "--host") ?? config.ideBindHost ?? (publicMode ? "0.0.0.0" : "127.0.0.1")
-      const server = await startIdeServer(config, state, { host, port })
+      const server = await startIdeServer(config, { ...state, project: await loadProjectContext() }, { host, port })
       if (port !== 0) openBrowserBestEffort(server.url)
       const firewallNotes = publicMode ? await openTemporaryFirewallPort(server.port) : []
       const displayOptions = { publicHost: config.idePublicHost }
@@ -346,6 +348,15 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
     }
     case "/agents":
       return { output: agents.map((agent) => `${agent.id}\t${agent.mode}\t${agent.defaultSafety}\t${agent.description}`).join("\n") }
+    case "/harness-context": {
+      const context = await buildHarnessTurnContext({
+        input: args.join(" ") || "inspect the current D3 harness context",
+        mode: state.mode,
+        profile: state.profile,
+        project: await loadProjectContext(),
+      })
+      return { output: context.text }
+    }
     case "/delegate":
       return { output: renderDelegationPlan(args[0] ?? state.mode) }
     case "/delegate-prompts":

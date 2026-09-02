@@ -1,4 +1,5 @@
 import type { D3CodeConfig } from "../config/config.js"
+import { timingSafeEqual } from "node:crypto"
 
 export interface IdeAuthCredentials {
   username: string
@@ -35,7 +36,9 @@ export function isBasicAuthValid(header: string | string[] | undefined, credenti
     if (separator === -1) return false
     const username = decoded.slice(0, separator)
     const password = decoded.slice(separator + 1)
-    return username === credentials.username && password === credentials.password
+    const actual = Buffer.from(`${username}\u0000${password}`, "utf8")
+    const expected = Buffer.from(`${credentials.username}\u0000${credentials.password}`, "utf8")
+    return actual.length === expected.length && timingSafeEqual(actual, expected)
   } catch {
     return false
   }

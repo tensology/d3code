@@ -12,6 +12,11 @@ from d3code_api.server import app
 
 
 class FastApiRuntimeTests(unittest.TestCase):
+    def test_missing_config_uses_muse_glimmer(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            config = load_config(Path(home) / "missing.jsonc")
+            self.assertEqual(config.default_model, "ollama/muse-glimmer:30b-mlx")
+
     def test_loads_shared_jsonc_config(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             path = Path(home) / "config.jsonc"

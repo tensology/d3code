@@ -62,6 +62,7 @@ import { createScreenAudit, renderScreenAudit } from "./screens/audit.js"
 import { createSbplusScreenPlan, renderSbplusScreenPlan } from "./screens/sbplus-plan.js"
 import { App } from "./tui/App.js"
 import { consumeEarlyInput, startCapturingEarlyInput } from "./tui/early-input.js"
+import { loadProjectContext } from "./tui/project-context.js"
 import { createMigrationPlan } from "./migration/planner.js"
 import { createOpenApiFromMigrationPlan } from "./migration/openapi.js"
 import { generateAdapterSkeleton } from "./migration/adapter.js"
@@ -108,7 +109,7 @@ import { listSessions, loadSession } from "./sessions/store.js"
 import { startIdeServer } from "./ide/server.js"
 import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes, shouldPromptForPublicIde, terminalLink } from "./ide/access.js"
 import { resolveIdeAuth, setIdeAuth } from "./ide/auth.js"
-import { appendOperatorMemory, createOperatorMemoryEntry, readOperatorMemory, type OperatorMemoryKind } from "./operator/memory.js"
+import { appendOperatorMemory, createOperatorMemoryEntry, readOperatorMemory, supersedeOperatorMemory, type OperatorMemoryKind } from "./operator/memory.js"
 import { createHermesStatus, renderEccHermesImportMap, renderHermesStatus } from "./operator/ecc-hermes.js"
 import { buildRagIndex, formatRagIndexStatus, formatRagSearchResult, loadRagIndex, loadSystemBuilderManifest, ragIndexStatus, routeReferenceQuery, saveRagIndex, searchRagIndex } from "./rag/reference-rag.js"
 
@@ -971,17 +972,23 @@ program.command("capabilities").description("List D3/SB+ coding capabilities sha
   console.log(options.json ? JSON.stringify({ capabilities: d3Capabilities }, null, 2) : renderD3Capabilities())
 })
 
-program.command("tool").argument("<name>").argument("[json]").description("Execute a D3 tool against the selected profile.").option("--profile <name>").option("--safety <mode>").action(async (name: string, json = "{}", options: { profile?: string; safety?: string }) => {
+program.command("tool").argument("<name>").argument("[json]").description("Execute a D3 tool against the selected profile.").option("--profile <name>").option("--safety <mode>").option("--mode <mode>").action(async (name: string, json = "{}", options: { profile?: string; safety?: string; mode?: string }) => {
   const config = await loadConfig()
-  const profile = selectProfile(config, options.profile)
-  const output = await runToolByName(config, { name, input: JSON.parse(json), safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile, compact: false })
+  const profileName = options.profile ?? optionValue("--profile")
+  const safetyOption = options.safety ?? optionValue("--safety")
+  const mode = options.mode ?? optionValue("--mode")
+  const profile = selectProfile(config, profileName)
+  const output = await runToolByName(config, { name, input: JSON.parse(json), safety: effectiveSafety(config, safetyOption ? parseSafety(safetyOption) : undefined, profile), profile: profileName, mode, compact: false })
   console.log(JSON.stringify(output.raw, null, 2))
 })
 
-program.command("tool-compact").argument("<name>").argument("[json]").description("Execute a D3 tool and print compact output.").option("--profile <name>").option("--safety <mode>").action(async (name: string, json = "{}", options: { profile?: string; safety?: string }) => {
+program.command("tool-compact").argument("<name>").argument("[json]").description("Execute a D3 tool and print compact output.").option("--profile <name>").option("--safety <mode>").option("--mode <mode>").action(async (name: string, json = "{}", options: { profile?: string; safety?: string; mode?: string }) => {
   const config = await loadConfig()
-  const profile = selectProfile(config, options.profile)
-  const output = await runToolByName(config, { name, input: JSON.parse(json), safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile })
+  const profileName = options.profile ?? optionValue("--profile")
+  const safetyOption = options.safety ?? optionValue("--safety")
+  const mode = options.mode ?? optionValue("--mode")
+  const profile = selectProfile(config, profileName)
+  const output = await runToolByName(config, { name, input: JSON.parse(json), safety: effectiveSafety(config, safetyOption ? parseSafety(safetyOption) : undefined, profile), profile: profileName, mode })
   console.log(output.compact)
 })
 
@@ -1186,6 +1193,13 @@ program.command("operator-memory-add").description("Record a verified, sanitized
 program.command("operator-memory-list").description("List sanitized D3Code operator memory entries.").option("--project <name>").option("--memory <file>", "memory jsonl file", memoryPath.replace(/\.md$/i, ".jsonl")).option("--json").action(async (options: { project?: string; memory: string; json?: boolean }) => {
   const entries = await readOperatorMemory(options.memory, options.project)
   console.log(options.json ? JSON.stringify(entries, null, 2) : entries.map((entry) => `- ${entry.createdAt} [${entry.project}/${entry.kind}] ${entry.summary}\n  evidence: ${entry.evidence}`).join("\n"))
+})
+
+program.command("operator-memory-supersede").argument("<id>").description("Replace an active verified operator-memory entry while retaining its audit history.").requiredOption("--project <name>").requiredOption("--kind <kind>", "lesson|workflow|reference|fix").requiredOption("--summary <text>").requiredOption("--evidence <text>").option("--memory <file>", "memory jsonl file", memoryPath.replace(/\.md$/i, ".jsonl")).option("--json").action(async (id: string, options: { project: string; kind: string; summary: string; evidence: string; memory: string; json?: boolean }) => {
+  if (!["lesson", "workflow", "reference", "fix"].includes(options.kind)) throw new Error("Memory kind must be lesson, workflow, reference, or fix")
+  const replacement = createOperatorMemoryEntry({ project: options.project, kind: options.kind as OperatorMemoryKind, summary: options.summary, evidence: options.evidence })
+  await supersedeOperatorMemory(options.memory, id, replacement)
+  console.log(options.json ? JSON.stringify(replacement, null, 2) : `Superseded ${id} with ${replacement.id}`)
 })
 
 program.command("manual-scope").argument("<manual-file>").description("Report D3 manual topic and command capability coverage from a PDF or extracted text file.").action(async (textFile: string) => {
@@ -1600,7 +1614,7 @@ program.command("api").description("Start the Python FastAPI D3 runtime for D3PY
   }).finally(() => stopChildProcess(child))
 })
 
-program.command("ide").alias("id").argument("[visibility]", "use public to bind on server interfaces, or setup-auth").argument("[username]").argument("[password]").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host").option("--public", "bind on server interfaces").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").option("--server <server>", "fastapi|node", "fastapi").option("--api-backend <backend>", "legacy Node mode only: node|fastapi", "node").option("--api-port <port>", "legacy Node hybrid FastAPI runtime port", (value) => Number(value), 8737).option("--api-host <host>", "legacy Node hybrid FastAPI runtime bind host", "127.0.0.1").action(async (visibility: string | undefined, username: string | undefined, password: string | undefined, options: { port: number; host?: string; public?: boolean; profile?: string; model?: string; safety?: string; mode: string; server: string; apiBackend: string; apiPort: number; apiHost: string }) => {
+program.command("ide").alias("id").argument("[visibility]", "use public to bind on server interfaces, or setup-auth").argument("[username]").argument("[password]").description("Start the browser-based D3 Code IDE server.").option("--port <port>", "local port", (value) => Number(value), 3737).option("--host <host>", "bind host").option("--public", "bind on server interfaces").option("--profile <name>").option("--model <provider/model>").option("--safety <ask|plan|trust>").option("--mode <mode>", "chat|plan|gsd|migrate|audit|api|modernize|qa", "chat").option("--server <server>", "node|fastapi", "node").option("--api-backend <backend>", "Node IDE companion API: node|fastapi", "node").option("--api-port <port>", "hybrid FastAPI companion runtime port", (value) => Number(value), 8737).option("--api-host <host>", "hybrid FastAPI companion runtime bind host", "127.0.0.1").action(async (visibility: string | undefined, username: string | undefined, password: string | undefined, options: { port: number; host?: string; public?: boolean; profile?: string; model?: string; safety?: string; mode: string; server: string; apiBackend: string; apiPort: number; apiHost: string }) => {
   if (visibility && visibility !== "public" && visibility !== "setup-auth") throw new Error("Unknown IDE visibility. Use `d3code ide`, `d3code ide public`, `d3code ide setup-auth`, or `d3code ide --host <host>`.")
   if (options.server !== "fastapi" && options.server !== "node") throw new Error("IDE server must be one of: fastapi, node")
   if (options.apiBackend !== "node" && options.apiBackend !== "fastapi") throw new Error("IDE API backend must be one of: node, fastapi")
@@ -1664,6 +1678,7 @@ program.command("ide").alias("id").argument("[visibility]", "use public to bind 
     safety,
     profile: selectedProfileName,
     mode: mode.id,
+    project: await loadProjectContext(process.cwd()),
   }, { host, port: options.port, pythonApiUrl: pythonApi?.url })
   const displayOptions = { publicHost: config.idePublicHost }
   const displayUrl = displayUrlForIdeBind(host, server.port, undefined, displayOptions)

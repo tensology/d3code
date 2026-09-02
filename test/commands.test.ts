@@ -93,6 +93,13 @@ test("slash command renders runbook and skill details", async () => {
   assert.match(skill.output, /root cause/i)
 })
 
+test("slash command exposes the refreshed memory and skill harness context", async () => {
+  const result = await handleSlashCommand("/harness-context review D3 memory", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "chat" })
+
+  assert.match(result.output, /Live Harness Context/)
+  assert.match(result.output, /recommended skills/)
+})
+
 test("slash command renders baked skill coverage", async () => {
   const result = await handleSlashCommand("/skill-coverage", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "migrate" })
   assert.match(result.output, /D3 Code Baked Skill Coverage/)

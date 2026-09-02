@@ -118,7 +118,7 @@ def load_raw_config(path: Path | None = None) -> dict[str, Any]:
     if not target.exists():
         return {
             "version": 1,
-            "defaultModel": "openai/gpt-5",
+            "defaultModel": "ollama/muse-glimmer:30b-mlx",
             "defaultSafety": "ask",
             "profiles": [],
             "modelSecrets": {},
@@ -147,7 +147,7 @@ def load_config(path: Path | None = None) -> D3CodeConfig:
     profiles = [profile_from_raw(item) for item in raw.get("profiles", []) if isinstance(item, dict) and item.get("name")]
     return D3CodeConfig(
         version=int(raw.get("version", 1)),
-        default_model=str(raw.get("defaultModel") or "openai/gpt-5"),
+        default_model=str(raw.get("defaultModel") or "ollama/muse-glimmer:30b-mlx"),
         default_safety=str(raw.get("defaultSafety") or "ask"),
         default_profile=raw.get("defaultProfile"),
         profiles=profiles,

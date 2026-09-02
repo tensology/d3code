@@ -18,6 +18,14 @@ test("humanD3SessionError explains stopped D3 virtual machine", () => {
   assert.doesNotMatch(message ?? "", /expect -c/)
 })
 
+test("humanD3SessionError explains exhausted D3 user slots", () => {
+  const message = humanD3SessionError("Connected to Virtual Machine 'pick0:LINUX'.\nToo many users\nDisconnected", "")
+
+  assert.match(message ?? "", /D3 login blocked: too many users/i)
+  assert.match(message ?? "", /server and SSH connection are available/i)
+  assert.match(message ?? "", /Release an existing D3 session/i)
+})
+
 test("formatD3ToolResultForDisplay prefers connection hint over compact noise", () => {
   const display = formatD3ToolResultForDisplay({
     compact: "command: expect -c ...\nexit: 0",

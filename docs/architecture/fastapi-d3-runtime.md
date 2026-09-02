@@ -1,8 +1,8 @@
 # FastAPI D3 Runtime
 
-D3 Code now uses a Python FastAPI backend as the default IDE server.
+D3 Code uses the full Node agent harness as the default IDE server. The Python FastAPI backend remains an explicit connector-parity runtime.
 
-The browser frontend remains JavaScript, but the backend process for `d3code ide` is FastAPI. It reads the same `D3CODE_HOME/config.jsonc`, so profiles, accounts, and default safety do not split into separate configurations.
+The browser frontend and complete agent harness run on the Node IDE server. The optional FastAPI process reads the same `D3CODE_HOME/config.jsonc`, so profiles, accounts, and default safety do not split into separate configurations.
 
 ## Runtime
 
@@ -12,19 +12,25 @@ Start the FastAPI API directly:
 d3code api --port 8737
 ```
 
-Start the IDE. This is FastAPI by default:
+Start the complete IDE, including chat, memory, skills, streaming, and Markdown rendering:
 
 ```sh
 d3code ide --port 3737
 ```
 
-The legacy TypeScript server is available only as an explicit fallback:
+Start the standalone FastAPI connector workbench explicitly:
 
 ```sh
-d3code ide --server node
+d3code ide --server fastapi
 ```
 
-The FastAPI IDE exposes runtime status at `/api/python-runtime` and shows the D3PY/UOPY route status in profile metadata.
+The Node IDE can also start FastAPI as a companion API while retaining the complete harness UI:
+
+```sh
+d3code ide --api-backend fastapi
+```
+
+The FastAPI runtime exposes status at `/api/python-runtime` and shows the D3PY/UOPY route status in profile metadata.
 
 ## Routing Policy
 

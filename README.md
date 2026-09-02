@@ -260,7 +260,7 @@ What happens behind the scenes:
 | Account/file discovery | Use the active local/SSH D3 profile to inspect the account, files, dictionaries, and indexed context. |
 | Reads | Pull items, dictionary entries, locks, indexes, selected records, BASIC source, and cached search hits. |
 | Application work | Capture D3 evidence, derive resources/screens/actions/access/data shape, then generate or update a runnable app/API slice. |
-| Browser IDE | Start `/ide --port 3737` to run a local web IDE with profile/account context, D3-native left panels for data files/items, dictionaries, BASIC/subroutines, and indexes/references, a main item/BASIC editor, a right-side D3-only agent lane, and a bottom D3 runtime terminal. |
+| Browser IDE | Start `/ide --port 3737` to run a local web IDE with the same project instructions, memory, selected skills, bounded agent loop, profile/account context, D3-native workbench, and Markdown responses as the terminal. Use `/harness-context` to inspect the live context and `/stop` or the stop button to cancel a run. |
 | Risky operations | Stop before writes, compile/catalog, subroutine calls, account changes, or destructive TCL unless confirmation is explicit. |
 | Follow-up work | Keep the session history, profile, model, mode, safety setting, and generated evidence available as context. |
 
@@ -331,6 +331,12 @@ d3code operator-memory-add \
   --kind fix \
   --summary "curl exit code 26 means Unix curl cannot read the upload file" \
   --evidence "Verified from D3 screen output"
+
+d3code operator-memory-supersede mem_abc123 \
+  --project crystallogic \
+  --kind fix \
+  --summary "Corrected verified behavior" \
+  --evidence "Replacement regression and live evidence"
 ```
 
 The System Builder manual inventory lives in `reference/system-builder/manifest.json`.
@@ -358,7 +364,9 @@ Inside the session, proof usually appears as the next thing D3 Code tells you to
 
 D3 Code is session-first, but the underlying commands remain available for automation, CI, and exact repro. Use them when you want a scriptable action instead of a conversation:
 
-The browser IDE uses a FastAPI Python backend by default so D3PY/UOPY can be integrated as first-class D3 connectors. The frontend is still JavaScript in the browser. The legacy TypeScript server is only an explicit fallback with `d3code ide --server node`.
+The browser IDE uses the full Node harness by default, including agent chat, live memory and loaded skill procedures, bounded history and tool loops, schema-checked tools, cancellation, sessions, streaming, and Markdown responses. FastAPI remains available as an explicit connector-parity surface with `d3code ide --server fastapi`, or as the Node IDE companion API with `--api-backend fastapi`.
+
+Public binding has no implicit default password. Configure credentials first with `d3code ide setup-auth`, then start `d3code ide public`. State-changing browser requests are same-origin checked and request bodies are bounded.
 
 | Need | Session request | Exact command shape |
 |---|---|---|

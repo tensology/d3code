@@ -30,6 +30,9 @@ test("tool runner executes local TCL through shell-backed profile", async () => 
   })
   assert.match(result.compact, /D3CODE_OK/)
   assert.equal((result.raw as { exitCode: number }).exitCode, 0)
+  assert.equal(result.status, "success")
+  assert.ok((result.summary ?? "").length > 0)
+  assert.deepEqual(result.nextActions, [])
 })
 
 test("tool runner enforces D3 scope when a mode contract is supplied", async () => {
@@ -41,6 +44,33 @@ test("tool runner enforces D3 scope when a mode contract is supplied", async () 
       mode: "chat",
     }),
     /Tool d3_write_item is blocked in chat mode/,
+  )
+})
+
+test("tool runner keeps raw TCL writes behind ask confirmation in chat mode", async () => {
+  await assert.rejects(
+    runToolByName(config, {
+      name: "d3_tcl",
+      input: { command: "DELETE MD X" },
+      safety: "ask",
+      profile: "local",
+      mode: "chat",
+    }),
+    /Confirmation required by ask safety policy/,
+  )
+})
+
+test("tool runner ignores confirmation supplied by model-originated input", async () => {
+  await assert.rejects(
+    runToolByName(config, {
+      name: "d3_tcl",
+      input: { command: "DELETE MD X", confirmed: true },
+      safety: "ask",
+      profile: "local",
+      mode: "chat",
+      acceptInputConfirmation: false,
+    }),
+    /Confirmation required by ask safety policy/,
   )
 })
 

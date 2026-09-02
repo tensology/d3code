@@ -34,7 +34,7 @@ export function formatInstructionCount(project: ProjectContext | undefined): str
 export function formatProjectLocation(project: ProjectContext | undefined, fallback = process.cwd()): string {
   const cwd = project?.cwd ?? fallback
   const name = basename(cwd) || cwd
-  return `cwd ${name}`
+  return `cwd ${compactDisplaySegment(name, 36)}`
 }
 
 export function formatPromptMeta(input: {
@@ -47,13 +47,14 @@ export function formatPromptMeta(input: {
   workspaceChanges?: WorkspaceChangeSummary
   project?: ProjectContext
 }): string {
+  const profile = input.profile ? compactDisplaySegment(input.profile, 32) : undefined
   const d3State = input.profile
-    ? `D3 ${input.profile}${input.d3Attached ? " attached" : " profile"}`
+    ? `D3 ${profile}${input.d3Attached ? " attached" : " profile"}`
     : "D3 off"
   return [
-    input.model,
+    compactDisplaySegment(input.model, 44),
     d3State,
-    `${input.mode}/${input.safety}`,
+    `${compactDisplaySegment(input.mode, 12)}/${compactDisplaySegment(input.safety, 12)}`,
     formatTokenUsage(input.usage),
     formatWorkspaceChangeFooter(input.workspaceChanges),
     formatProjectLocation(input.project),
@@ -67,8 +68,17 @@ export function estimateStreamTokens(text: string): number {
   return Math.max(1, Math.ceil(trimmed.length / 4))
 }
 
-function stripAnsi(value: string): string {
-  return value.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "")
+export function stripTerminalControls(value: string): string {
+  return value
+    .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
+    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+}
+
+export function compactDisplaySegment(value: string, maxLength = 40): string {
+  const clean = stripTerminalControls(value).replace(/\s+/g, " ").trim()
+  if (clean.length <= maxLength) return clean
+  return `${clean.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
 }
 
 function normalizeTerminalProgress(value: string): string {
@@ -97,7 +107,7 @@ export interface LiveOutputSummary {
 }
 
 export function summarizeLiveOutput(output: string, elapsedSeconds: number, maxLines = 5): LiveOutputSummary {
-  const clean = normalizeTerminalProgress(stripAnsi(output)).trimEnd()
+  const clean = normalizeTerminalProgress(stripTerminalControls(output)).trimEnd()
   const byteCount = Buffer.byteLength(output)
   const lines = clean.split(/\r?\n/).filter((line) => line.length > 0)
   if (lines.length === 0) {

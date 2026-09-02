@@ -233,6 +233,31 @@ export async function loadRagIndex(name = "reference-rag"): Promise<RagIndex> {
   return JSON.parse(raw) as RagIndex
 }
 
+export async function isRagIndexStale(index: RagIndex): Promise<boolean> {
+  const builtAt = Date.parse(index.builtAt)
+  if (!Number.isFinite(builtAt)) return true
+  for (const source of index.sources) {
+    try {
+      if ((await stat(source.path)).mtimeMs > builtAt) return true
+    } catch {
+      return true
+    }
+  }
+  return false
+}
+
+export async function loadFreshRagIndex(name = "reference-rag"): Promise<RagIndex> {
+  try {
+    const index = await loadRagIndex(name)
+    if (!await isRagIndexStale(index)) return index
+  } catch {
+    // Missing or invalid indexes are rebuilt below.
+  }
+  const index = await buildRagIndex()
+  await saveRagIndex(index, name)
+  return index
+}
+
 export async function ragIndexStatus(name = "reference-rag", referenceDir = defaultReferenceDir, eccRoot = process.env.D3CODE_ECC_REPO): Promise<RagIndexStatus> {
   let index: RagIndex | undefined
   try {

@@ -34,6 +34,7 @@ test("agent loop runs a model-requested D3 tool and resumes with the result", as
       }
     }
     assert.match(request.messages.at(-1)?.content ?? "", /d3_detect/)
+    assert.match(request.messages.at(-1)?.content ?? "", /untrusted_d3_evidence/)
     return { provider: "test", model: "test", content: "I checked local D3 availability and will not guess beyond the tool result." }
   }
 
@@ -197,6 +198,38 @@ test("agent loop aggregates token usage across model/tool iterations", async () 
   assert.deepEqual(result.usage, { inputTokens: 25, outputTokens: 6, totalTokens: 31 })
 })
 
+test("agent loop returns actionable output for an empty model response", async () => {
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "inspect D3",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn: async () => ({ provider: "test", model: "test", content: "  " }),
+  })
+
+  assert.match(result.output, /empty response/i)
+  assert.match(result.output, /No D3 action was taken/)
+})
+
+test("agent loop refreshes the harness system context instead of reusing stale system history", async () => {
+  let system = ""
+  await runD3AgentTurn(config, secrets, {
+    input: "review D3 memory",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    history: [{ role: "system", content: "stale system prompt" }, { role: "user", content: "earlier" }],
+    chatFn: async (_config, _secrets, request) => {
+      system = request.messages[0]?.content ?? ""
+      return { provider: "test", model: "test", content: "Done" }
+    },
+  })
+
+  assert.doesNotMatch(system, /stale system prompt/)
+  assert.match(system, /Live Harness Context/)
+  assert.match(system, /recommended skills/)
+})
+
 test("chat usage accumulator preserves cache token fields", () => {
   assert.deepEqual(addChatUsage(
     { inputTokens: 1, outputTokens: 2, totalTokens: 3, cacheReadInputTokens: 4 },
@@ -225,6 +258,8 @@ test("agent system prompt is D3-only and names reference-manual grounding", () =
   assert.match(prompt, /D3PY\/UOPY is optional/)
   assert.match(prompt, /Hermes is the backbone memory\/orchestration layer/)
   assert.match(prompt, /ECC harness discipline/)
+  assert.match(prompt, /GitHub-flavored Markdown/)
+  assert.match(prompt, /Lead with the outcome/)
   assert.match(prompt, /<d3_tool>/)
 })
 
@@ -283,4 +318,49 @@ test("parser reports malformed D3 tool JSON clearly", () => {
     () => parseD3ToolRequest("<d3_tool>{\"name\":\"d3_list_files\"</d3_tool>"),
     /Malformed D3 tool request JSON/,
   )
+})
+
+test("agent loop returns an actionable response for malformed tool protocol", async () => {
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "inspect D3 files",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn: async () => ({ provider: "test", model: "test", content: "<d3_tool>{broken</d3_tool>" }),
+  })
+
+  assert.match(result.output, /nothing was executed/)
+  assert.equal(result.toolEvents.length, 0)
+})
+
+test("agent loop bounds successful tool rounds and preserves evidence", async () => {
+  let calls = 0
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "inspect D3 availability",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    maxToolIterations: 2,
+    chatFn: async () => {
+      calls += 1
+      return { provider: "test", model: "test", content: "<d3_tool>{\"name\":\"d3_detect\",\"input\":{}}</d3_tool>" }
+    },
+  })
+
+  assert.equal(calls, 3)
+  assert.equal(result.toolEvents.length, 2)
+  assert.match(result.output, /Stopped after 2 D3 tool rounds/)
+})
+
+test("agent loop converts provider failures into a recoverable response", async () => {
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "inspect D3 files",
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn: async () => { throw new Error("provider offline") },
+  })
+
+  assert.match(result.output, /model request failed/i)
+  assert.match(result.output, /provider offline/)
 })

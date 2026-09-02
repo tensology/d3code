@@ -37,8 +37,8 @@ export const providers: ProviderInfo[] = [
     id: "ollama",
     name: "Ollama",
     env: ["D3CODE_OLLAMA_BASE_URL", "D3CODE_LOCAL_BASE_URL"],
-    defaultModel: "llama3.1",
-    models: ["llama3.1", "qwen2.5-coder:7b", "codellama"],
+    defaultModel: "muse-glimmer:30b-mlx",
+    models: ["muse-glimmer:30b-mlx", "llama3.1", "qwen2.5-coder:7b", "codellama"],
     openAICompatible: true,
   },
   {
@@ -64,7 +64,7 @@ export function parseModelRef(ref: string): { provider: string; model: string } 
 }
 
 export function resolveModel(ref?: string): { provider: ProviderInfo; model: string } {
-  const parsed = parseModelRef(ref ?? "openai/gpt-5")
+  const parsed = parseModelRef(ref ?? "ollama/muse-glimmer:30b-mlx")
   const providerID = normalizeProviderID(parsed.provider)
   const provider = providers.find((candidate) => candidate.id === providerID)
   if (!provider) throw new Error(`Unknown provider: ${parsed.provider}`)

@@ -2,6 +2,14 @@ import type { D3CommandResult } from "../domain/types.js"
 
 export function humanD3SessionError(stdout = "", stderr = ""): string | undefined {
   const body = `${stdout}\n${stderr}`
+  if (/Too many users/i.test(body)) {
+    return [
+      "D3 login blocked: too many users.",
+      "",
+      "The server and SSH connection are available, but all D3 user licences or ports appear occupied.",
+      "Release an existing D3 session, then retry.",
+    ].join("\n")
+  }
   if (/Virtual Machine.*is not running/i.test(body)) {
     return [
       "D3 virtual machine is not running on the server.",
@@ -60,7 +68,7 @@ export function humanizeD3ConnectError(message: string, profile?: { type?: strin
   if (/SSH profiles require host and username/i.test(cleaned)) {
     return cleaned
   }
-  if (/expect\s+-c/i.test(message) || /spawn ssh/i.test(message)) {
+  if (/expect\s+-c/i.test(message) || /spawn ssh|ssh:/i.test(message)) {
     return "Could not complete the SSH D3 connection. Check the profile settings and that D3 is running on the server."
   }
   return cleaned.length > 240 ? `${cleaned.slice(0, 237)}…` : cleaned

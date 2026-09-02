@@ -26,7 +26,7 @@ const ProfileSchema = z.object({
 
 const ConfigSchema = z.object({
   version: z.literal(1),
-  defaultModel: z.string().default("openai/gpt-5"),
+  defaultModel: z.string().default("ollama/muse-glimmer:30b-mlx"),
   defaultSafety: SafetySchema.default("ask"),
   defaultProfile: z.string().optional(),
   profiles: z.array(ProfileSchema).default([]),
@@ -53,7 +53,7 @@ export type D3CodeConfig = z.infer<typeof ConfigSchema>
 
 export const defaultConfig: D3CodeConfig = {
   version: 1,
-  defaultModel: "openai/gpt-5",
+  defaultModel: "ollama/muse-glimmer:30b-mlx",
   defaultSafety: "ask",
   profiles: [],
   modelSecrets: {},

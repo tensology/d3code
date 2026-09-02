@@ -16,7 +16,7 @@ export interface WelcomeSummary {
   providerName: string
   providerModel: string
   modelRef: string
-  d3Status: "connected" | "not connected"
+  d3Status: "configured" | "not configured"
   d3Detail: string
   mode: string
   safety: SafetyMode
@@ -44,7 +44,7 @@ export async function createWelcomeSummary(config: D3CodeConfig, secrets: Secret
     providerStatus = "check setup"
   }
 
-  const d3Status = profile ? "connected" : "not connected"
+  const d3Status = profile ? "configured" : "not configured"
   const d3Detail = profile
     ? `${profile.name} (${profile.type}${profile.account ? `, account ${profile.account}` : ""}${profile.sessionMode === "persistent" ? ", persistent session" : ""})`
     : "No D3 profile selected"
@@ -73,7 +73,7 @@ export async function renderWelcome(config: D3CodeConfig, secrets: SecretStore, 
     "",
     `AI provider: ${summary.providerStatus} (${summary.providerName}, ${summary.providerModel})`,
     `Model: ${summary.modelRef}`,
-    `D3 profile: ${summary.d3Status === "connected" ? summary.d3Detail : "not connected"}`,
+    `D3 profile: ${summary.d3Status === "configured" ? summary.d3Detail : "not configured"}`,
     `Mode: ${summary.mode}  Safety: ${summary.safety}`,
     `Context: ${summary.tokenLine}`,
     "",
