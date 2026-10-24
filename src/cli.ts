@@ -233,7 +233,7 @@ async function askIdeAuthCredentials(currentUsername: string): Promise<{ usernam
 }
 
 function closeServer(server: Awaited<ReturnType<typeof startIdeServer>>): Promise<void> {
-  return new Promise((resolve, reject) => server.server.close((error) => error ? reject(error) : resolve()))
+  return server.close()
 }
 
 function renderSimpleDiff(label: string, before: string, after: string): string {
@@ -561,7 +561,8 @@ program.command("profile-release").argument("[name]").description("Send OFF thro
 
 program.command("login").description("Verify or switch into the selected D3 account with WHO and VERSION proof.").option("--profile <name>").option("--account <account>", "LOGTO this account before proof").option("--safety <mode>").action(async (options: { profile?: string; account?: string; safety?: string }) => {
   const config = await loadConfig()
-  const profile = selectProfile(config, options.profile)
+  const profileName = options.profile ?? optionValue("--profile")
+  const profile = selectProfile(config, profileName)
   if (!profile) throw new Error("No profile configured")
   const safetyOption = options.safety ?? program.opts<{ safety?: string }>().safety
   const safety = effectiveSafety(config, safetyOption ? parseSafety(safetyOption) : undefined, profile)
@@ -571,7 +572,7 @@ program.command("login").description("Verify or switch into the selected D3 acco
     name: "d3_login",
     input: { account: options.account, confirmed: options.account ? safety === "trust" : true },
     safety,
-    profile: options.profile,
+    profile: profile.name,
   })
   console.log(output.compact)
 })

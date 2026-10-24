@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createD3Session, PersistentLocalD3Session } from "../src/d3/adapter.js"
+import { createD3Session, PersistentLocalD3Session, PersistentSshD3Session, SshD3Session } from "../src/d3/adapter.js"
 
 test("persistent local D3 session preserves shell state across commands", async () => {
   const session = new PersistentLocalD3Session({ name: "persistent", type: "local", sessionMode: "persistent" })
@@ -38,6 +38,30 @@ test("factory selects persistent local session when profile requests it", () => 
 test("factory keeps d3 entry commands persistent when profile requests terminal state", () => {
   const session = createD3Session({ name: "persistent-d3", type: "local", entryCommand: "d3", sessionMode: "persistent" })
   assert.ok(session instanceof PersistentLocalD3Session)
+})
+
+test("factory uses one persistent SSH process for PuTTY-style terminal state", () => {
+  const session = createD3Session({
+    name: "office",
+    type: "ssh",
+    host: "office.example.com",
+    username: "root",
+    entryCommand: "d3",
+    sessionMode: "persistent",
+  })
+  assert.ok(session instanceof PersistentSshD3Session)
+})
+
+test("factory keeps explicitly one-shot SSH profiles isolated per command", () => {
+  const session = createD3Session({
+    name: "office",
+    type: "ssh",
+    host: "office.example.com",
+    username: "root",
+    entryCommand: "d3",
+    sessionMode: "oneshot",
+  })
+  assert.ok(session instanceof SshD3Session)
 })
 
 test("persistent local D3 session fails when entry exits before prompt", async () => {

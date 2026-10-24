@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { inspectD3Browser, parseFileListing, renderEstateReport } from "../src/d3/estate.js"
+import { inspectD3Browser, parseFileListing, parseWhoOutput, renderEstateReport } from "../src/d3/estate.js"
 import type { D3Session } from "../src/domain/types.js"
 
 test("estate parser extracts and classifies D3 file pointers", () => {
@@ -19,6 +19,21 @@ test("estate parser extracts and classifies D3 file pointers", () => {
     ["VOC", "screen"],
     ["ORDERS", "data"],
   ])
+})
+
+test("estate parser ignores SSH/login noise and extracts WHO proof", () => {
+  const output = [
+    "spawn ssh -tt -p 2266 root@example d3",
+    "Enter your user id: dm",
+    "[1301] The Speller is off.",
+    ":LIST MD WITH A1 = \"D\" A0 A1 A2 (N",
+    "MD............... A0................. A1................. A2.................",
+    "CUSTOMERS         CUSTOMERS           D                   100",
+    "[405] 1 items listed out of 20 items.",
+    ":OFF",
+  ].join("\n")
+  assert.deepEqual(parseFileListing(output).map((file) => file.name), ["CUSTOMERS"])
+  assert.equal(parseWhoOutput(":WHO\n3 dm MULTISNACK\n:OFF\nEnter your user id:"), "3 dm MULTISNACK")
 })
 
 test("estate report explains next investigation steps", () => {

@@ -60,10 +60,20 @@ function classifyFile(name: string, detail = "", typeCode = ""): D3EstateFile["k
 export function parseFileListing(output: string, limit = 40): D3EstateFile[] {
   const files: D3EstateFile[] = []
   const seen = new Set<string>()
-  for (const rawLine of output.replace(/\0/g, "").split(/\r?\n/)) {
+  const lines = output.replace(/\0/g, "").split(/\r?\n/)
+  const hasTableHeader = lines.some((line) => /^MD\.+/i.test(line.trim()))
+  let inTable = !hasTableHeader
+  for (const rawLine of lines) {
     const line = rawLine.trim()
-    if (!line || /^Page\s+\d+/i.test(line) || /^MD\.+/i.test(line) || /^\[\d+\]/.test(line)) continue
-    const match = line.match(/^([A-Za-z0-9_.:$-]+)\s+(\S)\s*(.*)$/) ?? line.match(/^([A-Za-z0-9_.:$-]+)\s+(.*)$/)
+    if (/^MD\.+/i.test(line)) {
+      inTable = true
+      continue
+    }
+    if (inTable && /^\[\d+\]/.test(line)) break
+    if (!inTable || !line || /^Page\s+\d+/i.test(line)) continue
+    const match = line.match(/^([A-Za-z0-9_.:$-]+)\s+\S+\s+(D|DX|Q)\s*(.*)$/i)
+      ?? line.match(/^([A-Za-z0-9_.:$-]+)\s+(\S)\s*(.*)$/)
+      ?? line.match(/^([A-Za-z0-9_.:$-]+)\s+(.*)$/)
     if (!match) continue
     const name = match[1]!
     if (seen.has(name)) continue
@@ -74,6 +84,14 @@ export function parseFileListing(output: string, limit = 40): D3EstateFile[] {
     if (files.length >= limit) break
   }
   return files
+}
+
+export function parseWhoOutput(output: string): string | undefined {
+  const lines = output.replace(/\0/g, "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const whoCommand = lines.findIndex((line) => /^:?WHO$/i.test(line))
+  const candidates = whoCommand >= 0 ? lines.slice(whoCommand + 1) : lines
+  return candidates.find((line) => /^\d+\s+\S+\s+\S+(?:\s|$)/.test(line))
+    ?? candidates.find((line) => /^[A-Za-z0-9_.:-]+$/.test(line) && !/^:?WHO$/i.test(line))
 }
 
 function countSummary(files: D3EstateFile[]): string {
@@ -135,9 +153,9 @@ export async function inspectD3Browser(session: D3Session, options: { limit?: nu
   const timeoutMs = options.timeoutMs ?? 0
   const whoResult = await session.run("WHO", timeoutMs, { signal: options.signal })
   assertUsableProbe(whoResult)
-  const filesResult = await session.run("LIST MD A0 A1 A2 (N", timeoutMs, { signal: options.signal })
+  const filesResult = await session.run('LIST MD WITH A1 = "D" A0 A1 A2 (N', timeoutMs, { signal: options.signal })
   assertUsableProbe(filesResult)
-  const who = outputOf(whoResult).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1)
+  const who = parseWhoOutput(outputOf(whoResult))
   const filesOutput = outputOf(filesResult)
   const files = parseFileListing(filesOutput, options.limit ?? 200)
   const listedCount = Number(filesOutput.match(/\[(?:\d+)\]\s+(\d+)\s+items listed/i)?.[1])
@@ -150,7 +168,7 @@ export async function inspectD3Estate(session: D3Session, options: { limit?: num
   const timeoutMs = options.timeoutMs ?? 0
   const whoResult = await session.run("WHO", timeoutMs, { signal: options.signal })
   const filesResult = await session.run("LIST MD WITH A1 = \"D\" A0 A1 A2 (N", timeoutMs, { signal: options.signal })
-  const who = outputOf(whoResult).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1)
+  const who = parseWhoOutput(outputOf(whoResult))
   const filesOutput = outputOf(filesResult)
   const files = parseFileListing(filesOutput, options.limit ?? 40)
   const listedCount = Number(filesOutput.match(/\[(?:\d+)\]\s+(\d+)\s+items listed/i)?.[1])

@@ -45,6 +45,7 @@ test("parses list output ids while dropping headings and totals", () => {
 
 test("parses CT item bodies", () => {
   assert.equal(parseCtItem("CT BP X\nSUBROUTINE X\nRETURN\n"), "SUBROUTINE X\nRETURN")
+  assert.equal(parseCtItem("login banner\n:CT BP X\n    X\n001 SUBROUTINE X\n002 RETURN\n:OFF\nEnter your user id:"), "SUBROUTINE X\nRETURN")
 })
 
 test("parses D3 dictionary item bodies", () => {

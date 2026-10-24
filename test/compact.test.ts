@@ -25,6 +25,7 @@ test("compactToolOutput summarizes LIST MD file pointers", () => {
     stdout: [
       "spawn ssh -tt root@office.example d3",
       ":LIST MD WITH A1 = \"D\" A0 A1 A2 (N",
+      "MD............... A0................. A1................. A2.................",
       "fonts             fonts               D                   3159",
       "users             users               D                   3187",
       "hosts             hosts               D                   3940",

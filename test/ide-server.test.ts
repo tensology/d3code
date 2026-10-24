@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
 import type { D3CodeConfig } from "../src/config/config.js"
+import type { D3Session } from "../src/domain/types.js"
 import { basicAuthHeader, defaultIdeAuth } from "../src/ide/auth.js"
 import { startIdeServer, stopIdeServers, type IdeRuntimeState, type IdeServerOptions } from "../src/ide/server.js"
 import { handleSlashCommand } from "../src/tui/commands.js"
@@ -58,9 +59,12 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.doesNotMatch(html, /confirm mutation-risk runtime command/)
   assert.doesNotMatch(html, /confirm D3 item write/)
   assert.match(html, /tabindex="0"/)
-  assert.match(html, /terminalDraft=terminalDraft\.slice\(0,-1\)/)
   assert.match(html, /sendTerminalCommand\(terminalDraft\)/)
   assert.match(html, /id="terminalCommand"/)
+  assert.match(html, /id="terminalSessionMark"/)
+  assert.match(html, /id="terminalReconnect"/)
+  assert.match(html, /Persistent SSH PTY/)
+  assert.match(html, /terminalHistoryStep/)
   assert.match(html, /id="editorTerminalCommand"/)
   assert.match(html, /bindTerminalCommandInput/)
   assert.match(html, /Startup input/)
@@ -397,7 +401,62 @@ test("IDE terminal keeps a profile-scoped transcript and persistent local sessio
   assert.match(state.transcript, /kept/)
   assert.match(state.displayTranscript, /kept/)
 
+  const cleared = await fetch(`${server.url}/api/terminal/clear`, { method: "POST" }).then((response) => response.json()) as { cleared: boolean; connected: boolean }
+  assert.equal(cleared.cleared, true)
+  assert.equal(cleared.connected, true)
+  const clearedState = await fetch(`${server.url}/api/terminal/state`).then((response) => response.json()) as { transcript: string; connected: boolean }
+  assert.equal(clearedState.transcript, "")
+  assert.equal(clearedState.connected, true)
+
   await fetch(`${server.url}/api/terminal/reset`, { method: "POST" })
+})
+
+test("IDE closes the active terminal connection when switching profiles", async () => {
+  let closeCount = 0
+  const session: D3Session = {
+    profile: config.profiles[0]!,
+    run: async () => ({ command: "WHO", stdout: "DM", stderr: "", exitCode: 0, durationMs: 1 }),
+    close: async () => { closeCount += 1 },
+  }
+  const state: IdeRuntimeState = {
+    model: "openai/gpt-5",
+    safety: "ask",
+    profile: "fake",
+    mode: "chat",
+    terminalSessions: new Map([["fake", session]]),
+  }
+  const server = await startTestIdeServer(config, state, { port: 0 })
+
+  await fetch(`${server.url}/api/profile`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ profile: "alt" }),
+  })
+
+  assert.equal(closeCount, 1)
+  assert.equal(state.terminalSessions?.size, 0)
+})
+
+test("IDE shutdown closes every retained terminal connection", async () => {
+  let closeCount = 0
+  const session: D3Session = {
+    profile: config.profiles[0]!,
+    run: async () => ({ command: "WHO", stdout: "DM", stderr: "", exitCode: 0, durationMs: 1 }),
+    close: async () => { closeCount += 1 },
+  }
+  const state: IdeRuntimeState = {
+    model: "openai/gpt-5",
+    safety: "ask",
+    profile: "fake",
+    mode: "chat",
+    terminalSessions: new Map([["fake", session]]),
+  }
+  const server = await startTestIdeServer(config, state, { port: 0 })
+
+  await server.close()
+
+  assert.equal(closeCount, 1)
+  assert.equal(state.terminalSessions?.size, 0)
 })
 
 test("IDE server exposes tool-routing status so tools are not treated as TCL-only", async () => {

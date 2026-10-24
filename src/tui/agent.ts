@@ -62,6 +62,11 @@ export type AgentChatFunction = (config: D3CodeConfig, secrets: SecretStore, req
 
 const d3ToolNames = new Set(d3Tools.map((tool) => tool.name))
 
+function isContextLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /context(?:_|\s|-)?length|context window|maximum context|too many tokens|token limit/i.test(message)
+}
+
 export function addChatUsage(current: ChatUsage | undefined, next: ChatUsage | undefined): ChatUsage | undefined {
   if (!next) return current
   if (!current) return { ...next }
@@ -250,10 +255,12 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
     }
 
     let response: ChatResponse
+    const system = messages[0]!
+    let modelMessages = [system, ...compactAgentHistory(messages.slice(1))]
     try {
       response = await chatFn(config, secrets, {
         modelRef: request.model,
-        messages,
+        messages: modelMessages,
         onToken: (token) => {
           request.onToken?.(token)
           request.onEvent?.({ type: "assistant_delta", token, iteration })
@@ -261,6 +268,23 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
         signal: turnSignal,
       })
     } catch (error) {
+      if (isContextLimitError(error)) {
+        modelMessages = [system, ...compactAgentHistory(messages.slice(1), { maxChars: 12_000, maxMessages: 20, maxMessageChars: 4_000 })]
+        try {
+          response = await chatFn(config, secrets, {
+            modelRef: request.model,
+            messages: modelMessages,
+            onToken: (token) => {
+              request.onToken?.(token)
+              request.onEvent?.({ type: "assistant_delta", token, iteration })
+            },
+            signal: turnSignal,
+          })
+        } catch (retryError) {
+          const message = retryError instanceof Error ? retryError.message : String(retryError)
+          return { output: `The model request failed after compacting the conversation. ${message}`, messages, toolEvents, usage }
+        }
+      } else {
       const message = error instanceof Error ? error.message : String(error)
       const stopped = turnSignal.aborted
       return {
@@ -268,6 +292,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
         messages,
         toolEvents,
         usage,
+      }
       }
     }
     usage = addChatUsage(usage, response.usage)

@@ -364,3 +364,25 @@ test("agent loop converts provider failures into a recoverable response", async 
   assert.match(result.output, /model request failed/i)
   assert.match(result.output, /provider offline/)
 })
+
+test("agent loop compacts and retries once after a context limit error", async () => {
+  const sizes: number[] = []
+  let calls = 0
+  const result = await runD3AgentTurn(config, secrets, {
+    input: "inspect D3 files",
+    history: Array.from({ length: 30 }, (_, index) => ({ role: index % 2 ? "assistant" as const : "user" as const, content: `message-${index}-${"x".repeat(900)}` })),
+    model: "openai/gpt-5",
+    safety: "ask",
+    mode: "chat",
+    chatFn: async (_config, _secrets, request) => {
+      sizes.push(request.messages.reduce((sum, message) => sum + message.content.length, 0))
+      calls += 1
+      if (calls === 1) throw new Error("maximum context length exceeded")
+      return { provider: "test", model: "test", content: "Compacted and continued." }
+    },
+  })
+
+  assert.equal(calls, 2)
+  assert.ok(sizes[1]! < sizes[0]!)
+  assert.equal(result.output, "Compacted and continued.")
+})

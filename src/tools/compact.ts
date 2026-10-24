@@ -1,4 +1,3 @@
-import { parseListOutputIds } from "../capture/parsers.js"
 import type { D3CommandResult } from "../domain/types.js"
 
 export interface CompactOptions {
@@ -41,7 +40,10 @@ function extractTclCommand(output: string): string | undefined {
 
 function summarizeListOutput(output: string): string | undefined {
   if (!/\bitems?\s+listed\b/i.test(output) && !/\bLIST\s+MD\b/i.test(output)) return undefined
-  const ids = parseListOutputIds(output).filter((id) => !/^MD\.+$/i.test(id) && !/^PAGE\b/i.test(id))
+  const ids = output.replace(/\0/g, "").split(/\r?\n/).flatMap((line) => {
+    const match = line.trim().match(/^([A-Za-z0-9_.:$-]+)\s+\S+\s+D\s+\d+/i)
+    return match?.[1] ? [match[1]] : []
+  })
   if (ids.length === 0) return undefined
   const listed = output.match(/(\d+)\s+items?\s+listed(?:\s+out of\s+(\d+)\s+items?)?/i)
   const preview = ids.slice(0, 10).join(", ")

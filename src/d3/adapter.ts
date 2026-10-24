@@ -109,18 +109,29 @@ export class PersistentLocalD3Session implements D3Session {
   private stdout = ""
   private stderr = ""
   private sequence = 0
-  private startupSent = false
   private closedError?: Error
 
   constructor(readonly profile: ConnectionProfile) {}
 
+  protected spawnChild(): ChildProcessWithoutNullStreams {
+    const entry = this.profile.entryCommand
+    return entry
+      ? spawn("sh", ["-lc", entry], { stdio: ["pipe", "pipe", "pipe"] })
+      : spawn("sh", [], { stdio: ["pipe", "pipe", "pipe"] })
+  }
+
+  protected sendStartupInput(child: ChildProcessWithoutNullStreams): void {
+    if (!this.profile.startupInput) return
+    const startup = this.profile.promptPattern
+      ? `${normalizeStartupInput(this.profile.startupInput).replace(/\n/g, "\r")}\r`
+      : this.profile.startupInput
+    child.stdin.write(startup)
+  }
+
   private start(): void {
     if (this.child) return
     this.closedError = undefined
-    const entry = this.profile.entryCommand
-    this.child = entry
-      ? spawn("sh", ["-lc", entry], { stdio: ["pipe", "pipe", "pipe"] })
-      : spawn("sh", [], { stdio: ["pipe", "pipe", "pipe"] })
+    this.child = this.spawnChild()
     this.child.stdout.on("data", (chunk) => {
       this.stdout += chunk.toString()
     })
@@ -131,12 +142,12 @@ export class PersistentLocalD3Session implements D3Session {
       this.closedError = error
     })
     this.child.on("close", (code, signal) => {
-      this.closedError = new Error(`Persistent D3 session exited before the prompt was seen: code=${code ?? "null"} signal=${signal ?? "null"}`)
+      const output = normalizePromptOutput(`${this.stdout}\n${this.stderr}`)
+      this.closedError = /too many users/i.test(output)
+        ? new Error("D3 refused the SSH session because all licensed user slots are occupied. Close an unused D3 session, then reconnect.")
+        : new Error(`Persistent D3 session exited before the prompt was seen: code=${code ?? "null"} signal=${signal ?? "null"}`)
     })
-    if (this.profile.startupInput && !this.startupSent) {
-      this.child.stdin.write(this.profile.startupInput)
-      this.startupSent = true
-    }
+    this.sendStartupInput(this.child)
   }
 
   async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
@@ -144,10 +155,17 @@ export class PersistentLocalD3Session implements D3Session {
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
     const promptPattern = this.profile.promptPattern ? new RegExp(normalizeD3PromptPattern(this.profile.promptPattern) ?? this.profile.promptPattern) : undefined
-    if (promptPattern && !promptPattern.test(normalizePromptOutput(this.stdout))) await absorbStartupPrompt(() => {
-      if (this.closedError) throw this.closedError
-      return promptPattern.test(normalizePromptOutput(this.stdout))
-    }, timeoutEnabled(timeoutMs) ? Math.min(timeoutMs, 2_000) : 2_000)
+    if (promptPattern && !promptPattern.test(normalizePromptOutput(this.stdout))) {
+      const startupTimeoutMs = timeoutEnabled(timeoutMs)
+        ? Math.min(timeoutMs, this.profile.type === "ssh" ? 15_000 : 2_000)
+        : this.profile.type === "ssh" ? 15_000 : 2_000
+      const ready = await absorbStartupPrompt(() => {
+        if (this.closedError) throw this.closedError
+        return promptPattern.test(normalizePromptOutput(this.stdout))
+      }, startupTimeoutMs)
+      if (!ready) throw new Error(`Persistent D3 session did not reach its prompt within ${startupTimeoutMs}ms`)
+      if (this.profile.type === "ssh") await delay(50)
+    }
     const stdoutStart = this.stdout.length
     const stderrStart = this.stderr.length
     let streamedStdout = 0
@@ -190,18 +208,58 @@ export class PersistentLocalD3Session implements D3Session {
 
   async close(): Promise<void> {
     if (!this.child) return
-    this.child.stdin.end()
-    this.child.kill("SIGTERM")
+    const child = this.child
+    if (this.profile.promptPattern && child.stdin.writable) {
+      child.stdin.write("OFF\r")
+      await delay(150)
+    }
+    child.stdin.end()
+    await delay(100)
+    if (this.profile.type === "ssh" && child.pid) {
+      try {
+        process.kill(-child.pid, "SIGTERM")
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error
+      }
+    } else if (child.exitCode === null) {
+      child.kill("SIGTERM")
+    }
     this.child = undefined
   }
 }
 
-async function absorbStartupPrompt(predicate: () => boolean, timeoutMs = 150): Promise<void> {
+export class PersistentSshD3Session extends PersistentLocalD3Session {
+  constructor(profile: ConnectionProfile) {
+    super(withSshLoginDefaults(profile))
+    if (!profile.host || !profile.username) throw new Error("SSH profiles require host and username")
+  }
+
+  protected override spawnChild(): ChildProcessWithoutNullStreams {
+    const target = `${this.profile.username}@${this.profile.host}`
+    return spawn("expect", ["-c", persistentSshExpectScript()], {
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: true,
+      env: {
+        ...process.env,
+        D3CODE_TARGET: target,
+        D3CODE_PORT: String(this.profile.port ?? 22),
+        D3CODE_ENTRY: this.profile.entryCommand ?? "",
+        D3CODE_STARTUP: normalizeStartupInput(this.profile.startupInput),
+        D3CODE_TIMEOUT: "15",
+      },
+    })
+  }
+
+  protected override sendStartupInput(_child: ChildProcessWithoutNullStreams): void {}
+}
+
+async function absorbStartupPrompt(predicate: () => boolean, timeoutMs = 150): Promise<boolean> {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {
-    if (predicate()) return
+    if (predicate()) return true
     await delay(10)
   }
+  return false
 }
 
 function delay(ms: number): Promise<void> {
@@ -312,7 +370,7 @@ function sshExpectScript(): string {
     "} else {",
     "  spawn ssh -tt -p $port $target $entry",
     "}",
-    "set loginPrompt {Enter your user id:|user password:|master dictionary:|Choose dictionary}",
+    "set loginPrompt {(?n)(Enter your user id:|user password:|master dictionary:|Choose dictionary)[\\x00-\\x20\\x7f]*$}",
     "set readyPrompt {(?n)(^|\\n):\\s*$}",
     "set startupTimeout $timeout",
     "set timeout 2",
@@ -367,6 +425,46 @@ function sshExpectScript(): string {
   ].join("\n")
 }
 
+function persistentSshExpectScript(): string {
+  return [
+    "set timeout $env(D3CODE_TIMEOUT)",
+    "set target $env(D3CODE_TARGET)",
+    "set port $env(D3CODE_PORT)",
+    "set entry $env(D3CODE_ENTRY)",
+    "if {$entry eq \"\"} {",
+    "  spawn ssh -tt -p $port $target",
+    "} else {",
+    "  spawn ssh -tt -p $port $target $entry",
+    "}",
+    "set loginPrompt {(?n)(Enter your user id:|user password:|master dictionary:|Choose dictionary)[\\x00-\\x20\\x7f]*$}",
+    "set readyPrompt {(?n)(^|\\n):\\s*$}",
+    "set startupTimeout $timeout",
+    "set timeout 2",
+    "expect {",
+    "  -re {Connected to Virtual Machine} { send -- \"\\r\" }",
+    "  timeout {}",
+    "}",
+    "set timeout $startupTimeout",
+    "foreach line [split $env(D3CODE_STARTUP) \"\\n\"] {",
+    "  if {$line eq \"\"} { continue }",
+    "  expect {",
+    "    -re $loginPrompt {}",
+    "    -re $readyPrompt { break }",
+    "    timeout { puts \"Timed out waiting for D3 login prompt during persistent SSH startup.\"; exit 2 }",
+    "  }",
+    "  if {[regexp $readyPrompt $expect_out(buffer)]} { break }",
+    "  send -- \"$line\\r\"",
+    "}",
+    "expect {",
+    "  -re $readyPrompt {}",
+    "  -re $loginPrompt { puts \"D3 login is incomplete for the persistent SSH session.\"; exit 3 }",
+    "  timeout { puts \"Timed out waiting for the D3 prompt during persistent SSH startup.\"; exit 4 }",
+    "}",
+    "send_user \"\\n:\\n\"",
+    "interact",
+  ].join("\n")
+}
+
 function streamDelta(output: string, streamed: number, callback?: (chunk: string) => void): number {
   if (!callback || output.length <= streamed) return streamed
   callback(output.slice(streamed))
@@ -374,7 +472,7 @@ function streamDelta(output: string, streamed: number, callback?: (chunk: string
 }
 
 export function createD3Session(profile: ConnectionProfile): D3Session {
-  if (profile.type === "ssh") return new SshD3Session(profile)
+  if (profile.type === "ssh") return profile.sessionMode === "persistent" ? new PersistentSshD3Session(profile) : new SshD3Session(profile)
   if (profile.sessionMode === "persistent") return new PersistentLocalD3Session(profile)
   if (isD3EntryCommand(profile.entryCommand)) return new LocalD3Session(profile)
   return new LocalD3Session(profile)
