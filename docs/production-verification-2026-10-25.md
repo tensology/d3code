@@ -2,7 +2,7 @@
 
 Verdict: **Incomplete for the requested full developer IDE.** The deployed connection, read/browse workflow and command approval changes have live evidence. This checkpoint does not approve the legacy record writer for production data.
 
-Application revision: `8cfaf90`. Shared standalone and Tensology application, deployed at `/var/www/d3code`, serving Crystal Logic through `d3code@51.service` and the authenticated Tensology proxy.
+Application revision: `df43fc0` (UI and approval changes from `8cfaf90`). Shared standalone and Tensology application, deployed at `/var/www/d3code`, serving Crystal Logic through `d3code@51.service` and the authenticated Tensology proxy.
 
 Entry point: https://tickets.crystallogic.co.za/dashboard/d3code
 
@@ -54,7 +54,7 @@ Additional captures: [prefix search](evidence/2026-10-25-d3code/item-search-1440
 
 ## Outstanding product work
 
-1. Lossless reads and lock-protected, conflict-aware record replacement. The prepared helper is not installed or live-verified. The legacy text-editor replacement path can lose record structure or concurrent edits.
+1. Integrate the native record protocol into the IDE and tool write paths, including explicit approvals, conflict recovery and appropriate record editors. The backend sandbox evidence below does not validate the legacy text-editor replacement path, which can lose record structure or concurrent edits.
 2. Structured data/dictionary editors and a complete create, save, compile, catalog and run workflow, including errors and recovery.
 3. Verified per-account discovery of native D3, SB and SB+ facilities, with relevant screen-building tools only when supported.
 4. Usable phantom, scheduler, spooler, lock and operational workflows with explicit mutation controls.
@@ -62,3 +62,31 @@ Additional captures: [prefix search](evidence/2026-10-25-d3code/item-search-1440
 6. Full developer usability review and final acceptance across those workflows, including standalone as well as embedded use.
 
 Plan My Charter, wider Tensology mobile work and Decisions AI fixes are separate unfinished tracks. D3 backup reliability remains unresolved.
+
+## Native record backend checkpoint
+
+Revision `df43fc0` adds an acknowledged, hex-framed record protocol and a dedicated D3 session per operation. It does not install a helper automatically or change the current IDE's Save behavior.
+
+The immutable helper was installed only in office `dm` as `bp D3CODE.RECORD.V1.2F23CA51D90EC824335956C3E67B052D86D60B20673989AEF6A64807105162FA`. Both the source and DICT object IDs were checked absent before installation. The source readback matched before native BASIC compilation reported `[241] Successful compile`. A narrow-terminal CT read initially truncated displayed source and correctly stopped compilation; a wider readback resolved that verification failure without replacing the item.
+
+An isolated new `D3CODE.RECORD.TEST` file and uniquely named `D3CODE.RECORD.*` fixture programs were created. No pre-existing customer records were changed. Native checks passed:
+
+- Version/build identity and exact capability handshake.
+- Data and dictionary reads preserving attribute, value and subvalue marks, repeated empty attributes, and trailing bytes.
+- Multi-frame compare-and-replace followed by independent readback.
+- Stale expected content rejected as `CONFLICT`, without replacement.
+- Numeric-looking records compared by bytes (`001` differs from `1`).
+- Existing zero-byte records changed and restored to zero bytes while remaining present.
+- Leading/trailing whitespace in both item IDs and record values preserved.
+- Dictionary replacement preserving added empty attributes.
+- Another session's `READU` lock returned `BUSY`; the original record remained unchanged.
+- An ordinary native `WRITE` waited for that `READU` lock, completed after release, and a later compare-and-replace succeeded.
+- Replacement of a missing item returned `NOT_FOUND` and did not create it.
+
+The lock-test fixture first failed to compile because of its one-line LOCKED clause, then its default input prompt prevented the harness from detecting the held-lock marker. Both harness defects were corrected before the passing lock tests. They were not accepted as product evidence.
+
+Local TypeScript compilation and 13 protocol/session tests passed. Tests cover bounds, identity, missing/duplicate/out-of-order frames, exact byte encoding, transport failure, cancelled/non-native requests, and closing a dedicated session before any later frame can run. Transport failures omit record-containing command text and require a reload before retrying a replacement.
+
+After deployment, the dedicated `d3code-51` production identity independently passed the version handshake, exact read of the isolated sandbox `LOCKED` item, replacement with the identical expected bytes, and readback. This used the production profile and SSH identity, without changing the fixture's content.
+
+Limits: 8 KiB records, single-byte text, existing-record replacement only, and writes restricted to `D3CODE.*` files. Binary D3 items, production file triggers, interrupted-write outcomes and arbitrary production files are not validated. The record backend is not yet connected to the public IDE/API; its native checks do not make the complete editor production-ready.
