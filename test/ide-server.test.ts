@@ -100,7 +100,7 @@ test("item read failures keep the editor unavailable and release the loading con
   assert.ok(read)
   const nodes:Record<string,{value?:string;disabled?:boolean;textContent?:string;dataset?:Record<string,string>}>={readItem:{},editorEmpty:{},file:{value:"bp"},item:{value:"PROBE"},itemBody:{value:"old source",dataset:{}}}
   const body={dataset:{editorState:"loaded"}}
-  const context={document:{body},$:(id:string)=>nodes[id],URLSearchParams,confirmEditorDiscard:async()=>true,syncEditorLines:()=>{},itemBrowserSection:"data",api:async()=>({error:"Item unavailable"})}
+  const context={document:{body},$:(id:string)=>nodes[id],URLSearchParams,confirmEditorDiscard:async()=>true,syncEditorLines:()=>{},selectedProfile:"fake",itemBrowserSection:"data",api:async()=>({error:"Item unavailable"})}
   await runInNewContext(read+";readSelectedItem()",context)
   assert.equal(body.dataset.editorState,"empty")
   assert.equal(nodes.editorEmpty?.textContent,"Item unavailable")
@@ -109,6 +109,23 @@ test("item read failures keep the editor unavailable and release the loading con
   await runInNewContext(read+";readSelectedItem()",context)
   assert.equal(body.dataset.editorState,"loaded")
   assert.equal(nodes.itemBody?.value,"fresh source")
+})
+
+test("editor chat context bounds the draft and excludes a different connection", async () => {
+  const server=await startTestIdeServer(config,{model:config.defaultModel,safety:"ask",profile:"fake",mode:"chat"},{port:0})
+  const html=await fetch(server.url).then(response=>response.text())
+  const script=html.match(/function editorContextPrefix\(\)\{[\s\S]*?(?=function resetEditorSelection)/)?.[0]
+  assert.ok(script)
+  const nodes={file:{value:"bp"},item:{value:"PROBE"},itemBody:{value:"x".repeat(12005),dataset:{savedBody:"original",profile:"fake"}}}
+  const context={document:{body:{dataset:{editorState:"loaded"}}},selectedProfile:"fake",itemBrowserSection:"data",$:(id:keyof typeof nodes)=>nodes[id]}
+  const text=runInNewContext(script+";editorContextPrefix()",context) as string
+  const payload=JSON.parse(text.split("\n")[1]!)
+  assert.equal(payload.item,"PROBE")
+  assert.equal(payload.draft.length,12000)
+  assert.equal(payload.draftTruncated,true)
+  assert.equal(payload.unsaved,true)
+  context.selectedProfile="other"
+  assert.equal(runInNewContext(script+";editorContextPrefix()",context),"")
 })
 
 test("item browsing validates input and uses the active profile", async () => {
