@@ -1,0 +1,26 @@
+LOCAL ISOLATED PROXY TESTS
+Creating test database for alias 'default'...
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.835s
+
+OK
+Destroying test database for alias 'default'...
+Found 11 test(s).
+System check identified no issues (0 silenced).
+
+SERVER ISOLATED PROXY TESTS
+Creating test database for alias 'default'...
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.856s
+
+OK
+Destroying test database for alias 'default'...
+Found 11 test(s).
+System check identified no issues (0 silenced).
+
+POST-DEPLOY BRANDED BROWSER
+PASS record API denies anonymous and unflagged other customer
+PASS branded director workspace, office DM WHO and no JavaScript errors after deployment
+Test browser closed and temporary login sessions removed
