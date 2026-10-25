@@ -81,3 +81,11 @@ test("skill coverage report proves reference skill families have product surface
   assert.match(rendered, /command:webapp-smoke/)
   assert.match(rendered, /command:modernization-proof/)
 })
+
+
+test("practical guidance requires a lossless baseline instead of delete-and-rebuild", () => {
+  const guidance=renderSkill("d3-practical")
+  assert.match(guidance,/lossless read/)
+  assert.match(guidance,/returned baseline/)
+  assert.doesNotMatch(guidance,/delete first to replace/)
+})

@@ -45,3 +45,10 @@ test("recipes surface executable agent loops for audit api and modernize", () =>
 test("lists recipe definitions", () => {
   assert.deepEqual(Object.keys(recipes).sort(), ["api", "audit", "basic-program", "dictionary-field", "legacy-screen", "migrate", "modernize", "sbplus-screen"])
 })
+
+test("write recipes retain the prior lossless read baseline", () => {
+  for(const name of ["basic-program","dictionary-field"]) {
+    assert.match(renderRecipe(name),/--lossless >/)
+    assert.match(renderRecipe(name),/--baseline-file/)
+  }
+})

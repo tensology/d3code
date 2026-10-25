@@ -34,7 +34,7 @@ export const skills: D3CodeSkill[] = [
     appliesToD3: true,
     bakedBehavior: [
       "strip ANSI and NUL before matching a D3 prompt, and accept both ':' and '>'",
-      "write items with ED as I, body, blank line, FI; delete first to replace; chunk writes over ~5 KB",
+      "replace existing sandbox records through the native guarded tools after a lossless read; pass the returned baseline, require approval, and never delete first or fall back to ED",
       "never start a main program with PROGRAM; SUBROUTINE must be line 1; RELEASE releases a READU item lock",
       "there is no TCL CALL - catalogue a main program to run logic from the command line",
       "prefer clear-file; after DELETE-FILE rebuild the dictionary and indexes",

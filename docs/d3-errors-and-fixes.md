@@ -8,9 +8,9 @@ D3Code and building a sandbox application. Format: **symptom → cause → fix**
 | # | Symptom | Cause | Fix |
 |---|---|---|---|
 | 1 | Session never returns; editor stays open | ED insert mode is ended by a **blank line** | Send `…body` + blank line + `FI` |
-| 2 | Re-writing an item kept the old content | `I` inserts *before* the current line | `DELETE` the item, then write (`runReplaceWrite`) |
-| 3 | Large program "written" but not filed; session hangs | A single ED write > ~5 KB never returns to the prompt (what you see is the editor echo) | Chunk the write; append with `9999` + `I` |
-| 4 | Body with a blank line silently truncated | ED cannot express empty attributes | Reject loudly; build such items from BASIC |
+| 2 | Re-writing an item kept the old content | `I` inserts *before* the current line | Use the native compare-and-replace helper with a prior lossless baseline; never delete first |
+| 3 | Large program "written" but not filed; session hangs | A single ED write > ~5 KB never returns to the prompt (what you see is the editor echo) | For automated writes use the bounded native record protocol; chunking ED remains a manual workaround |
+| 4 | Body with a blank line silently truncated | ED cannot express empty attributes | Use the native record protocol to preserve empty attributes; do not fall back to ED |
 | 5 | Session died after `SELECT` | D3 answers with `>` while a select list is active | Accept `:` and `>`; reset the list after list-building checks |
 | 6 | `d3_read_item` timed out | `CT file item` opens the interactive editor | Read with `CT file item (N` |
 | 7 | Prompt never matched; every live session failed | D3 redraws the prompt with an ANSI move (`ESC[24;1H:`) plus NUL bytes | Strip ANSI/NUL for matching (keep raw for the screen parser) |

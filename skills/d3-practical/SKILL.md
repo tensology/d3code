@@ -11,8 +11,9 @@ Every rule here was proven by hitting the failure and fixing it against a live D
 
 ## Getting in
 
-- Login sequence: `d3 -0` → `Enter your user id:` (`dm`) → `master dictionary:`
-  (`dm`) → the TCL prompt `:`. `termu j` sets the terminal type if the screen is wrong.
+- Login sequence: `d3` → `Enter your user id:` (`dm`) → `master dictionary:`
+  (`dm`) → the TCL prompt `:`. Use automatic port allocation for service connections;
+  `d3 -0` requests console port 0 and can fail when it is occupied. `termu j` sets the terminal type if the screen is wrong.
 - **Accounts are listed in the `system` file**: `sort only system`. There is no
   `LIST-ACCOUNTS` or `ACCOUNTS` verb.
 - Switch account with **`TO <account>`**. `TO` is a noun that runs `logto`. Bare
@@ -26,13 +27,28 @@ Every rule here was proven by hitting the failure and fixing it against a live D
 - Batch write: `ED f i` → `I` → body → **blank line to end insert** → `FI` to file.
   Without the blank line the editor stays open and the session never returns.
 - **`I` inserts before the current line** — over an existing item it *prepends*.
-  For replace semantics, `DELETE` the item first.
+  Automated replacements must use the native record helper with a lossless read
+  baseline and explicit approval. Never delete first or fall back to ED: deletion
+  can lose the record if insertion fails and cannot detect a concurrent edit.
 - To **append**, position at a high line number first: `ED f i` → `9999` → `I` →
   body → blank → `FI`.
 - A single ED write above roughly **5 KB never returns to the prompt** (the content
   you see is the editor echo, not a filed item). Write in chunks, appending.
 - ED **cannot express empty attributes** (a blank line ends insert). Build items
   with blank attributes from BASIC with `WRITE`.
+
+## Guarded automated replacements
+
+- Read with `d3_read_item` or `d3_read_dict` and `lossless:true`; retain its returned baseline.
+- Pass that baseline to the corresponding write tool or BASIC build tool. They
+  compare under a D3 item lock, replace once and verify the exact bytes.
+- These tools replace existing sandbox items only, up to 8 KiB of single-byte
+  text. Missing helpers, unsupported records and conflicts must stop the write.
+- Newlines in a tool body represent attribute marks. Existing literal CR/LF bytes
+  are refused by the text tool; the byte-exact API can retain them.
+- Build catalogs only after a verified save and successful native compilation.
+- CLI: redirect a `read-item --lossless` result to a baseline JSON file and pass
+  it back with `--baseline-file`. Do not take a new baseline automatically at save time.
 
 ## BASIC rules
 

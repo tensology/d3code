@@ -106,9 +106,9 @@ export const recipes: Record<RecipeID, Recipe> = {
     commands: [
       "d3code rag-search 'D3 BASIC ED BASIC CATALOG program source subroutine'",
       "d3code estate --profile <profile>",
-      "d3code read-item BP <PROGRAM> --profile <profile>",
+      "d3code read-item BP <PROGRAM> --profile <profile> --lossless > ./<PROGRAM>.baseline.json",
       "d3code basic-lint ./<PROGRAM>.b",
-      "d3code build-basic BP <PROGRAM> --profile <profile> --body-file ./<PROGRAM>.b --compile --confirm",
+      "d3code build-basic BP <PROGRAM> --profile <profile> --body-file ./<PROGRAM>.b --baseline-file ./<PROGRAM>.baseline.json --compile --confirm",
       "d3code catalog-basic BP <PROGRAM> --profile <profile> --confirm",
       "d3code agent-run basic-check BP <PROGRAM> --profile <profile> --compile --catalog --confirm",
     ],
@@ -118,9 +118,9 @@ export const recipes: Record<RecipeID, Recipe> = {
     title: "D3 Dictionary Field Builder Recipe",
     commands: [
       "d3code rag-search 'D3 dictionary attribute defining item DICT AQL conversion correlative'",
-      "d3code read-dict <FILE> <FIELD> --profile <profile>",
+      "d3code read-dict <FILE> <FIELD> --profile <profile> --lossless > ./DICT.<FIELD>.baseline.json",
       "d3code query-aql LIST <FILE> <FIELD> --profile <profile>",
-      "d3code write-dict <FILE> <FIELD> --profile <profile> --body-file ./DICT.<FIELD>.txt --confirm",
+      "d3code write-dict <FILE> <FIELD> --profile <profile> --body-file ./DICT.<FIELD>.txt --baseline-file ./DICT.<FIELD>.baseline.json --confirm",
       "d3code query-aql LIST <FILE> <FIELD> --profile <profile>",
       "d3code agent-run file-audit <FILE> --profile <profile> --sample-limit 5",
     ],
