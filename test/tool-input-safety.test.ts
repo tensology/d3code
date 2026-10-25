@@ -1,3 +1,4 @@
+import { analyzeD3Record } from "../src/d3/shape.js"
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { D3CommandResult, D3Session, ToolContext } from "../src/domain/types.js"
@@ -115,4 +116,8 @@ test("all replacement tools reject missing or stale baselines before running D3 
     await assert.rejects(tool(name).execute({ ...input, baseline: { profile: "fake", connection: "stale", original: "" } }, context), /Connection settings changed/)
   }
   assert.deepEqual(commands, [])
+})
+
+test("lossless shape evidence counts trailing empty attributes", () => {
+  assert.deepEqual(analyzeD3Record("MARKS", "A\xfe\xfeB\xfdC\xfcD  \xfe"), {id:"MARKS",attributeCount:4,multivalueAttributes:[3],subvalueAttributes:[3]})
 })

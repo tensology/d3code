@@ -634,6 +634,18 @@ test("IDE server exposes D3/SB+ builder capabilities and build endpoints", async
   assert.match(discovery.result, /SB\+ Discovery/)
 })
 
+test("legacy replacement APIs require a baseline and preserve its connection guard", async () => {
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  for (const [path, method] of [["item", "PUT"], ["dict", "PUT"], ["basic/build", "POST"]]) {
+    const input = { file: "D3CODE.TEST", item: "ITEM", ...(path === "basic/build" ? { source: "STOP" } : { body: "A\n\nB" }), confirmed: true }
+    for (const baseline of [undefined, { profile: "fake", connection: "f".repeat(64), original: "" }]) {
+      const response = await fetch(server.url + "/api/" + path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify({ ...input, baseline }) })
+      assert.equal(response.status, 409)
+      assert.match((await response.json() as { error: string }).error, baseline ? /Connection settings changed/ : /supply its baseline/)
+    }
+  }
+})
+
 test("IDE server exposes linked Python FastAPI runtime status", async () => {
   const pythonRuntime = createServer((req, res) => {
     if (req.url?.startsWith("/tool-routing")) {

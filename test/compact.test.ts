@@ -65,3 +65,7 @@ test("lossless read baselines survive compact tool feedback without truncation",
     assert.deepEqual(JSON.parse(formatD3ToolResultForModel({compact, raw:record})),record)
   }
 })
+
+test("replacement summaries omit encoded readback bytes", () => {
+  for (const name of ["d3_write_item", "d3_write_dict", "d3_build_basic_program"]) assert.deepEqual(JSON.parse(compactToolOutput({ saved: true, original: "c2F2ZWQ=" },name)),{saved:true})
+})

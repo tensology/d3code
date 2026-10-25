@@ -8,6 +8,7 @@ import { inspectD3Estate, listD3Files, dataFileListCommand } from "./estate.js"
 import { formatManualSearchResult, searchDefaultManuals } from "./manual-search.js"
 import { EditorRecordError, readEditorRecord, saveEditorRecord } from "./records.js"
 import { runRecordOperation } from "./record-session.js"
+import { analyzeD3Record } from "./shape.js"
 import { recordBytes } from "./record-protocol.js"
 import { discoverSbplus } from "./sbplus.js"
 
@@ -42,7 +43,8 @@ async function readLossless(context: ToolContext, file: string, item: string, se
   if (!profile) throw new Error("Select a D3 profile before reading.")
   assertD3Allowed(context.safety, `CT ${file} ${item}`, false, profile.allowedAccounts, profile)
   const value = await readEditorRecord(profile, { profile: profile.name, file, item, section }, (profile, request) => runRecordOperation(profile, request, { signal: context.signal, timeoutMs: context.commandTimeoutMs }))
-  return { file, item, section, body: Buffer.from(value.original, "base64").toString("latin1").replace(/\xfe/g, "\n"), baseline: { profile: value.profile, connection: value.connection, original: value.original }, writable: value.writable && !/[\r\n]/.test(Buffer.from(value.original, "base64").toString("latin1")) }
+  const raw = Buffer.from(value.original, "base64").toString("latin1")
+  return { file, item, section, shape: analyzeD3Record(item, raw), body: raw.replace(/\xfe/g, "\n"), baseline: { profile: value.profile, connection: value.connection, original: value.original }, writable: value.writable && !/[\r\n]/.test(Buffer.from(value.original, "base64").toString("latin1")) }
 }
 
 function quoteTclArg(value: string): string {
