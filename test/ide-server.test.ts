@@ -44,7 +44,7 @@ test.afterEach(async () => {
 
 test("terminal displays the complete report instead of summarising account names away", async () => {
   const stdout = Array.from({ length: 100 }, (_, n) => n === 50 ? "MPSTORE MULTISNACK" : `ACCOUNT-${n}`).join("\n")
-  const session: D3Session = { run: async command => ({ command, stdout, stderr: "", exitCode: 0 }), close: async () => {} }
+  const session: D3Session = { profile: config.profiles[0]!, run: async command => ({ command, stdout, stderr: "", exitCode: 0, durationMs: 0 }), close: async () => {} }
   const server = await startTestIdeServer(config, { model: config.defaultModel, safety: "ask", profile: "fake", mode: "chat", terminalSessions: new Map([["fake", session]]) }, { port: 0 })
   const response = await fetch(`${server.url}/api/terminal/send`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ command: "WHO" }) })
   const result = await response.json() as { displayTranscript: string }
