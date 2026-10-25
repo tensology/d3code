@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import test from "node:test"
-import { assertRecordNext, assertRecordReady, encodeRecordRequest, parseRecordResponse, recordBytes, recordHelper, RECORD_CAPABILITIES, RECORD_MAX_BYTES } from "../src/d3/record-protocol.js"
+import { assertRecordNext, assertRecordReady, encodeRecordRequest, parseRecordResponse, recordBytes, recordHelper, recordWriteAllowed, RECORD_CAPABILITIES, RECORD_MAX_BYTES } from "../src/d3/record-protocol.js"
 
 const nonce = "0123456789ABCDEF0123456789ABCDEF"
 function response(bytes: Uint8Array, status = "READ", owner = 0): string {
@@ -40,6 +40,16 @@ test("VERSION is an empty-target request and READ cannot carry write data", () =
   assert.equal(packet[4], 0)
   assert.ok(packet.subarray(22).every(byte => byte === 0))
   assert.throws(() => encodeRecordRequest({ operation: "READ", nonce, file: "bp", item: recordBytes("ONE"), expected: Buffer.alloc(0) }), /write payloads/)
+})
+
+test("sandbox BASIC source is writable without allowing compiled objects or existing programs", () => {
+  for (const file of ["bp", "BP"]) {
+    assert.equal(recordWriteAllowed(file, recordBytes("D3CODE.PROBE")), true)
+    assert.equal(recordWriteAllowed(file, recordBytes("D3CODE.PROBE"), "dict"), false)
+    assert.equal(recordWriteAllowed(file, recordBytes("B.DAYEND")), false)
+    assert.equal(recordWriteAllowed(file, recordBytes("D3CODE.")), false)
+    encodeRecordRequest({ operation: "CAS_EXISTING", nonce, file, item: recordBytes("D3CODE.PROBE"), expected: Buffer.alloc(0), replacement: recordBytes("STOP") })
+  }
 })
 
 test("encoding rejects Unicode truncation, unsafe references, missing bytes and oversized records", () => {

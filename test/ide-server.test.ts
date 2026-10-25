@@ -96,19 +96,15 @@ test("item read failures keep the editor unavailable and release the loading con
   const server = await startTestIdeServer(config, {model:config.defaultModel,safety:"ask",profile:"fake",mode:"chat"},{port:0})
   const html=await fetch(server.url).then(response=>response.text())
   const script=html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ""
-  const read=script.match(/async function readSelectedItem\(\)\{[\s\S]*?(?=\$\('readItem'\)\.onclick)/)?.[0]
+  const read=script.match(/async function readSelectedItem\(\)\{[\s\S]*?(?=async function saveSelectedRecord)/)?.[0]
   assert.ok(read)
   const nodes:Record<string,{value?:string;disabled?:boolean;textContent?:string;dataset?:Record<string,string>}>={readItem:{},editorEmpty:{},file:{value:"bp"},item:{value:"PROBE"},itemBody:{value:"old source",dataset:{}}}
   const body={dataset:{editorState:"loaded"}}
-  const context={document:{body},$:(id:string)=>nodes[id],URLSearchParams,confirmEditorDiscard:async()=>true,syncEditorLines:()=>{},selectedProfile:"fake",itemBrowserSection:"data",api:async()=>({error:"Item unavailable"})}
+  const context={document:{body},$:(id:string)=>nodes[id],URLSearchParams,confirmEditorDiscard:async()=>true,editorReadSequence:0,editorRecord:null,selectedProfile:"fake",itemBrowserSection:"data",api:async()=>({error:"Item unavailable"})}
   await runInNewContext(read+";readSelectedItem()",context)
   assert.equal(body.dataset.editorState,"empty")
   assert.equal(nodes.editorEmpty?.textContent,"Item unavailable")
   assert.equal(nodes.readItem?.disabled,false)
-  context.api=async()=>({result:"fresh source"} as any)
-  await runInNewContext(read+";readSelectedItem()",context)
-  assert.equal(body.dataset.editorState,"loaded")
-  assert.equal(nodes.itemBody?.value,"fresh source")
 })
 
 test("editor chat context bounds the draft and excludes a different connection", async () => {

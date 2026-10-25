@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 
 export const RECORD_MAX_BYTES = 8192
 export const RECORD_FRAME_HEX_CHARS = 64
-export const RECORD_CAPABILITIES = "D3CODE.RECORD/1;MAX_BYTES=8192;READ;CAS_EXISTING;WRITE_PREFIX=D3CODE."
+export const RECORD_CAPABILITIES = "D3CODE.RECORD/1;MAX_BYTES=8192;READ;CAS_EXISTING;WRITE_PREFIX=D3CODE.;WRITE_SOURCE=bp:D3CODE."
 const maxRequestBytes = 32 + 200 + 2 * RECORD_MAX_BYTES
 
 export type RecordRequest = { operation: "VERSION"; nonce: string } | {
@@ -19,6 +19,11 @@ export type RecordRequest = { operation: "VERSION"; nonce: string } | {
 export function recordBytes(text: string): Uint8Array {
   if ([...text].some(character => character.codePointAt(0)! > 255)) throw new Error("Record text contains characters outside the single-byte encoding.")
   return Buffer.from(text, "latin1")
+}
+
+export function recordWriteAllowed(file: string, item: Uint8Array, section: "data" | "dict" = "data"): boolean {
+  const id = Buffer.from(item).toString("latin1")
+  return file.startsWith("D3CODE.") && file.length > 7 || section === "data" && (file === "bp" || file === "BP") && id.startsWith("D3CODE.") && id.length > 7
 }
 
 function nonceOf(nonce: string): string {
@@ -52,7 +57,7 @@ export function encodeRecordRequest(request: RecordRequest): { nonce: string; fr
     const expected = request.operation === "CAS_EXISTING" ? checkedBytes(request.expected, RECORD_MAX_BYTES, "Expected record") : Buffer.alloc(0)
     const replacement = request.operation === "CAS_EXISTING" ? checkedBytes(request.replacement, RECORD_MAX_BYTES, "Replacement record") : Buffer.alloc(0)
     if (request.operation === "READ" && (request.expected !== undefined || request.replacement !== undefined)) throw new Error("READ must not contain write payloads.")
-    if (request.operation === "CAS_EXISTING" && (!request.file.startsWith("D3CODE.") || request.file.length < 8)) throw new Error("Record writes are restricted to D3CODE. sandbox files.")
+    if (request.operation === "CAS_EXISTING" && !recordWriteAllowed(request.file, item, section)) throw new Error("Record writes are restricted to D3CODE. sandbox files and programs.")
     header[4] = request.operation === "READ" ? 1 : 2
     header[5] = section === "dict" ? 1 : 0
     header[22] = file.length
@@ -178,10 +183,25 @@ NEXT POS
 IF MODE = 1 AND (OLD.LEN # 0 OR NEW.LEN # 0) THEN GOTO FINISH
 IF MODE = 2 THEN
   PREFIX = "D3CODE."
-  IF FILE.LEN < 8 THEN STATUS = "WRITE_DENIED"; GOTO FINISH
-  FOR POS = 1 TO 7
-    IF SEQ(FILE.NAME[POS,1]) # SEQ(PREFIX[POS,1]) THEN STATUS = "WRITE_DENIED"; GOTO FINISH
-  NEXT POS
+  WRITE.OK = 0
+  IF FILE.LEN > 7 THEN
+    WRITE.OK = 1
+    FOR POS = 1 TO 7
+      IF SEQ(FILE.NAME[POS,1]) # SEQ(PREFIX[POS,1]) THEN WRITE.OK = 0
+    NEXT POS
+  END
+  SOURCE.FILE = 0
+  IF FILE.LEN = 2 THEN
+    IF SEQ(FILE.NAME[1,1]) = 98 AND SEQ(FILE.NAME[2,1]) = 112 THEN SOURCE.FILE = 1
+    IF SEQ(FILE.NAME[1,1]) = 66 AND SEQ(FILE.NAME[2,1]) = 80 THEN SOURCE.FILE = 1
+  END
+  IF SOURCE.FILE AND SECTION = 0 AND ID.LEN > 7 THEN
+    WRITE.OK = 1
+    FOR POS = 1 TO 7
+      IF SEQ(ITEM.ID[POS,1]) # SEQ(PREFIX[POS,1]) THEN WRITE.OK = 0
+    NEXT POS
+  END
+  IF WRITE.OK = 0 THEN STATUS = "WRITE_DENIED"; GOTO FINISH
 END
 IF SECTION = 1 THEN
   OPEN "DICT",FILE.NAME TO TARGET ELSE STATUS = "OPEN_FAILED"; GOTO FINISH

@@ -16,9 +16,11 @@ function editorContextPrefix(){
   })+'\n\n';
 }
 function resetEditorSelection(){
+  editorRecord=null;++editorReadSequence;
   document.body.dataset.editorState='empty';
   document.body.dataset.editorOutput='hidden';
   $('itemBody').value='';$('itemBody').dataset.savedBody='';
+  $('recordFields').hidden=true;$('editorRecordStatus').textContent='';$('writeItem').textContent='Save';
   $('file').readOnly=false;$('item').readOnly=false;
   $('editorEmpty').textContent='Select an item to open it.';
 }
