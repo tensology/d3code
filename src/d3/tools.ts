@@ -14,7 +14,7 @@ function requireSession(context: ToolContext) {
 }
 
 async function runTcl(context: ToolContext, command: string, confirmed = false): Promise<D3CommandResult> {
-  assertD3Allowed(context.safety, command, confirmed)
+  assertD3Allowed(context.safety, command, confirmed, context.profile?.allowedAccounts)
   return requireSession(context).run(command, context.commandTimeoutMs, { signal: context.signal })
 }
 

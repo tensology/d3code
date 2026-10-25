@@ -155,7 +155,7 @@ async function closeAllTerminalSessions(state: IdeRuntimeState): Promise<void> {
 async function runTerminalCommand(config: D3CodeConfig, state: IdeRuntimeState, command: string, confirmed?: boolean): Promise<{ result: D3CommandResult; transcript: string; displayTranscript: string; clean: string; label: string; mechanism: string }> {
   const profile = selectProfile(config, state.profile)
   if (!profile) throw new Error("No D3 profile selected. Add and select a D3 profile first.")
-  assertD3Allowed(state.safety, command, Boolean(confirmed))
+  assertD3Allowed(state.safety, command, Boolean(confirmed), profile.allowedAccounts)
   const key = terminalKey(profile.name)
   const sessions = terminalSessionsFor(state)
   let session = sessions.get(key)

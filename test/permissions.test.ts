@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { classifyD3Command, evaluateD3Permission } from "../src/core/permissions.js"
+import { assertD3Allowed, classifyD3Command, evaluateD3Permission } from "../src/core/permissions.js"
 
 test("classifies read-only AQL as read", () => {
   assert.equal(classifyD3Command("LIST CUSTOMERS LAST.NAME"), "read")
@@ -20,4 +20,13 @@ test("plan mode denies compile and write operations", () => {
 test("trust mode still confirms destructive and shell commands", () => {
   assert.equal(evaluateD3Permission("trust", "CLEAR-FILE CUSTOMERS"), "confirm")
   assert.equal(evaluateD3Permission("trust", "! rm -rf /tmp/x"), "confirm")
+})
+
+test("account switch aliases require approval and respect the profile allowlist", () => {
+  for (const command of ["TO MPSTORE", "LOGTO MPSTORE", "WHO\nto MPSTORE"]) {
+    assert.equal(evaluateD3Permission("ask", command), "ask")
+    assert.throws(() => assertD3Allowed("ask", command, true, ["dm"]), /outside the allowed accounts/)
+  }
+  assert.doesNotThrow(() => assertD3Allowed("ask", "TO DM", true, ["dm"]))
+  assert.equal(classifyD3Command("LIST ORDERS TO PRINTER"), "read")
 })

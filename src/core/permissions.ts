@@ -16,7 +16,7 @@ const destructivePatterns = [
 
 const shellPatterns = [/^\s*SH\b/i, /^\s*!\s*/, /^\s*UNIX\b/i]
 const compilePatterns = [/\bBASIC\b/i, /\bCOMPILE\b/i, /\bCATALOG\b/i, /\bCOMPILE-CATALOG\b/i]
-const writePatterns = [/\bLOGTO\b/i, /\bCALL\b/i, /\bCOPY\b/i, /\bDELETE\b/i, /\bED\b/i, /\bUPDATE\b/i, /\bCREATE-FILE\b/i, /\bRESIZE\b/i]
+const writePatterns = [/^\s*TO\s+/im, /\bLOGTO\b/i, /\bCALL\b/i, /\bCOPY\b/i, /\bDELETE\b/i, /\bED\b/i, /\bUPDATE\b/i, /\bCREATE-FILE\b/i, /\bRESIZE\b/i]
 
 export function classifyD3Command(command: string): D3CommandRisk {
   if (shellPatterns.some((pattern) => pattern.test(command))) return "shell"
@@ -34,7 +34,12 @@ export function evaluateD3Permission(mode: SafetyMode, command: string): Permiss
   return "allow"
 }
 
-export function assertD3Allowed(mode: SafetyMode, command: string, confirmed = false): void {
+export function assertD3Allowed(mode: SafetyMode, command: string, confirmed = false, allowedAccounts?: string[]): void {
+  for (const match of command.matchAll(/^\s*(?:TO|LOGTO)\s+(\S+)/gim)) {
+    if (allowedAccounts?.length && !allowedAccounts.some(account => account.toLowerCase() === match[1].toLowerCase())) {
+      throw new Error(`Account ${match[1]} is outside the allowed accounts for this profile.`)
+    }
+  }
   const action = evaluateD3Permission(mode, command)
   if (action === "deny") throw new Error(`Denied by ${mode} safety policy: ${command}`)
   if ((action === "ask" || action === "confirm") && !confirmed) {
