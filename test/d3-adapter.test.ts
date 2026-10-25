@@ -1,6 +1,26 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { createD3Session, PersistentLocalD3Session, PersistentSshD3Session, SshD3Session } from "../src/d3/adapter.js"
+
+test("persistent SSH waits for a delayed VM banner before sending the login wakeup", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "d3code-delayed-ssh-"))
+  const oldPath = process.env.PATH
+  const fakeSsh = join(dir, "ssh")
+  await writeFile(fakeSsh, `#!${process.execPath}\nlet stage=0;setTimeout(()=>process.stdout.write("Connected to Virtual Machine\\n"),2500);process.stdin.on('data',chunk=>{const line=chunk.toString().trim();if(stage===0){stage=1;process.stdout.write('Enter your user id:');}else if(stage===1&&line==='dm'){stage=2;process.stdout.write('master dictionary:');}else if(stage===2&&line==='dm'){stage=3;process.stdout.write('\\n:');}else if(stage===3&&line==='WHO'){process.stdout.write('\\n1 dm dm\\n:');}else if(line==='OFF')process.exit(0);});\n`)
+  await chmod(fakeSsh, 0o700)
+  process.env.PATH = `${dir}:${oldPath}`
+  const session = new PersistentSshD3Session({ name: "delayed", type: "ssh", host: "fake", username: "dm", startupInput: "dm\ndm\n", promptPattern: "(^|\\n):\\s*$", sessionMode: "persistent" })
+  try {
+    assert.match((await session.run("WHO", 20_000)).stdout, /1 dm dm/)
+  } finally {
+    await session.close()
+    process.env.PATH = oldPath
+    await rm(dir, { recursive: true, force: true })
+  }
+})
 
 test("persistent local D3 session preserves shell state across commands", async () => {
   const session = new PersistentLocalD3Session({ name: "persistent", type: "local", sessionMode: "persistent" })
