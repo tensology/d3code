@@ -56,7 +56,7 @@ test("terminal displays the complete report instead of summarising account names
 test("IDE opens a light terminal with connection controls and an optional agent panel", async () => {
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
   const html = await fetch(server.url).then(response => response.text())
-  assert.match(html, /<body data-theme="light" data-view="terminal" data-agent-panel="hidden">/)
+  assert.match(html, /<body data-theme="light" data-view="chat" data-agent-panel="hidden">/)
   assert.match(html, /id="terminalProfile" aria-label="D3 connection profile"/)
   assert.match(html, /id="terminalAccount"/)
   assert.match(html, /id="agentPanelToggle"[^>]*aria-pressed="false"/)

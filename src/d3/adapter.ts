@@ -373,6 +373,8 @@ function expectTimeoutSeconds(timeoutMs?: number): number {
   return 120
 }
 
+// D3 can attach to an existing login without redrawing the user-id prompt.
+// After its banner, wait briefly for that prompt, then send login input directly.
 function sshExpectScript(): string {
   return [
     "set timeout $env(D3CODE_TIMEOUT)",
@@ -386,17 +388,21 @@ function sshExpectScript(): string {
     "}",
     "set loginPrompt {(?n)(Enter your user id:|user password:|master dictionary:|Choose dictionary)[\\x00-\\x20\\x7f]*$}",
     "set readyPrompt {(?n)(^|\\n)(\\x00|\\x1b\\[[0-9;?]*[ -/]*[@-~]|[ \\t])*:[\\x00-\\x20\\x7f]*$}",
-    "expect_before -re {Connected to Virtual Machine} { after 100; send -- \"\\r\"; exp_continue }",
     "foreach line [split $env(D3CODE_STARTUP) \"\\n\"] {",
     "  if {$line eq \"\"} { continue }",
+    "  set bannerSeen 0",
     "  expect {",
+    "    -re {Connected to Virtual Machine} { set bannerSeen 1; set timeout 1; exp_continue }",
     "    -re $loginPrompt {}",
     "    -re $readyPrompt { break }",
     "    timeout {",
-    "      puts \"Timed out waiting for D3 login prompt during startup input.\"",
-    "      exit 2",
+    "      if {!$bannerSeen} {",
+    "        puts \"Timed out waiting for D3 login prompt during startup input.\"",
+    "        exit 2",
+    "      }",
     "    }",
     "  }",
+    "  set timeout $env(D3CODE_TIMEOUT)",
     "  if {[regexp $readyPrompt $expect_out(buffer)]} { break }",
     "  after 100",
     "  send -- \"$line\\r\"",
@@ -412,7 +418,6 @@ function sshExpectScript(): string {
     "    exit 4",
     "  }",
     "}",
-    "expect_before",
     "foreach line [split $env(D3CODE_COMMAND) \"\\n\"] {",
     "  if {$line eq \"\"} { continue }",
     "  send -- \"$line\\r\"",
@@ -448,14 +453,16 @@ function persistentSshExpectScript(): string {
     "}",
     "set loginPrompt {(?n)(Enter your user id:|user password:|master dictionary:|Choose dictionary)[\\x00-\\x20\\x7f]*$}",
     "set readyPrompt {(?n)(^|\\n)(\\x00|\\x1b\\[[0-9;?]*[ -/]*[@-~]|[ \\t])*:[\\x00-\\x20\\x7f]*$}",
-    "expect_before -re {Connected to Virtual Machine} { after 100; send -- \"\\r\"; exp_continue }",
     "foreach line [split $env(D3CODE_STARTUP) \"\\n\"] {",
     "  if {$line eq \"\"} { continue }",
+    "  set bannerSeen 0",
     "  expect {",
+    "    -re {Connected to Virtual Machine} { set bannerSeen 1; set timeout 1; exp_continue }",
     "    -re $loginPrompt {}",
     "    -re $readyPrompt { break }",
-    "    timeout { puts \"Timed out waiting for D3 login prompt during persistent SSH startup.\"; exit 2 }",
+    "    timeout { if {!$bannerSeen} { puts \"Timed out waiting for D3 login prompt during persistent SSH startup.\"; exit 2 } }",
     "  }",
+    "  set timeout $env(D3CODE_TIMEOUT)",
     "  if {[regexp $readyPrompt $expect_out(buffer)]} { break }",
     "  after 100",
     "  send -- \"$line\\r\"",
@@ -465,7 +472,6 @@ function persistentSshExpectScript(): string {
     "  -re $loginPrompt { puts \"D3 login is incomplete for the persistent SSH session.\"; exit 3 }",
     "  timeout { puts \"Timed out waiting for the D3 prompt during persistent SSH startup.\"; exit 4 }",
     "}",
-    "expect_before",
     "send_user \"\\n:\\n\"",
     "interact",
   ].join("\n")
