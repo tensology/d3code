@@ -18,6 +18,28 @@ async function runTcl(context: ToolContext, command: string, confirmed = false):
   return requireSession(context).run(command, context.commandTimeoutMs, { signal: context.signal })
 }
 
+// D3's line editor inserts before the current line, so writing over an existing
+// item would prepend instead of replace. Gate the write first, clear the item,
+// then write it in chunks (`I` creates, `9999` + `I` appends).
+async function runReplaceWrite(
+  context: ToolContext,
+  options: { kind: "item" | "dict"; file: string; item: string; body: string; confirmed?: boolean },
+): Promise<D3CommandResult> {
+  const target = options.kind === "dict" ? `DICT ${options.file}` : options.file
+  const buildCommand = options.kind === "dict" ? edWriteDictCommand : edWriteCommand
+  const chunks = chunkForEditor(options.body ?? "")
+  assertD3Allowed(context.safety, buildCommand(options.file, options.item, chunks[0] ?? ""), options.confirmed)
+  const session = requireSession(context)
+  await session.run(`DELETE ${target} ${options.item}`, context.commandTimeoutMs, { signal: context.signal }).catch(() => undefined)
+  let result: D3CommandResult | undefined
+  for (let index = 0; index < chunks.length; index += 1) {
+    const command = buildCommand(options.file, options.item, chunks[index]!, index > 0)
+    assertD3Allowed(context.safety, command, options.confirmed)
+    result = await session.run(command, context.commandTimeoutMs, { signal: context.signal })
+  }
+  return result ?? session.run(buildCommand(options.file, options.item, ""), context.commandTimeoutMs, { signal: context.signal })
+}
+
 function quoteTclArg(value: string): string {
   return /^[A-Za-z0-9_.:-]+$/.test(value) ? value : `"${value.replace(/"/g, '\\"')}"`
 }
@@ -49,12 +71,49 @@ function requireModulo(value: unknown, label: string): number {
   return modulo
 }
 
-function edWriteCommand(file: string, item: string, body: string): string {
-  return `ED ${file} ${item}\nI\n${body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")}\nFI`
+// D3's line editor ends insert mode on a blank line, then `FI` files the item.
+// Without the blank line the editor stays open and the session never returns to
+// the TCL prompt. `append` positions at a high line number first, which appends.
+function edWriteCommand(file: string, item: string, body: string, append = false): string {
+  const payload = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  return append
+    ? `ED ${file} ${item}\n9999\nI\n${payload}\n\nFI`
+    : `ED ${file} ${item}\nI\n${payload}\n\nFI`
 }
 
-function edWriteDictCommand(file: string, item: string, body: string): string {
-  return `ED DICT ${file} ${item}\nI\n${body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")}\nFI`
+function edWriteDictCommand(file: string, item: string, body: string, append = false): string {
+  const payload = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  return append
+    ? `ED DICT ${file} ${item}\n9999\nI\n${payload}\n\nFI`
+    : `ED DICT ${file} ${item}\nI\n${payload}\n\nFI`
+}
+
+// A single ED write stops the session returning to its prompt above roughly
+// 5 KB of payload, so a large item is written in chunks.
+const EDIT_CHUNK_BYTES = 2800
+
+export function chunkForEditor(body: string, maxBytes = EDIT_CHUNK_BYTES): string[] {
+  const lines = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+  // A blank line ends ED insert mode, so a body with one would be silently
+  // truncated (and any empty attributes lost). Fail loudly instead.
+  if (lines.slice(0, -1).some((line) => line.trim() === "")) {
+    throw new Error("Cannot write a body with a blank line: D3's editor ends insert mode on a blank line, which would silently truncate the item. Build empty attributes with a BASIC writer instead.")
+  }
+  const chunks: string[] = []
+  let current: string[] = []
+  let size = 0
+  for (const line of lines) {
+    const lineSize = line.length + 1
+    if (current.length > 0 && size + lineSize > maxBytes) {
+      chunks.push(current.join("\n"))
+      current = []
+      size = 0
+    }
+    current.push(line)
+    size += lineSize
+  }
+  if (current.length > 0 || chunks.length === 0) chunks.push(current.join("\n"))
+  return chunks
 }
 
 function assertAllowedAccount(context: ToolContext, account: string): void {
@@ -111,18 +170,18 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT ${requireName(args.file, "file")} ${requireName(args.item, "item")}`, true)
+      return runTcl(context, `CT ${requireName(args.file, "file")} ${requireName(args.item, "item")} (N`, true)
     },
   },
   {
     name: "d3_write_item",
-    description: "Write a D3 item through ED batch input.",
+    description: "Write a D3 item through ED batch input (replaces any existing item).",
     mutates: true,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string; body: string; confirmed?: boolean }
       const file = requireName(args.file, "file")
       const item = requireName(args.item, "item")
-      return runTcl(context, edWriteCommand(file, item, args.body ?? ""), args.confirmed)
+      return runReplaceWrite(context, { kind: "item", file, item, body: args.body ?? "", confirmed: args.confirmed })
     },
   },
   {
@@ -146,18 +205,18 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${requireName(args.item, "dictionary item")}`, true)
+      return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${requireName(args.item, "dictionary item")} (N`, true)
     },
   },
   {
     name: "d3_write_dict",
-    description: "Write a D3 dictionary item through ED DICT batch input.",
+    description: "Write a D3 dictionary item through ED DICT batch input (replaces any existing item).",
     mutates: true,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string; body: string; confirmed?: boolean }
       const file = requireName(args.file, "file")
       const item = requireName(args.item, "dictionary item")
-      return runTcl(context, edWriteDictCommand(file, item, args.body ?? ""), args.confirmed)
+      return runReplaceWrite(context, { kind: "dict", file, item, body: args.body ?? "", confirmed: args.confirmed })
     },
   },
   {

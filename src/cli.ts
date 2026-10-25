@@ -50,6 +50,7 @@ import { createModelRoutingPlan, renderModelRoutingPlan, type ModelBiasInput } f
 import { createReadinessReport, renderReadinessReport } from "./quality/readiness.js"
 import { createHarnessDoctorReport, renderHarnessDoctorReport } from "./quality/harness-doctor.js"
 import { renderAcceptanceReport, runMockAcceptance } from "./quality/acceptance.js"
+import { renderD3RegressionReport, runD3Regression } from "./quality/d3-regression.js"
 import { createIdeStatusReport, renderIdeStatusReport } from "./quality/ide-status.js"
 import { createInstallProofReport, renderInstallProofReport } from "./quality/install-proof.js"
 import { createProductCompletionAudit, renderProductCompletionAudit } from "./quality/product-audit.js"
@@ -881,6 +882,35 @@ program.command("acceptance").description("Run the end-to-end D3 Code workflow a
   console.log(options.json ? JSON.stringify(report, null, 2) : renderAcceptanceReport(report))
   if (!report.ready) process.exitCode = 1
 })
+
+program
+  .command("regression")
+  .description("Run the live D3 regression suite against a profile. Read-only by default; mutations and printing are opt-in.")
+  .option("--profile <name>")
+  .option("--mutate", "include mutating checks (scratch BASIC program, scratch file, index create/delete)")
+  .option("--prints", "include spooler print checks (queues and kills a print job)")
+  .option("--timeout <ms>", "per-command timeout", (value) => Number(value), 60_000)
+  .option("--out <dir>", "write regression-report.md and regression-report.json into a directory")
+  .option("--json")
+  .action(async (options: { profile?: string; mutate?: boolean; prints?: boolean; timeout: number; out?: string; json?: boolean }) => {
+    const config = await loadConfig()
+    const report = await runD3Regression(config, {
+      profile: options.profile,
+      includeMutations: options.mutate,
+      includePrints: options.prints,
+      timeoutMs: options.timeout,
+    })
+    if (options.out) {
+      const { mkdir, writeFile } = await import("node:fs/promises")
+      const { join } = await import("node:path")
+      await mkdir(options.out, { recursive: true })
+      await writeFile(join(options.out, "regression-report.json"), `${JSON.stringify(report, null, 2)}\n`)
+      await writeFile(join(options.out, "regression-report.md"), `${renderD3RegressionReport(report)}\n`)
+      console.log(`Wrote ${join(options.out, "regression-report.md")}`)
+    }
+    console.log(options.json ? JSON.stringify(report, null, 2) : renderD3RegressionReport(report))
+    if (report.summary.fail > 0) process.exitCode = 1
+  })
 
 program.command("live-proof").description("Show or run the live D3 proof path for profile/account readiness.").option("--profile <name>").option("--run", "execute profile-doctor checks and include the result").option("--goal <id>", "record passing live proof on a GSD goal").option("--phase <phase>", "goal phase to record live proof against", "verify").option("--json").action(async (options: { profile?: string; run?: boolean; goal?: string; phase?: string; json?: boolean }) => {
   const config = await loadConfig()

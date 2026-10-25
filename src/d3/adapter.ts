@@ -155,13 +155,19 @@ export class PersistentLocalD3Session implements D3Session {
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
     const promptPattern = this.profile.promptPattern ? new RegExp(normalizeD3PromptPattern(this.profile.promptPattern) ?? this.profile.promptPattern) : undefined
-    if (promptPattern && !promptPattern.test(normalizePromptOutput(this.stdout))) {
+    if (promptPattern && !promptPattern.test(promptMatchText(this.stdout))) {
       const startupTimeoutMs = timeoutEnabled(timeoutMs)
         ? Math.min(timeoutMs, this.profile.type === "ssh" ? 15_000 : 2_000)
         : this.profile.type === "ssh" ? 15_000 : 2_000
       const ready = await absorbStartupPrompt(() => {
         if (this.closedError) throw this.closedError
-        return promptPattern.test(normalizePromptOutput(this.stdout))
+        const output = promptMatchText(this.stdout)
+        // D3 refuses a logon when every licensed slot is busy. Surface that
+        // immediately instead of hanging until the startup timeout.
+        if (/too many users/i.test(output)) {
+          throw new Error("D3 refused the session because all licensed user slots are occupied. Close an unused D3 session, then reconnect.")
+        }
+        return promptPattern.test(output)
       }, startupTimeoutMs)
       if (!ready) throw new Error(`Persistent D3 session did not reach its prompt within ${startupTimeoutMs}ms`)
       if (this.profile.type === "ssh") await delay(50)
@@ -182,7 +188,7 @@ export class PersistentLocalD3Session implements D3Session {
         const stderr = this.stderr.slice(stderrStart)
         streamedStdout = streamDelta(output, streamedStdout, options.onStdout)
         streamedStderr = streamDelta(stderr, streamedStderr, options.onStderr)
-        return promptPattern.test(normalizePromptOutput(output))
+        return promptPattern.test(promptMatchText(output))
       }
       : () => {
         if (this.closedError) throw this.closedError
@@ -270,6 +276,14 @@ function normalizePromptOutput(output: string): string {
   return output.replace(/\0/g, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
 }
 
+// D3 redraws the TCL prompt on the bottom line via an ANSI cursor move (for
+// example "\x1b[24;1H:"), so terminal escapes must be removed before the
+// prompt pattern is tested or used to filter output. Command output itself is
+// left untouched so the screen parser still sees cursor positioning.
+function promptMatchText(output: string): string {
+  return normalizePromptOutput(output).replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)|\u001B\[[0-?]*[ -/]*[@-~]|\u0007/g, "")
+}
+
 function waitFor(predicate: () => boolean, timeoutMs: number | undefined, timeoutMessage: string, signal?: AbortSignal): Promise<void> {
   const started = Date.now()
   return new Promise((resolve, reject) => {
@@ -304,7 +318,7 @@ function waitFor(predicate: () => boolean, timeoutMs: number | undefined, timeou
 function stripPrompt(output: string, promptPattern: RegExp): string {
   return normalizePromptOutput(output)
     .split(/\r?\n/)
-    .filter((line) => !promptPattern.test(line))
+    .filter((line) => !promptPattern.test(promptMatchText(line)))
     .join("\n")
     .trim()
 }
@@ -371,7 +385,7 @@ function sshExpectScript(): string {
     "  spawn ssh -tt -p $port $target $entry",
     "}",
     "set loginPrompt {(?n)(Enter your user id:|user password:|master dictionary:|Choose dictionary)[\\x00-\\x20\\x7f]*$}",
-    "set readyPrompt {(?n)(^|\\n):\\s*$}",
+    "set readyPrompt {(?n)(^|\\n)(\\x00|\\x1b\\[[0-9;?]*[ -/]*[@-~]|[ \\t])*:[\\x00-\\x20\\x7f]*$}",
     "set startupTimeout $timeout",
     "set timeout 2",
     "expect {",
@@ -437,7 +451,7 @@ function persistentSshExpectScript(): string {
     "  spawn ssh -tt -p $port $target $entry",
     "}",
     "set loginPrompt {(?n)(Enter your user id:|user password:|master dictionary:|Choose dictionary)[\\x00-\\x20\\x7f]*$}",
-    "set readyPrompt {(?n)(^|\\n):\\s*$}",
+    "set readyPrompt {(?n)(^|\\n)(\\x00|\\x1b\\[[0-9;?]*[ -/]*[@-~]|[ \\t])*:[\\x00-\\x20\\x7f]*$}",
     "set startupTimeout $timeout",
     "set timeout 2",
     "expect {",
