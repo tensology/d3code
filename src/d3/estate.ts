@@ -19,6 +19,7 @@ export interface D3BrowserReport {
   fileCount: number
   files: D3EstateFile[]
   categories: D3BrowserCategory[]
+  limited?: boolean
 }
 
 export interface D3EstateReport {
@@ -55,6 +56,32 @@ function classifyFile(name: string, detail = "", typeCode = ""): D3EstateFile["k
   if (/^dict\b| dictionary\b/.test(normalized)) return "dictionary"
   if (typeCode === "D" || / customer|order|invoice|sales|stock|product|ledger|data|file/.test(normalized)) return "data"
   return "unknown"
+}
+
+export function dataFileListCommand(limit = 200): string {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("File listing limit must be 1-1000.")
+  // A0's default display width truncates valid file names. Hex plus L#200 preserves all ID bytes.
+  return `LIST MD WITH A1 = "D" A0 CONV "MX" FMT "L#200" A1 FMT "L#2" SAMPLING ${limit} (CINE`
+}
+
+export async function listD3Files(session: D3Session, options: { limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}) {
+  const limit = options.limit ?? 200
+  const result = await session.run(dataFileListCommand(limit), options.timeoutMs ?? 15_000, { signal: options.signal })
+  assertUsableProbe(result)
+  const files: D3EstateFile[] = []
+  let count: number | undefined
+  for (const line of outputOf(result).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").split(/\r\n?|\n/).map(line => line.trim())) {
+    const summary = line.match(/^(?:\[4052?\]\s*)?(\d+)\s+items?\s+listed\b/i)
+    if (summary || /^\[401\]\s*no items present\.?$/i.test(line)) { count = summary ? Number(summary[1]) : 0;break }
+    const row = line.match(/^((?:[0-9a-f]{2}){1,100})\s+D$/i)
+    if (row) {
+      const name = Buffer.from(row[1]!, "hex").toString("latin1")
+      files.push({ name, kind: classifyFile(name, "", "D"), typeCode: "D" })
+    }
+  }
+  if (count === undefined || count !== files.length || count > limit || new Set(files.map(file => file.name)).size !== count) throw new Error("D3 file listing was incomplete. Retry the file listing.")
+  const mayHaveMore = count === limit
+  return { files, limit, mayHaveMore, result: { ...result, stdout: files.map(file => `${file.name} D`).join("\n") + `\n[405] ${count} items listed.` + (mayHaveMore ? `\nListing limited to ${limit} files; more may exist.` : "") } }
 }
 
 export function parseFileListing(output: string, limit = 40): D3EstateFile[] {
@@ -153,27 +180,22 @@ export async function inspectD3Browser(session: D3Session, options: { limit?: nu
   const timeoutMs = options.timeoutMs ?? 0
   const whoResult = await session.run("WHO", timeoutMs, { signal: options.signal })
   assertUsableProbe(whoResult)
-  const filesResult = await session.run('LIST MD WITH A1 = "D" A0 A1 A2 (N', timeoutMs, { signal: options.signal })
-  assertUsableProbe(filesResult)
+  const listing = await listD3Files(session, { ...options, limit: options.limit ?? 200, timeoutMs })
   const who = parseWhoOutput(outputOf(whoResult))
-  const filesOutput = outputOf(filesResult)
-  const files = parseFileListing(filesOutput, options.limit ?? 200)
-  const listedCount = Number(filesOutput.match(/\[(?:\d+)\]\s+(\d+)\s+items listed/i)?.[1])
-  const fileCount = Number.isFinite(listedCount) && listedCount > 0 ? listedCount : files.length
-  return { who, fileCount, files, categories: groupFilesIntoCategories(files) }
+  const files = listing.files
+  return { who, fileCount: files.length, files, limited: listing.mayHaveMore, categories: groupFilesIntoCategories(files) }
 }
 
 export async function inspectD3Estate(session: D3Session, options: { limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<D3EstateReport> {
   const profile = session.profile
   const timeoutMs = options.timeoutMs ?? 0
   const whoResult = await session.run("WHO", timeoutMs, { signal: options.signal })
-  const filesResult = await session.run("LIST MD WITH A1 = \"D\" A0 A1 A2 (N", timeoutMs, { signal: options.signal })
+  const listing = await listD3Files(session, { ...options, limit: options.limit ?? 40, timeoutMs })
   const who = parseWhoOutput(outputOf(whoResult))
-  const filesOutput = outputOf(filesResult)
-  const files = parseFileListing(filesOutput, options.limit ?? 40)
-  const listedCount = Number(filesOutput.match(/\[(?:\d+)\]\s+(\d+)\s+items listed/i)?.[1])
-  const fileCount = Number.isFinite(listedCount) && listedCount > 0 ? listedCount : files.length
+  const files = listing.files
+  const fileCount = files.length
   const nextQuestions = [
+    ...(listing.mayHaveMore ? [`Listing limited to ${listing.limit} files; more may exist.`] : []),
     "Ask: 'show me the dictionary for FILE' and I will explain the fields as a table.",
     "Ask: 'sample FILE' and I will read safe records and map attributes where possible.",
     "Ask: 'find programs that touch FILE' and I will build a BASIC/file-access map.",

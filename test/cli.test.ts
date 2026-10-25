@@ -700,8 +700,8 @@ test("CLI indexes and searches a D3 account cache", async () => {
     "#!/bin/sh",
     "input=$(cat)",
     "case \"$input\" in",
-    "  *'LIST MD'*) printf 'CUSTOMERS D Customer file\\nORDERS D Order file\\n' ;;",
-    "  *) printf 'CUSTOMERS D Customer file\\nORDERS D Order file\\n' ;;",
+    "  *'LIST MD'*) printf '435553544F4D455253 D\\n4F5244455253 D\\n[4052] 2 items listed.' ;;",
+    "  *) printf '435553544F4D455253 D\\n4F5244455253 D\\n[4052] 2 items listed.' ;;",
     "esac",
     "",
   ].join("\n"), { mode: 0o755 })
@@ -714,7 +714,7 @@ test("CLI indexes and searches a D3 account cache", async () => {
 
   const searched = await execFileAsync("node", ["dist/src/cli.js", "search-account", "ORDERS", "--profile", "fake"], { cwd: process.cwd(), env })
   assert.match(searched.stdout, /d3:\/\/fake\/SALES\/MD\/__file_pointers__:/)
-  assert.match(searched.stdout, /Order file/)
+  assert.match(searched.stdout, /ORDERS D/)
 
   const toolSearch = await execFileAsync("node", ["dist/src/cli.js", "tool-compact", "d3_search", "{\"query\":\"CUSTOMERS\"}", "--profile", "fake"], { cwd: process.cwd(), env })
   assert.match(toolSearch.stdout, /CUSTOMERS/)

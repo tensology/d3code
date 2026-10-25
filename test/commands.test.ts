@@ -542,7 +542,7 @@ test("slash commands expose D3 account, file, index, compile, catalog, and call 
       "  *'LOGTO SALES'*) printf 'LOGTO SALES\\nSALES\\nD3 10.3 MOCK\\n' ;;",
       "  *WHO*) printf 'SALES\\n' ;;",
       "  *VERSION*) printf 'D3 10.3 MOCK\\n' ;;",
-      "  *'LIST MD'*) printf 'CUSTOMERS D Customer file\\nBP D Programs\\n' ;;",
+      "  *'LIST MD'*) printf '435553544F4D455253 D\\n4250 D\\n[4052] 2 items listed.' ;;",
       "  *'CT CUSTOMERS 100'*) printf '001 CUSTOMER\\nOLD.NAME\\n' ;;",
       "  *'CT DICT CUSTOMERS NAME'*) printf '001 D\\n002 1\\n003 Name\\n' ;;",
       "  *'LIST-LOCKS'*) printf 'No locks present\\n' ;;",
@@ -550,7 +550,7 @@ test("slash commands expose D3 account, file, index, compile, catalog, and call 
       "  *'BASIC BP GET.CUSTOMER'*) printf 'BASIC OK\\n' ;;",
       "  *'CATALOG BP GET.CUSTOMER'*) printf 'CATALOG OK\\n' ;;",
       "  *'CALL GET.CUSTOMER 100'*) printf 'CALL OK\\n' ;;",
-      "  *) printf 'CUSTOMERS D Customer file\\nBP D Programs\\n' ;;",
+      "  *) printf '435553544F4D455253 D\\n4250 D\\n[4052] 2 items listed.' ;;",
       "esac",
       "",
     ].join("\n"), { mode: 0o755 })
@@ -606,7 +606,7 @@ test("slash commands expose D3 account, file, index, compile, catalog, and call 
     assert.match(index.output, /profile-fake/)
 
     const search = await handleSlashCommand("/search Customer", toolConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
-    assert.match(search.output, /Customer file/)
+    assert.match(search.output, /CUSTOMERS D/)
 
     const compile = await handleSlashCommand("/compile BP GET.CUSTOMER", toolConfig, { model: "openai/gpt-5", safety: "trust", profile: "fake", mode: "modernize" })
     assert.match(compile.output, /BASIC OK/)

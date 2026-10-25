@@ -20,7 +20,7 @@ const config: D3CodeConfig = {
     name: "fake",
     type: "local",
     account: "DM",
-    entryCommand: "node -e \"process.stdin.on('data',d=>{const s=d.toString(); if(s.includes('LIST MD')) console.log('CUSTOMERS D Customer file\\nBP D Programs\\nVOC D Screens\\nMD D System'); else if(s.includes('LIST-LOCKS')) console.log('No locks'); else if(s.includes('BASIC')) console.log('BASIC OK'); else if(s.includes('CATALOG')) console.log('CATALOG OK'); else if(s.includes('CALL')) console.log('CALL OK'); else if(s.includes('LIST CUSTOMERS')) console.log('100 Alice'); else if(s.includes('LOGTO SALES')) console.log('SALES'); else if(s.includes('WHO')) console.log('DM'); else if(s.includes('CT DICT')) console.log('DICT ITEM'); else if(s.includes('CT')) console.log('ITEM BODY'); else console.log('OK')})\"",
+    entryCommand: "node -e \"process.stdin.on('data',d=>{const s=d.toString(); if(s.includes('LIST MD')) console.log('435553544F4D455253 D\\n4250 D\\n564F43 D\\n4D44 D\\n[4052] 4 items listed.'); else if(s.includes('LIST-LOCKS')) console.log('No locks'); else if(s.includes('BASIC')) console.log('BASIC OK'); else if(s.includes('CATALOG')) console.log('CATALOG OK'); else if(s.includes('CALL')) console.log('CALL OK'); else if(s.includes('LIST CUSTOMERS')) console.log('100 Alice'); else if(s.includes('LOGTO SALES')) console.log('SALES'); else if(s.includes('WHO')) console.log('DM'); else if(s.includes('CT DICT')) console.log('DICT ITEM'); else if(s.includes('CT')) console.log('ITEM BODY'); else console.log('OK')})\"",
     promptPattern: ">",
     sessionMode: "oneshot",
   }, {

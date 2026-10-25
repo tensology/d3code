@@ -47,7 +47,7 @@ async function confirmEditorDiscard(){
 }
 function renderItemBrowser(){
   const items=itemBrowserItems;
-  $('itemList').innerHTML=items.map(id=>'<button type="button" class="d3-item-row" aria-current="'+(document.body.dataset.editorState==='loaded'&&id===$('item').value?'true':'false')+'" data-item-id="'+escapeHtml(id)+'">'+escapeHtml(id)+'</button>').join('');
+  $('itemList').innerHTML=items.map(id=>'<button type="button" class="d3-item-row" title="'+escapeHtml(id)+'" aria-current="'+(document.body.dataset.editorState==='loaded'&&id===$('item').value?'true':'false')+'" data-item-id="'+escapeHtml(id)+'">'+escapeHtml(id)+'</button>').join('');
   if(!items.length)$('itemList').textContent=$('itemFilter').value?'No matching items.':'No items in this section.';
   $('itemList').querySelectorAll('[data-item-id]').forEach(button=>button.onclick=async()=>{
     if(!await confirmEditorDiscard())return;
@@ -76,7 +76,7 @@ async function openD3File(file,kind){
   $('editorSectionLabel').textContent=kind==='program'?'Source':'Data';
   $('file').value=file;$('item').value='';itemBrowserSection='data';
   $('itemSection').value='data';$('itemFilter').value='';
-  $('itemBrowserFile').textContent=file;
+  $('itemBrowserFile').textContent=file;$('itemBrowserFile').title=file;
   $('d3Browser').hidden=true;$('itemBrowser').hidden=false;
   await loadFileItems();
 }

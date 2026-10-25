@@ -53,8 +53,9 @@ export async function captureBundleFromSession(session: D3Session, options: Capt
 }
 
 async function captureFileNames(session: D3Session): Promise<string[]> {
-  const result = await session.run('LIST MD WITH A1 = "D" A0 (N')
-  return parseListOutputIds(result.stdout || result.stderr)
+  const listing = await listD3Files(session)
+  if (listing.mayHaveMore) throw new Error("Account file listing reached its limit. Specify the files to capture explicitly.")
+  return listing.files.map(file => file.name)
 }
 
 async function captureIDs(session: D3Session, command: string): Promise<string[]> {
@@ -70,3 +71,4 @@ async function captureIndexes(session: D3Session, file: string): Promise<string[
     return []
   }
 }
+import { listD3Files } from "../d3/estate.js"

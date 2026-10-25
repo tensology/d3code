@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { inspectD3Browser, parseFileListing, parseWhoOutput, renderEstateReport } from "../src/d3/estate.js"
+import { inspectD3Browser, listD3Files, dataFileListCommand, parseFileListing, parseWhoOutput, renderEstateReport } from "../src/d3/estate.js"
 import type { D3Session } from "../src/domain/types.js"
 
 test("estate parser extracts and classifies D3 file pointers", () => {
@@ -19,6 +19,31 @@ test("estate parser extracts and classifies D3 file pointers", () => {
     ["VOC", "screen"],
     ["ORDERS", "data"],
   ])
+})
+
+test("native file listing preserves full IDs beyond the default report width", async () => {
+  const names = ["D3CODE.RECORD.TEST", "D3CODE." + "X".repeat(93), "bp", "fonts"]
+  const stdout = names.map(name => Buffer.from(name).toString("hex") + " d").join("\n") + `\n[4052] ${names.length} items listed out of 1800 sampling items.`
+  const session: D3Session = { profile: { name: "fake", type: "local" }, async run(command) {
+    assert.match(command, /A0 CONV "MX" FMT "L#200"/)
+    return { command, stdout, stderr: "", exitCode: null, durationMs: 1 }
+  }, async close() {} }
+  const listing = await listD3Files(session)
+  assert.deepEqual(listing.files.map(file => file.name), names)
+  assert.equal(listing.files[2]?.kind, "program")
+  assert.match(listing.result.stdout, /D3CODE.RECORD.TEST D/)
+  assert.equal(listing.mayHaveMore, false)
+})
+
+test("file listing refuses missing, truncated or duplicate rows and reports its bound", async () => {
+  const session: D3Session = { profile: { name: "fake", type: "local" }, async run(command) { return { command, stdout: "4142 D\n[405] 1 items listed.", stderr: "", exitCode: 0, durationMs: 1 } }, async close() {} }
+  assert.equal((await listD3Files(session, { limit: 1 })).mayHaveMore, true)
+  for (const stdout of ["AB D", "41 D\n[405] 2 items listed.", "41 D\n41 D\n[405] 2 items listed.", "41 D\n42 D\n[405] 2 items listed."]) {
+    session.run = async command => ({ command, stdout, stderr: "", exitCode: 0, durationMs: 1 })
+    await assert.rejects(listD3Files(session, { limit: 1 }), /incomplete/)
+  }
+  assert.match(dataFileListCommand(1000), /SAMPLING 1000/)
+  assert.throws(() => dataFileListCommand(1001), /limit/)
 })
 
 test("estate parser ignores SSH/login noise and extracts WHO proof", () => {

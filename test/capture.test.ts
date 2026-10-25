@@ -9,7 +9,7 @@ class MockSession implements D3Session {
 
   async run(command: string): Promise<D3CommandResult> {
     const stdout = command.includes("LIST MD")
-      ? "CUSTOMERS\nORDERS\n2 items listed\n"
+      ? "435553544F4D455253 D\n4F5244455253 D\n[4052] 2 items listed\n"
       : command.includes("LIST DICT CUSTOMERS")
         ? "@ID\nNAME\nSTATUS\n"
       : command.includes("LIST DICT ORDERS")

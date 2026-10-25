@@ -4,7 +4,7 @@ import { indexD3Account, loadIndex, saveIndex, searchDocuments } from "../indexi
 import { formatRagSearchResult, loadFreshRagIndex, searchRagIndex } from "../rag/reference-rag.js"
 import { d3Capabilities, renderD3Capabilities } from "./capabilities.js"
 import { detectLocalD3 } from "./detect.js"
-import { inspectD3Estate } from "./estate.js"
+import { inspectD3Estate, listD3Files, dataFileListCommand } from "./estate.js"
 import { formatManualSearchResult, searchDefaultManuals } from "./manual-search.js"
 import { discoverSbplus } from "./sbplus.js"
 
@@ -174,7 +174,11 @@ export const d3Tools: ToolDefinition[] = [
     name: "d3_list_files",
     description: "List file pointers in the active account master dictionary.",
     mutates: false,
-    execute: async (_input, context) => runTcl(context, "LIST MD WITH A1 = \"D\" A0 A1 A2 (N"),
+    execute: async (_input, context) => {
+      const profile = context.profile ?? context.session?.profile
+      assertD3Allowed(context.safety, dataFileListCommand(), false, profile?.allowedAccounts, profile)
+      return (await listD3Files(requireSession(context), { signal: context.signal, timeoutMs: context.commandTimeoutMs })).result
+    },
   },
   {
     name: "d3_read_item",

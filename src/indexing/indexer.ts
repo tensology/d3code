@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { cacheDir } from "../config/paths.js"
 import type { ConnectionProfile, D3Session } from "../domain/types.js"
+import { listD3Files } from "../d3/estate.js"
 
 export interface IndexedDocument {
   uri: string
@@ -42,7 +43,7 @@ export function searchDocuments(documents: IndexedDocument[], query: string): Se
 }
 
 export async function indexD3Account(session: D3Session, profile: ConnectionProfile): Promise<IndexedDocument[]> {
-  const listing = await session.run("LIST MD WITH A1 = \"D\" A0 A1 A2 (N")
+  const { result: listing } = await listD3Files(session)
   const body = listing.stdout || listing.stderr
   return [
     {
