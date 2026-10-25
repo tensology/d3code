@@ -29,7 +29,7 @@ export async function captureBundleFromSession(session: D3Session, options: Capt
     const observedIndexes = options.captureIndexes === false ? [] : await captureIndexes(session, file)
     const records = []
     for (const id of recordIDs.slice(0, sampleLimit)) {
-      const result = await session.run(`CT ${file} ${id}`)
+      const result = await session.run(`CT ${file} ${id} (N`)
       records.push({ id, raw: parseCtItem(result.stdout || result.stderr) })
     }
     bundle.files.push({
@@ -44,7 +44,7 @@ export async function captureBundleFromSession(session: D3Session, options: Capt
   for (const programFile of programFiles) {
     const programIDs = await captureIDs(session, `SELECT ${programFile} SAMPLE ${sampleLimit}`)
     for (const item of programIDs.slice(0, sampleLimit)) {
-      const result = await session.run(`CT ${programFile} ${item}`)
+      const result = await session.run(`CT ${programFile} ${item} (N`)
       bundle.programs.push({ file: programFile, item, source: parseCtItem(result.stdout || result.stderr) })
     }
   }

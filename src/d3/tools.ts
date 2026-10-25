@@ -1,4 +1,4 @@
-import { assertD3Allowed } from "../core/permissions.js"
+import { assertD3Allowed, classifyD3Command } from "../core/permissions.js"
 import type { D3CommandResult, ToolContext, ToolDefinition } from "../domain/types.js"
 import { indexD3Account, loadIndex, saveIndex, searchDocuments } from "../indexing/indexer.js"
 import { formatRagSearchResult, loadFreshRagIndex, searchRagIndex } from "../rag/reference-rag.js"
@@ -14,7 +14,7 @@ function requireSession(context: ToolContext) {
 }
 
 async function runTcl(context: ToolContext, command: string, confirmed = false): Promise<D3CommandResult> {
-  assertD3Allowed(context.safety, command, confirmed, context.profile?.allowedAccounts)
+  assertD3Allowed(context.safety, command, confirmed, (context.profile ?? context.session?.profile)?.allowedAccounts, context.profile ?? context.session?.profile)
   return requireSession(context).run(command, context.commandTimeoutMs, { signal: context.signal })
 }
 
@@ -28,13 +28,14 @@ async function runReplaceWrite(
   const target = options.kind === "dict" ? `DICT ${options.file}` : options.file
   const buildCommand = options.kind === "dict" ? edWriteDictCommand : edWriteCommand
   const chunks = chunkForEditor(options.body ?? "")
-  assertD3Allowed(context.safety, buildCommand(options.file, options.item, chunks[0] ?? ""), options.confirmed)
+  const profile = context.profile ?? context.session?.profile
+  // Validate every chunk before deleting the previous item or writing any bytes.
+  const commands = chunks.map((chunk, index) => buildCommand(options.file, options.item, chunk, index > 0))
+  for (const command of commands) assertD3Allowed(context.safety, command, options.confirmed, profile?.allowedAccounts, profile)
   const session = requireSession(context)
   await session.run(`DELETE ${target} ${options.item}`, context.commandTimeoutMs, { signal: context.signal }).catch(() => undefined)
   let result: D3CommandResult | undefined
-  for (let index = 0; index < chunks.length; index += 1) {
-    const command = buildCommand(options.file, options.item, chunks[index]!, index > 0)
-    assertD3Allowed(context.safety, command, options.confirmed)
+  for (const command of commands) {
     result = await session.run(command, context.commandTimeoutMs, { signal: context.signal })
   }
   return result ?? session.run(buildCommand(options.file, options.item, ""), context.commandTimeoutMs, { signal: context.signal })
@@ -65,10 +66,13 @@ function requireSingleLine(value: unknown, label: string): string {
   return text
 }
 
-function requireReadOnlyAql(value: unknown): string {
+function requireReadOnlyAql(value: unknown, profile: ToolContext["profile"]): string {
   const query = requireSingleLine(value, "AQL query")
   if (!/^(?:LIST|SORT|SELECT|SSELECT|COUNT)\b/i.test(query)) {
     throw new Error("AQL query must begin with LIST, SORT, SELECT, SSELECT, or COUNT. Use d3_tcl for other TCL commands so the safety policy can classify them.")
+  }
+  if (classifyD3Command(query, profile) !== "read") {
+    throw new Error("AQL query must be read-only without printer output, command chaining, or shell syntax. Use d3_tcl for explicitly approved operations.")
   }
   return query
 }
@@ -125,7 +129,7 @@ export function chunkForEditor(body: string, maxBytes = EDIT_CHUNK_BYTES): strin
 }
 
 function assertAllowedAccount(context: ToolContext, account: string): void {
-  const allowed = context.profile?.allowedAccounts
+  const allowed = (context.profile ?? context.session?.profile)?.allowedAccounts
   if (allowed && allowed.length > 0 && !allowed.includes(account)) {
     throw new Error(`Account ${account} is not allowed for profile ${context.profile?.name}. Allowed: ${allowed.join(", ")}`)
   }
@@ -163,14 +167,14 @@ export const d3Tools: ToolDefinition[] = [
         assertAllowedAccount(context, args.account)
         return runTcl(context, `LOGTO ${args.account}\nWHO\nVERSION`, args.confirmed)
       }
-      return runTcl(context, "WHO\nVERSION", true)
+      return runTcl(context, "WHO\nVERSION")
     },
   },
   {
     name: "d3_list_files",
     description: "List file pointers in the active account master dictionary.",
     mutates: false,
-    execute: async (_input, context) => runTcl(context, "LIST MD WITH A1 = \"D\" A0 A1 A2 (N", true),
+    execute: async (_input, context) => runTcl(context, "LIST MD WITH A1 = \"D\" A0 A1 A2 (N"),
   },
   {
     name: "d3_read_item",
@@ -178,7 +182,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT ${requireName(args.file, "file")} ${readItemReference(args.item, "item")} (N`, true)
+      return runTcl(context, `CT ${requireName(args.file, "file")} ${readItemReference(args.item, "item")} (N`)
     },
   },
   {
@@ -213,7 +217,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${readItemReference(args.item, "dictionary item")} (N`, true)
+      return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${readItemReference(args.item, "dictionary item")} (N`)
     },
   },
   {
@@ -233,7 +237,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { query: string }
-      return runTcl(context, requireReadOnlyAql(args.query), true)
+      return runTcl(context, requireReadOnlyAql(args.query, context.profile ?? context.session?.profile))
     },
   },
   {
@@ -272,7 +276,7 @@ export const d3Tools: ToolDefinition[] = [
     name: "d3_locks",
     description: "Inspect D3 locks.",
     mutates: false,
-    execute: async (_input, context) => runTcl(context, "LIST-LOCKS", true),
+    execute: async (_input, context) => runTcl(context, "LIST-LOCKS"),
   },
   {
     name: "d3_call_subroutine",

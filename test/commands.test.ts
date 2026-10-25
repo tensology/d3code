@@ -23,6 +23,18 @@ const localConfig: D3CodeConfig = {
   profiles: [{ name: "local", type: "local" }],
 }
 
+test("operator TCL approval is explicit and capture preserves account restrictions", async () => {
+  const state = { model: "openai/gpt-5", safety: "trust" as const, profile: "local", mode: "chat" }
+  await assert.rejects(handleSlashCommand("/tcl ! echo NOT_RUN", localConfig, state), /Confirmation required/)
+  await assert.rejects(handleSlashCommand("/account", localConfig, state), /Confirmation required/)
+  await assert.rejects(handleSlashCommand("/terminal-capture /tmp/not-created ! echo NOT_RUN", localConfig, state), /Confirmation required/)
+  const restricted = { ...localConfig, profiles: [{ name: "local", type: "local" as const, allowedAccounts: ["dm"] }] }
+  await assert.rejects(handleSlashCommand("/terminal-capture /tmp/not-created --confirm TO DM", restricted, state), /outside the allowed accounts/)
+  await assert.rejects(handleSlashCommand("/tcl printf NOT_RUN", localConfig, { ...state, safety: "ask" }), /Confirmation required/)
+  const approved = await handleSlashCommand("/tcl --confirm printf APPROVED_FIXTURE", localConfig, { ...state, safety: "ask" })
+  assert.match(approved.output, /APPROVED_FIXTURE/)
+})
+
 test("slash command changes model", async () => {
   const result = await handleSlashCommand("/model anthropic/claude-sonnet-4-5", config, { model: "openai/gpt-5", safety: "ask", profile: "prod", mode: "chat" })
   assert.equal(result.state?.model, "anthropic/claude-sonnet-4-5")
@@ -220,7 +232,7 @@ test("slash commands audit legacy screens and plan SB+ screens", async () => {
 
 test("slash command captures terminal transcript artifacts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "d3code-terminal-capture-command-"))
-  const result = await handleSlashCommand(`/terminal-capture ${dir} printf '@(-1)MENU@(5,2)Choice:'`, localConfig, { model: "openai/gpt-5", safety: "ask", profile: "local", mode: "migrate" })
+  const result = await handleSlashCommand(`/terminal-capture ${dir} --confirm printf '@(-1)MENU@(5,2)Choice:'`, localConfig, { model: "openai/gpt-5", safety: "ask", profile: "local", mode: "migrate" })
   assert.match(result.output, /D3 Terminal Capture/)
   assert.match(result.output, /screen-buffer\.json/)
   assert.match(await readFile(join(dir, "screen-buffer.md"), "utf8"), /Choice:/)
@@ -513,7 +525,7 @@ test("slash command runs detect tool", async () => {
 })
 
 test("slash command runs local TCL command", async () => {
-  const result = await handleSlashCommand("/tcl printf D3CODE_TCL", localConfig, { model: "openai/gpt-5", safety: "ask", profile: "local", mode: "chat" })
+  const result = await handleSlashCommand("/tcl --confirm printf D3CODE_TCL", localConfig, { model: "openai/gpt-5", safety: "ask", profile: "local", mode: "chat" })
   assert.match(result.output, /D3CODE_TCL/)
 })
 

@@ -130,7 +130,7 @@ async function runBasicCheck(config: D3CodeConfig, request: AgentRunRequest, sel
     try {
       const compile = await runToolByName(config, {
         name: "d3_compile_basic",
-        input: { file: request.file, item: request.item, confirmed: request.confirm || safety === "trust" },
+        input: { file: request.file, item: request.item, confirmed: request.confirm },
         safety,
         profile: selectedProfile,
         compact: false,
@@ -158,7 +158,7 @@ async function runBasicCheck(config: D3CodeConfig, request: AgentRunRequest, sel
       try {
         const catalog = await runToolByName(config, {
           name: "d3_catalog",
-          input: { file: request.file, item: request.item, global: request.global, confirmed: request.confirm || safety === "trust" },
+          input: { file: request.file, item: request.item, global: request.global, confirmed: request.confirm },
           safety,
           profile: selectedProfile,
           compact: false,
@@ -177,7 +177,7 @@ async function runBasicCheck(config: D3CodeConfig, request: AgentRunRequest, sel
 }
 
 async function readTcl(config: D3CodeConfig, selectedProfile: string | undefined, safety: SafetyMode, command: string): Promise<string> {
-  const result = await runToolByName(config, { name: "d3_tcl", input: { command, confirmed: true }, safety, profile: selectedProfile, compact: false })
+  const result = await runToolByName(config, { name: "d3_tcl", input: { command }, safety, profile: selectedProfile, compact: false })
   return commandOutput(result.raw)
 }
 
@@ -204,7 +204,7 @@ async function runFileAudit(config: D3CodeConfig, request: AgentRunRequest, sele
     const dictionaryItems: DictionaryItem[] = []
     for (const id of dictionaryIds.slice(0, 8)) {
       try {
-        dictionaryItems.push(parseDictionaryItem(id, await readTcl(config, selectedProfile, safety, `CT DICT ${request.file} ${id}`)))
+        dictionaryItems.push(parseDictionaryItem(id, await readTcl(config, selectedProfile, safety, `CT DICT ${request.file} ${id} (N`)))
       } catch {
         dictionaryItems.push({ id })
       }
@@ -251,7 +251,7 @@ async function runFileAudit(config: D3CodeConfig, request: AgentRunRequest, sele
       const ids = parseListOutputIds(await readTcl(config, selectedProfile, safety, `SELECT ${request.file} SAMPLE ${sampleLimit}`)).slice(0, sampleLimit)
       const sampleEvidence: string[] = [`sample ids:${ids.join(", ") || "none"}`]
       for (const id of ids) {
-        const raw = parseCtItem(await readTcl(config, selectedProfile, safety, `CT ${request.file} ${id}`))
+        const raw = parseCtItem(await readTcl(config, selectedProfile, safety, `CT ${request.file} ${id} (N`))
         sampledRecords.push({ id, raw })
         sampleEvidence.push(`${id}:attrs=${raw.split("\u00fe").length};chars=${raw.length}`)
       }

@@ -313,11 +313,12 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
     }
     case "/terminal-capture": {
       const outDir = args[0]
-      const command = args.slice(1).join(" ")
-      if (!outDir || !command) return { output: "Usage: /terminal-capture <out-dir> <command...>" }
+      const confirmed = args[1] === "--confirm"
+      const command = args.slice(confirmed ? 2 : 1).join(" ")
+      if (!outDir || !command) return { output: "Usage: /terminal-capture <out-dir> [--confirm] <command...>" }
       const profile = state.profile ? config.profiles.find((item) => item.name === state.profile) : config.profiles[0]
       if (!profile) return { output: "No profile configured" }
-      assertD3Allowed(state.safety, command, state.safety === "trust")
+      assertD3Allowed(state.safety, command, confirmed, profile.allowedAccounts, profile)
       const session = createD3Session(profile)
       try {
         const capture = await captureD3Terminal(session, command)
@@ -698,9 +699,10 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       return { output: result.compact }
     }
     case "/tcl": {
-      const commandText = args.join(" ").trim()
-      if (!commandText) return { output: "Usage: /tcl <command>" }
-      const result = await runToolByName(config, { name: "d3_tcl", input: { command: commandText, confirmed: state.safety === "trust" }, safety: state.safety, profile: state.profile })
+      const confirmed = args[0] === "--confirm"
+      const commandText = (confirmed ? args.slice(1) : args).join(" ").trim()
+      if (!commandText) return { output: "Usage: /tcl [--confirm] <command>" }
+      const result = await runToolByName(config, { name: "d3_tcl", input: { command: commandText, confirmed }, safety: state.safety, profile: state.profile })
       return { output: result.compact }
     }
     case "/aql": {
@@ -726,7 +728,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       const profile = profileName ? config.profiles.find((item) => item.name === profileName) : config.profiles[0]
       if (!profile) return { output: "No profile configured. Use d3code profile-add-local or profile-add-ssh first." }
       if (account) {
-        const result = await runToolByName(config, { name: "d3_login", input: { account, confirmed: state.safety === "trust" }, safety: state.safety, profile: profile.name })
+        const result = await runToolByName(config, { name: "d3_login", input: { account, confirmed: false }, safety: state.safety, profile: profile.name })
         return { state: { profile: profile.name }, output: result.compact }
       }
       return { state: { profile: profile.name }, output: renderProfileDoctor(await diagnoseProfile(profile)) }
@@ -736,7 +738,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
     case "/account": {
       const profile = state.profile ? config.profiles.find((item) => item.name === state.profile) : config.profiles[0]
       if (!profile) return { output: "No profile configured." }
-      const who = await runToolByName(config, { name: "d3_tcl", input: { command: "WHO", confirmed: true }, safety: state.safety, profile: profile.name })
+      const who = await runToolByName(config, { name: "d3_tcl", input: { command: "WHO" }, safety: state.safety, profile: profile.name })
       return { output: [`Profile: ${profile.name}`, `Configured account: ${profile.account ?? "not pinned"}`, "", who.compact].join("\n") }
     }
     case "/estate": {
@@ -758,7 +760,7 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
       if (!file || !item || bodyParts.length === 0) return { output: "Usage: /write <file> <item> <body-with-\\n-for-newlines>" }
       const result = await runToolByName(config, {
         name: "d3_write_item",
-        input: { file, item, body: decodeInlineBody(bodyParts), confirmed: state.safety === "trust" },
+        input: { file, item, body: decodeInlineBody(bodyParts), confirmed: false },
         safety: state.safety,
         profile: state.profile,
       })
@@ -800,19 +802,19 @@ export async function handleSlashCommand(input: string, config: D3CodeConfig, st
     case "/compile": {
       const [file, item] = args
       if (!file || !item) return { output: "Usage: /compile <file> <item>" }
-      const result = await runToolByName(config, { name: "d3_compile_basic", input: { file, item, confirmed: state.safety === "trust" }, safety: state.safety, profile: state.profile })
+      const result = await runToolByName(config, { name: "d3_compile_basic", input: { file, item, confirmed: false }, safety: state.safety, profile: state.profile })
       return { output: result.compact }
     }
     case "/catalog": {
       const [file, item, flag] = args
       if (!file || !item) return { output: "Usage: /catalog <file> <item> [(G]" }
-      const result = await runToolByName(config, { name: "d3_catalog", input: { file, item, global: flag === "(G" || flag === "G", confirmed: state.safety === "trust" }, safety: state.safety, profile: state.profile })
+      const result = await runToolByName(config, { name: "d3_catalog", input: { file, item, global: flag === "(G" || flag === "G", confirmed: false }, safety: state.safety, profile: state.profile })
       return { output: result.compact }
     }
     case "/call": {
       const [name, ...callArgs] = args
       if (!name) return { output: "Usage: /call <subroutine> [args...]" }
-      const result = await runToolByName(config, { name: "d3_call_subroutine", input: { name, args: callArgs, confirmed: state.safety === "trust" }, safety: state.safety, profile: state.profile })
+      const result = await runToolByName(config, { name: "d3_call_subroutine", input: { name, args: callArgs, confirmed: false }, safety: state.safety, profile: state.profile })
       return { output: result.compact }
     }
     case "/doctor": {

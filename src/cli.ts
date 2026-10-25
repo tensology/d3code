@@ -560,7 +560,7 @@ program.command("profile-release").argument("[name]").description("Send OFF thro
   console.log(`Released profile ${profile.name}`)
 })
 
-program.command("login").description("Verify or switch into the selected D3 account with WHO and VERSION proof.").option("--profile <name>").option("--account <account>", "LOGTO this account before proof").option("--safety <mode>").action(async (options: { profile?: string; account?: string; safety?: string }) => {
+program.command("login").description("Verify or switch into the selected D3 account with WHO and VERSION proof.").option("--profile <name>").option("--account <account>", "LOGTO this account before proof").option("--safety <mode>").option("--confirm", "approve this account switch").action(async (options: { profile?: string; account?: string; safety?: string; confirm?: boolean }) => {
   const config = await loadConfig()
   const profileName = options.profile ?? optionValue("--profile")
   const profile = selectProfile(config, profileName)
@@ -571,7 +571,7 @@ program.command("login").description("Verify or switch into the selected D3 acco
   console.log(`Safety: ${safety}`)
   const output = await runToolByName(config, {
     name: "d3_login",
-    input: { account: options.account, confirmed: options.account ? safety === "trust" : true },
+    input: { account: options.account, confirmed: options.confirm },
     safety,
     profile: profile.name,
   })
@@ -639,7 +639,7 @@ program.command("terminal-capture").argument("<command...>").description("Run a 
   if (!profile) throw new Error("No profile configured")
   const command = parts.join(" ")
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
-  assertD3Allowed(safety, command, options.confirm)
+  assertD3Allowed(safety, command, options.confirm, profile.allowedAccounts, profile)
   const session = createD3Session(profile)
   try {
     const capture = await captureD3Terminal(session, command, { width: options.width, height: options.height, timeoutMs: options.timeout })
@@ -1044,7 +1044,7 @@ program.command("write-item").argument("<file>").argument("<item>").argument("[b
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
   const output = await runToolByName(config, {
     name: "d3_write_item",
-    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), confirmed: options.confirm || safety === "trust" },
+    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), confirmed: options.confirm },
     safety,
     profile: options.profile,
   })
@@ -1057,7 +1057,7 @@ program.command("create-file").argument("<file>").description("Create a D3 file 
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
   const output = await runToolByName(config, {
     name: "d3_create_file",
-    input: { file, dictModulo: options.dictModulo, dataModulo: options.dataModulo, dictionaryOnly: options.dictOnly, dataOnlyDictionary: options.dataOnlyDict, confirmed: options.confirm || safety === "trust" },
+    input: { file, dictModulo: options.dictModulo, dataModulo: options.dataModulo, dictionaryOnly: options.dictOnly, dataOnlyDictionary: options.dataOnlyDict, confirmed: options.confirm },
     safety,
     profile: options.profile,
   })
@@ -1077,7 +1077,7 @@ program.command("write-dict").argument("<file>").argument("<item>").argument("[b
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
   const output = await runToolByName(config, {
     name: "d3_write_dict",
-    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), confirmed: options.confirm || safety === "trust" },
+    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), confirmed: options.confirm },
     safety,
     profile: options.profile,
   })
@@ -1109,7 +1109,7 @@ program.command("compile-basic").argument("<file>").argument("<item>").descripti
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
-  const output = await runToolByName(config, { name: "d3_compile_basic", input: { file, item, confirmed: options.confirm || safety === "trust" }, safety, profile: options.profile })
+  const output = await runToolByName(config, { name: "d3_compile_basic", input: { file, item, confirmed: options.confirm }, safety, profile: options.profile })
   console.log(output.compact)
 })
 
@@ -1119,7 +1119,7 @@ program.command("build-basic").argument("<file>").argument("<item>").description
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
   const output = await runToolByName(config, {
     name: "d3_build_basic_program",
-    input: { file, item, source: await bodyFromOptions(undefined, options.bodyFile), compile: options.compile, catalog: options.catalog, global: options.global, confirmed: options.confirm || safety === "trust" },
+    input: { file, item, source: await bodyFromOptions(undefined, options.bodyFile), compile: options.compile, catalog: options.catalog, global: options.global, confirmed: options.confirm },
     safety,
     profile: options.profile,
   })
@@ -1130,7 +1130,7 @@ program.command("catalog-basic").argument("<file>").argument("<item>").descripti
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
-  const output = await runToolByName(config, { name: "d3_catalog", input: { file, item, global: options.global, confirmed: options.confirm || safety === "trust" }, safety, profile: options.profile })
+  const output = await runToolByName(config, { name: "d3_catalog", input: { file, item, global: options.global, confirmed: options.confirm }, safety, profile: options.profile })
   console.log(output.compact)
 })
 
@@ -1138,7 +1138,7 @@ program.command("call-subroutine").argument("<name>").argument("[args...]").desc
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
-  const output = await runToolByName(config, { name: "d3_call_subroutine", input: { name, args: args ?? [], confirmed: options.confirm || safety === "trust" }, safety, profile: options.profile })
+  const output = await runToolByName(config, { name: "d3_call_subroutine", input: { name, args: args ?? [], confirmed: options.confirm }, safety, profile: options.profile })
   console.log(output.compact)
 })
 

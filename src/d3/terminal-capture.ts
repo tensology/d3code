@@ -27,7 +27,7 @@ export async function captureD3Terminal(
     profile: session.profile.name,
     account: session.profile.account,
     command,
-    risk: classifyD3Command(command),
+    risk: classifyD3Command(command, session.profile),
     result,
     screen: parseD3ScreenTranscript(result.stdout, { width: options.width, height: options.height }),
   }

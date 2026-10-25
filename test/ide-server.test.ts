@@ -460,6 +460,26 @@ test("IDE server exposes terminal send through guarded D3 tool layer", async () 
   assert.equal(payload.rawTranscript, payload.transcript)
 })
 
+test("terminal execution requires explicit approval and cannot override plan or account restrictions", async () => {
+  const profile={...config.profiles[0]!,account:"dm",allowedAccounts:["dm"]}
+  const calls:string[]=[]
+  const session:D3Session={profile,run:async command=>{calls.push(command);return {command,stdout:"DONE",stderr:"",exitCode:0,durationMs:0}},close:async()=>{}}
+  const state:IdeRuntimeState={model:config.defaultModel,safety:"ask",profile:"fake",mode:"chat",terminalSessions:new Map([["fake",session]])}
+  const server=await startTestIdeServer({...config,profiles:[profile]},state,{port:0})
+  const send=(command:string,confirmed=false)=>fetch(`${server.url}/api/terminal/send`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({command,confirmed})})
+  const blocked=await send("RUN bp TASK")
+  assert.equal(blocked.status,409)
+  assert.equal((await blocked.json() as {requiresConfirmation:boolean}).requiresConfirmation,true)
+  assert.deepEqual(calls,[])
+  assert.equal((await send("TO DM",true)).status,403)
+  assert.deepEqual(calls,[])
+  assert.equal((await send("RUN bp TASK",true)).status,200)
+  assert.deepEqual(calls,["RUN bp TASK"])
+  state.safety="plan"
+  assert.equal((await send("RUN bp TASK",true)).status,403)
+  assert.deepEqual(calls,["RUN bp TASK"])
+})
+
 test("IDE terminal keeps a profile-scoped transcript and persistent local session", async () => {
   const terminalConfig: D3CodeConfig = {
     ...config,

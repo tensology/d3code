@@ -4,6 +4,7 @@ import type { D3CodeConfig } from "../src/config/config.js"
 import { createD3Session, d3StackedInput } from "../src/d3/adapter.js"
 import { compactText } from "../src/tools/compact.js"
 import { runToolByName } from "../src/tools/runner.js"
+import { getTool } from "../src/d3/tools.js"
 
 const config: D3CodeConfig = {
   version: 1,
@@ -24,7 +25,7 @@ test("compactText truncates noisy output by line count", () => {
 test("tool runner executes local TCL through shell-backed profile", async () => {
   const result = await runToolByName(config, {
     name: "d3_tcl",
-    input: { command: "printf D3CODE_OK" },
+    input: { command: "printf D3CODE_OK", confirmed: true },
     safety: "ask",
     profile: "local",
   })
@@ -72,6 +73,30 @@ test("tool runner ignores confirmation supplied by model-originated input", asyn
     }),
     /Confirmation required by ask safety policy/,
   )
+})
+
+test("model self-confirmation cannot launch unknown commands or operations", async () => {
+  const tool = getTool("d3_tcl")!
+  const execute = tool.execute
+  const commands: string[] = []
+  tool.execute = (input, context) => execute(input, { ...context, session: {
+    profile: context.profile!,
+    async run(command) { commands.push(command); return { command, stdout: "", stderr: "", exitCode: 0, durationMs: 0 } },
+    async close() {},
+  } })
+  try {
+    for (const safety of ["plan", "ask"] as const) {
+      for (const command of ["RUN BP TEST", "Z B.DAYEND", "FILE-SAVE (b", "WHO\n! echo TEST"]) {
+        await assert.rejects(runToolByName(config, {
+          name: "d3_tcl", input: { command, confirmed: true }, safety,
+          acceptInputConfirmation: false,
+        }), /Denied by|Confirmation required/)
+      }
+    }
+    assert.deepEqual(commands, [])
+  } finally {
+    tool.execute = execute
+  }
 })
 
 test("D3 session timeout 0 leaves the command running until completion", async () => {

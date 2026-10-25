@@ -166,8 +166,8 @@ export const d3RegressionChapters: D3RegressionChapter[] = [
     checks: [
       { id: "sp-status", title: "SP-STATUS reports spooler state", command: "SP-STATUS (N", expect: { matches: "spooler|inactive|active" }, optional: true, note: "office spooler is inactive" },
       { id: "list-jobs-spool", title: "LIST-JOBS enumerates phantom/spool jobs", command: "LIST-JOBS (N", expect: { matches: "phantom|job" }, optional: true },
-      { id: "sp-assign", title: "SP-ASSIGN responds", command: "SP-ASSIGN (N", optional: true, note: "empty when nothing is assigned" },
-      { id: "sp-kill", title: "SP-KILL verb is present", command: "SP-KILL (N", expect: { matches: "printer|not exist|\\w" }, optional: true },
+      { id: "sp-assign", title: "SP-ASSIGN responds", command: "SP-ASSIGN (N", mutates: true, optional: true, note: "changes the session's printer assignment" },
+      { id: "sp-kill", title: "SP-KILL verb is present", command: "SP-KILL (N", mutates: true, expect: { matches: "printer|not exist|\\w" }, optional: true },
       { id: "print-job", title: "SPOOL verb presence/refusal", command: "SPOOL D3CODE TEST PRINT", prints: true, expect: { matches: "spooler|not defined|queued|filed|\\w" }, note: "on this box the spooler is inactive and SPOOL is undefined; do not enable a production spooler to force a print" }, {
         id: "spool-refused",
         title: "Print intent is gated by the safety layer",
@@ -315,8 +315,8 @@ export async function runD3Regression(config: D3CodeConfig, options: D3Regressio
     for (const chapter of d3RegressionChapters) {
       for (const check of chapter.checks) {
         const started = Date.now()
-        const risk = classifyD3Command(check.command.split(/\s+/)[0] ?? check.command)
-        if (check.mutates && !options.includeMutations) {
+        const risk = classifyD3Command(check.command, profile)
+        if ((check.mutates || (risk !== "read" && !check.prints)) && !options.includeMutations) {
           push({ chapter: chapter.id, id: check.id, title: check.title, status: "skipped", command: check.command, evidence: "mutation tests disabled", durationMs: 0, note: check.note })
           continue
         }

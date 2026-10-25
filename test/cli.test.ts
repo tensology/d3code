@@ -972,15 +972,30 @@ test("CLI captures a terminal transcript and parsed screen artifacts", async () 
   const env = { ...process.env, D3CODE_HOME: home }
   await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "fake", "--account", "SALES", "--session", "persistent"], { cwd: process.cwd(), env })
 
-  const result = await execFileAsync("node", ["dist/src/cli.js", "terminal-capture", "--profile", "fake", "--out", out, "--width", "24", "--height", "6", "printf", "'@(-1)MENU@(5,2)Choice:'"], { cwd: process.cwd(), env })
+  const result = await execFileAsync("node", ["dist/src/cli.js", "terminal-capture", "--confirm", "--profile", "fake", "--out", out, "--width", "24", "--height", "6", "printf", "'@(-1)MENU@(5,2)Choice:'"], { cwd: process.cwd(), env })
   assert.match(result.stdout, /D3 Terminal Capture/)
   assert.match(result.stdout, /terminal-transcript\.txt/)
   assert.match(await readFile(join(out, "screen-buffer.md"), "utf8"), /Choice:/)
 
-  const json = await execFileAsync("node", ["dist/src/cli.js", "terminal-capture", "--profile", "fake", "--width", "24", "--height", "6", "--json", "printf", "'@(-1)OK'"], { cwd: process.cwd(), env })
+  const json = await execFileAsync("node", ["dist/src/cli.js", "terminal-capture", "--confirm", "--profile", "fake", "--width", "24", "--height", "6", "--json", "printf", "'@(-1)OK'"], { cwd: process.cwd(), env })
   const parsed = JSON.parse(json.stdout) as { risk: string; screen: { events: Array<{ type: string }> } }
-  assert.equal(parsed.risk, "read")
+  assert.equal(parsed.risk, "shell")
   assert.ok(parsed.screen.events.some((event) => event.type === "clear-screen"))
+})
+
+test("CLI capture and typed login enforce the same exact account allowlist", async () => {
+  const home = await mkdtemp(join(tmpdir(), "d3code-account-guard-"))
+  const env = { ...process.env, D3CODE_HOME: home }
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "locked", "--account", "dm", "--allowed-accounts", "dm", "--entry", "must-not-run"], { cwd: process.cwd(), env })
+  for (const args of [
+    ["terminal-capture", "--profile", "locked", "--confirm", "TO", "DM"],
+    ["login", "--profile", "locked", "--confirm", "--account", "DM"],
+  ]) {
+    await assert.rejects(execFileAsync("node", ["dist/src/cli.js", ...args], { cwd: process.cwd(), env }), error => {
+      assert.match(String((error as { stderr?: string }).stderr), /outside the allowed accounts|not allowed for profile/)
+      return true
+    })
+  }
 })
 
 test("CLI profile doctor runs read-only D3 smoke checks", async () => {
@@ -1219,7 +1234,7 @@ test("CLI executes compact tool output", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-tool-"))
   const env = { ...process.env, D3CODE_HOME: home }
   await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "local"], { cwd: process.cwd(), env })
-  const result = await execFileAsync("node", ["dist/src/cli.js", "tool-compact", "d3_tcl", "{\"command\":\"printf TOOL_OK\"}", "--profile", "local"], { cwd: process.cwd(), env })
+  const result = await execFileAsync("node", ["dist/src/cli.js", "tool-compact", "d3_tcl", "{\"command\":\"printf TOOL_OK\",\"confirmed\":true}", "--profile", "local"], { cwd: process.cwd(), env })
   assert.match(result.stdout, /TOOL_OK/)
 })
 

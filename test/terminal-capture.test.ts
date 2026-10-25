@@ -12,7 +12,7 @@ test("captures terminal output and writes screen-buffer artifacts", async () => 
     const capture = await captureD3Terminal(session, "printf '@(-1)MENU@(5,2)Choice:'", { width: 24, height: 6 })
     assert.equal(capture.profile, "local")
     assert.equal(capture.account, "SALES")
-    assert.equal(capture.risk, "read")
+    assert.equal(capture.risk, "shell")
     assert.ok(capture.screen.lines.some((line) => line.includes("Choice:")))
     assert.match(renderD3TerminalCapture(capture), /D3 Terminal Capture/)
 

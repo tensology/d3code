@@ -836,7 +836,7 @@ export function App(props: AppProps) {
       return
     }
     if (!d3Session.current) d3Session.current = createD3Session(selected)
-    assertD3Allowed(safety, line, safety === "trust")
+    assertD3Allowed(safety, line, false, selected.allowedAccounts, selected)
     const label = formatLiveTurnLabel({ kind: "d3", detail: line })
     setActiveTask(label)
     setStreamingToolLabel(label)

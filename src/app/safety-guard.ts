@@ -57,8 +57,8 @@ export function createSafetyGuardReport(config: D3CodeConfig, options: { safety:
     ...(options.commands ?? []).map((command) => ({ command, source: "user" as const })),
   ]
   const commands = commandInputs.map(({ command, source }) => {
-    const risk = classifyD3Command(command)
-    const action = evaluateD3Permission(options.safety, command)
+    const risk = classifyD3Command(command, profile)
+    const action = evaluateD3Permission(options.safety, command, profile)
     return {
       command,
       source,
