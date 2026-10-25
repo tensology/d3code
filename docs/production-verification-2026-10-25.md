@@ -2,7 +2,7 @@
 
 Verdict: **Incomplete for the requested full developer IDE.** The deployed connection, read/browse workflow and command approval changes have live evidence. The 26 October typed-write checkpoint below replaces the old automated line-editor writers; broader production data use remains unapproved.
 
-Application revision: `0e63377` (26 October record editor and contextual output checkpoint). Shared standalone and Tensology application, deployed at `/var/www/d3code`, serving Crystal Logic through `d3code@51.service` and the authenticated Tensology proxy.
+Application revision: `0f7b49d` (guarded creation checkpoint; timer guidance update follows) (26 October record editor and contextual output checkpoint). Shared standalone and Tensology application, deployed at `/var/www/d3code`, serving Crystal Logic through `d3code@51.service` and the authenticated Tensology proxy.
 
 Entry point: https://tickets.crystallogic.co.za/dashboard/d3code
 
@@ -54,7 +54,7 @@ Additional captures: [prefix search](evidence/2026-10-25-d3code/item-search-1440
 
 ## Outstanding product work
 
-1. Broaden the verified existing-record sandbox workflow to creation and other explicitly approved data scopes. The typed item/dictionary/build writers and their legacy API routes now use guarded native replacement. Generated migration adapter templates still contain their own line-editor writes and require a separate correction before use.
+1. Finish the visible New item workflow and agent/CLI creation paths. The creation protocol and API now have sandbox evidence below; arbitrary production scopes are still unapproved. Generated migration adapter templates retain separate line-editor writers and require correction before use.
 2. Complete record creation, structural attribute/value editing, dictionary-aware labels, code editing, catalog/run integration, and recovery. Existing-record source, structured data and dictionary saves have the bounded live evidence below.
 3. Verified per-account discovery of native D3, SB and SB+ facilities, with relevant screen-building tools only when supported.
 4. Usable phantom, scheduler, spooler, lock and operational workflows with explicit mutation controls.
@@ -191,3 +191,28 @@ Capacity inventory after deployment: 67 GB root filesystem, 61 GB used, 6.3 GB a
 Root-level allocated usage was 61,772 MiB: `/var` 39,770 MiB, `/opt` 5,992 MiB, `/root` 3,720 MiB and `/usr` 3,703 MiB. The largest website was Mailshot at 17,651 MiB, of which `storage` held 16,598 MiB. That storage is treated as production-owned data and was preserved. Containerd used 4,184 MiB and Docker 1,508 MiB; these are measured footprints, not a claim that they are safely reclaimable. Root npm cache was 136 MiB and `/var/cache` 149 MiB. No additional harness or model runtime was installed.
 
 The repository-mandated `npx --no-install @Codex-flow/cli@latest security scan` could not run: npm returned 404 and rejected the uppercase package name. No package was installed. The proxy regressions and manual boundary review are the completed checks, not a substitute claim that this scanner passed.
+
+## Guarded creation checkpoint
+
+Revision `0f7b49d` adds a distinct `CREATE_ONLY` native operation, rather than treating an empty record as absence. All request frames arrive before the helper takes an item lock. It then refuses any existing item, including a zero-byte record; a permitted missing item is written once and independently read back before release. The verified write scope remains D3CODE sandbox files and D3CODE source IDs in data bp/BP, with an 8 KiB single-byte limit. Compiled DICT bp objects remain excluded.
+
+The new immutable helper is `bp D3CODE.RECORD.V1.787E5E9F3DD467B4D0100A46FF41D84C7008B93808F31E29DC58311F9EB4E5AA`. Source and object IDs were checked absent, source readback matched before compilation, and native BASIC returned `[241] Successful compile`. Previous helper programs were retained for compatibility and rollback.
+
+Manual grounding: the bundled [Rocket D3 reference](../reference/d3_reference_manual_10.3.4_5-28-2026.pdf), printed pages 420, 466 and 500, was extracted and each relevant page inspected individually. The manual describes the read/update lock and unconditional write behavior; live probes established the missing-item case. The first probe incorrectly looked for a custom prompt in normalized output. The next used a six-second input window (`FOR 60`) that could expire before checking the competing writer. Neither failure was accepted as product evidence. The corrected probe used `FOR 300` (30 seconds), observed the competing write still blocked after 8,456 ms, released the lock and then verified the write completed. The fixture was removed under an exact-byte lock and absence verified. Timer units are now recorded in practical and built-in agent guidance.
+
+Native tests passed nested mark/empty/trailing-byte creation, dictionary creation, refusing an existing item, refusing an existing empty item, and simultaneous creation with exactly one successful creator and no overwrite. All acknowledged temporary data creations were removed under exact-byte locks and absence independently checked. Probe programs remain as D3CODE-prefixed verification artifacts; no phantoms, devices, backup commands or schedules were used.
+
+The shared service now offers read-only `GET /api/record/new` preparation and approved `POST /api/record` creation. Preparation checks that the file opens and the item is missing. Its connection fingerprint prevents a changed connection from receiving a stale draft. Creation rechecks absence under the native item lock, so preparation is not treated as a lock or an authorization to overwrite. Existing items return 409 with the draft kept; success returns 201. Plan mode, unapproved requests, stale connections, oversized/invalid encodings and targets outside the sandbox are refused before native writes. Transport uncertainty requires reading the target before retrying.
+
+Automated checks: 98 focused protocol/session, record API, IDE, tool input, compact feedback and agent-loop checks passed; eight permission checks passed separately. The timer-guidance and protocol suite passed 18 checks. TypeScript compilation and `git diff --check` passed. These counts are scoped checks, not a full-product acceptance result.
+
+Production HTTP checks through Crystal Logic passed preparation, unapproved creation refusal, confirmed 201 creation, exact readback and subsequent compare-and-replace, duplicate refusal, preservation of another creator after a prepare/create race, and empty-item protection. The new native record opened in the real structured editor with no JavaScript errors. Temporary test records were removed under byte guards, and browser/login/session cleanup passed.
+
+A separate production journey created a new BASIC source only after both source and compiled-object IDs were found absent. It opened the source through the file browser, approved native compilation in the UI, ran the saved program with approval, checked the expected output and confirmed the build output was independent of Terminal. The source and its compiled object are deliberately retained in office dm as `bp D3CODE.CREATE.PROGRAM.1D246D4441EAF499BD982E48`. This is a proof artifact, not a new customer application.
+
+| Creation evidence | 390 | 768 | 1280 | 1440 |
+| --- | --- | --- | --- | --- |
+| New structured record | [390](evidence/2026-10-26-record-editor/create-api-390.png) | [768](evidence/2026-10-26-record-editor/create-api-768.png) | [1280](evidence/2026-10-26-record-editor/create-api-1280.png) | [1440](evidence/2026-10-26-record-editor/create-api-1440.png) |
+| New source and successful compile | [390](evidence/2026-10-26-record-editor/create-program-390.png) | [768](evidence/2026-10-26-record-editor/create-program-768.png) | [1280](evidence/2026-10-26-record-editor/create-program-1280.png) | [1440](evidence/2026-10-26-record-editor/create-program-1440.png) |
+
+All eight final captures were inspected individually at readable resolution for field hierarchy, source/build placement, actions, typography, clipping, overflow and overlap. No new containment defect was found in these states. The visible New item action has not been implemented; its draft-versus-immediate-creation choice is pending. The full IDE remains incomplete, including the richer source editor, agent application/approval flow, adaptive native/SB builders and operations.

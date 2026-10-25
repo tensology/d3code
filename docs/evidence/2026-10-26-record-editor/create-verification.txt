@@ -1,0 +1,38 @@
+LOCK PROBE
+
+PASS READU retains a lock after the missing-item ELSE branch; another session returns BUSY
+Lock elapsed ms before ordinary WRITE check: 8456
+PASS ordinary native WRITE creates the item only after the absent-item lock is released
+PASS exact owned fixture removed under lock and absence independently verified
+Probe sessions closed
+
+
+NATIVE CREATION
+
+PASS native create preserves nested marks, empty attributes and trailing bytes; existing item is refused
+PASS existing zero-byte item is distinct from absence and cannot be overwritten by create
+PASS native dictionary creation and exact readback
+PASS simultaneous creators produce one winner without overwriting its bytes
+PASS every acknowledged test creation removed under an exact-byte item lock and absence verified
+Creation proof sessions closed
+
+
+PRODUCTION HTTP
+
+PASS record API denies anonymous and unflagged other customer
+PASS production prepare, approval denial, create 201, exact CAS update and duplicate refusal
+PASS production creation race preserves the other creator
+PASS production empty item creation cannot become an overwrite
+PASS created native record opens in the production structured editor at four widths
+PASS every acknowledged test creation removed under an exact-byte item lock and absence verified
+Creation proof sessions closed
+Test browser closed and temporary login sessions removed
+
+
+PRODUCTION NEW PROGRAM
+
+PASS record API denies anonymous and unflagged other customer
+PASS production API created a new owned BASIC source; retained item: D3CODE.CREATE.PROGRAM.1D246D4441EAF499BD982E48
+PASS newly created program opens, compiles with approval and runs the saved source
+PASS new-program proof with no JavaScript errors; source and compiled object deliberately retained
+Test browser closed and temporary login sessions removed

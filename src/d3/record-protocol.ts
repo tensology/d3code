@@ -38,7 +38,7 @@ function checkedBytes(value: unknown, max: number, label: string): Buffer {
 
 /** Send frames sequentially, waiting for NEXT after each hex frame. Send '.' last.
  * Never queue frames or reuse the session after timeout, unexpected ACK, or malformed output.
- * D3 INPUT pp418-420: the underscore waits for CR instead of ending at the length limit.
+ * D3 INPUT pp418-420: underscore waits for CR; FOR 100 is a ten-second input limit.
  */
 export function encodeRecordRequest(request: RecordRequest): { nonce: string; frames: string[] } {
   const nonce = nonceOf(request.nonce)

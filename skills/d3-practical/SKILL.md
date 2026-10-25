@@ -52,6 +52,9 @@ Every rule here was proven by hitting the failure and fixing it against a live D
 
 ## BASIC rules
 
+- `INPUT ... FOR n` measures tenths of a second: `FOR 300` waits 30 seconds.
+  Keep concurrency probes inside that window; expiry releases a lock when the program proceeds.
+
 - A main program has **no `PROGRAM` header** — start with code or `*`. A `PROGRAM`
   line aborts compilation with `[B102] Bad statement`.
 - `SUBROUTINE Name(args)` **must be line 1**; comments may only follow it.
