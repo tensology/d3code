@@ -13,7 +13,7 @@ test("embedded client prefixes API calls, supplies CSRF and isolates stored chat
   for (const scope of ["customer-51.user-5.", "customer-77.user-8."]) {
     await runInNewContext(embeddedClientScript("/api/d3code", scope) +
       ";localStorage.setItem('chats','private');ideFetch('/api/agent',{method:'POST',headers:{'content-type':'application/json'}})",
-    { window, document: { cookie: "other=value; csrftoken=csrf-token" }, Headers })
+    { window, document: { cookie: "other=value; csrftoken=csrf-token", body: { classList: { toggle: () => {} } } }, Headers })
   }
   assert.deepEqual([...stored.keys()], ["customer-51.user-5.chats", "customer-77.user-8.chats"])
   assert.equal(requests[0]!.path, "/api/d3code/api/agent")
