@@ -2,14 +2,33 @@ import type { SecretStore } from "../security/secrets.js"
 import type { D3CodeConfig } from "../config/config.js"
 import { resolveModel } from "../providers/catalog.js"
 
+export interface ToolSchema {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export interface ToolCall {
+  id: string
+  name: string
+  /** Raw JSON argument string as emitted by the provider. */
+  arguments: string
+}
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool"
   content: string
+  /** Set on tool-result messages so providers can pair them with the request. */
+  toolCallId?: string
+  /** Set on assistant messages that natively requested tools. */
+  toolCalls?: ToolCall[]
 }
 
 export interface ChatRequest {
   modelRef: string
   messages: ChatMessage[]
+  /** Native function/tool schemas. When empty, providers run text-only. */
+  tools?: ToolSchema[]
   onToken?: (token: string) => void
   signal?: AbortSignal
 }
@@ -27,6 +46,8 @@ export interface ChatResponse {
   provider: string
   model: string
   usage?: ChatUsage
+  /** Native tool calls requested by the model, if any. */
+  toolCalls?: ToolCall[]
   raw?: unknown
 }
 
@@ -55,8 +76,43 @@ async function providerKey(config: D3CodeConfig, secrets: SecretStore, provider:
 
 export async function chat(config: D3CodeConfig, secrets: SecretStore, request: ChatRequest): Promise<ChatResponse> {
   const { provider, model } = resolveModel(request.modelRef)
-  if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages, request.onToken, request.signal)
-  return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages, provider.baseURL, provider.chatPath, request.onToken, request.signal)
+  if (provider.id === "anthropic") return anthropicChat(config, secrets, provider.env, model, request.messages, request.tools, request.onToken, request.signal)
+  return openAICompatibleChat(config, secrets, provider.id, provider.env, model, request.messages, request.tools, provider.baseURL, provider.chatPath, request.onToken, request.signal)
+}
+
+function toOpenAIMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
+  return messages.map((message) => {
+    if (message.role === "tool") {
+      // Native tool result when the assistant requested it; otherwise a plain
+      // user turn so text-only (XML fallback) providers still see the evidence.
+      return message.toolCallId
+        ? { role: "tool", tool_call_id: message.toolCallId, content: message.content || "(no output)" }
+        : { role: "user", content: message.content }
+    }
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return {
+        role: "assistant",
+        content: message.content || null,
+        tool_calls: message.toolCalls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: call.arguments } })),
+      }
+    }
+    return { role: message.role, content: message.content }
+  })
+}
+
+function toOpenAITools(tools?: ToolSchema[]): Array<Record<string, unknown>> | undefined {
+  if (!tools?.length) return undefined
+  return tools.map((tool) => ({
+    type: "function",
+    function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+  }))
+}
+
+function parseOpenAIToolCalls(message: { tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } | undefined): ToolCall[] | undefined {
+  const calls = (message?.tool_calls ?? [])
+    .filter((part) => part.function?.name)
+    .map((part, index) => ({ id: part.id ?? `call_${index}`, name: part.function!.name!, arguments: part.function?.arguments ?? "{}" }))
+  return calls.length ? calls : undefined
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -97,24 +153,60 @@ export function anthropicUsage(raw: unknown): ChatUsage | undefined {
   return { inputTokens, outputTokens, totalTokens, cacheReadInputTokens, cacheCreationInputTokens }
 }
 
-async function readOpenAIStream(response: Response, onToken: (token: string) => void): Promise<{ content: string; usage?: ChatUsage }> {
+interface StreamedToolCall {
+  id: string
+  name: string
+  arguments: string
+}
+
+function collectStreamedToolCalls(acc: Record<number, StreamedToolCall>): ToolCall[] {
+  return Object.keys(acc)
+    .map((key) => Number(key))
+    .sort((a, b) => a - b)
+    .map((index) => {
+      const call = acc[index]!
+      return { id: call.id || `call_${index}`, name: call.name, arguments: call.arguments || "{}" }
+    })
+    .filter((call) => call.name)
+}
+
+async function readOpenAIStream(response: Response, onToken: (token: string) => void): Promise<{ content: string; usage?: ChatUsage; toolCalls?: ToolCall[] }> {
   if (!response.body) return { content: "" }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
   let content = ""
   let usage: ChatUsage | undefined
+  const toolCallAcc: Record<number, StreamedToolCall> = {}
   const processLine = (line: string) => {
     const trimmed = line.trim()
     if (!trimmed.startsWith("data:")) return
     const data = trimmed.slice(5).trim()
     if (!data || data === "[DONE]") return
-    const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>; usage?: unknown }
+    const parsed = JSON.parse(data) as {
+      choices?: Array<{
+        delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> }
+        message?: { content?: string; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }
+      }>
+      usage?: unknown
+    }
     usage = openAIUsage(parsed) ?? usage
-    const token = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content ?? ""
-    if (!token) return
-    content += token
-    onToken(token)
+    const choice = parsed.choices?.[0]
+    const token = choice?.delta?.content ?? choice?.message?.content ?? ""
+    if (token) {
+      content += token
+      onToken(token)
+    }
+    for (const part of choice?.delta?.tool_calls ?? []) {
+      const index = typeof part.index === "number" ? part.index : 0
+      const current = toolCallAcc[index] ?? (toolCallAcc[index] = { id: "", name: "", arguments: "" })
+      if (part.id) current.id = part.id
+      if (part.function?.name) current.name += part.function.name
+      if (part.function?.arguments) current.arguments += part.function.arguments
+    }
+    ;(choice?.message?.tool_calls ?? []).forEach((part, index) => {
+      toolCallAcc[index] = { id: part.id ?? `call_${index}`, name: part.function?.name ?? "", arguments: part.function?.arguments ?? "{}" }
+    })
   }
   while (true) {
     const { value, done } = await reader.read()
@@ -127,10 +219,11 @@ async function readOpenAIStream(response: Response, onToken: (token: string) => 
     }
   }
   if (buffer.trim()) processLine(buffer)
-  return { content, usage }
+  const toolCalls = collectStreamedToolCalls(toolCallAcc)
+  return { content, usage, ...(toolCalls.length ? { toolCalls } : {}) }
 }
 
-async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[], configuredBaseURL?: string, configuredChatPath = "/v1/chat/completions", onToken?: (token: string) => void, signal?: AbortSignal): Promise<ChatResponse> {
+async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, provider: string, env: string[], model: string, messages: ChatMessage[], tools?: ToolSchema[], configuredBaseURL?: string, configuredChatPath = "/v1/chat/completions", onToken?: (token: string) => void, signal?: AbortSignal): Promise<ChatResponse> {
   const key = provider === "ollama" ? "" : await providerKey(config, secrets, provider, env)
   const baseURL = provider === "openrouter"
     ? configuredBaseURL ?? "https://openrouter.ai/api"
@@ -138,11 +231,13 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
       ? process.env.D3CODE_OLLAMA_BASE_URL ?? process.env.D3CODE_LOCAL_BASE_URL ?? "http://localhost:11434"
       : configuredBaseURL ?? "https://api.openai.com"
   const stream = Boolean(onToken)
+  const openAITools = toOpenAITools(tools)
   const body = {
     model,
     stream,
     ...(stream ? { stream_options: { include_usage: true } } : {}),
-    messages: messages.map((message) => ({ role: message.role === "tool" ? "user" : message.role, content: message.content })),
+    ...(openAITools ? { tools: openAITools, tool_choice: "auto" } : {}),
+    messages: toOpenAIMessages(messages),
   }
   const response = await fetch(`${baseURL}${configuredChatPath}`, {
     method: "POST",
@@ -156,14 +251,16 @@ async function openAICompatibleChat(config: D3CodeConfig, secrets: SecretStore, 
   const contentType = response.headers.get("content-type") ?? ""
   const shouldReadStream = onToken && response.ok && response.body && !contentType.includes("application/json")
   if (shouldReadStream) {
-    const { content, usage } = await readOpenAIStream(response, onToken)
-    return { provider, model, content, usage, raw: { streamed: true, usage } }
+    const { content, usage, toolCalls } = await readOpenAIStream(response, onToken)
+    return { provider, model, content, usage, toolCalls, raw: { streamed: true, usage, toolCalls } }
   }
-  const raw = await readJsonResponse(response) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string }; usage?: unknown }
+  const raw = await readJsonResponse(response) as { choices?: Array<{ message?: { content?: string; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } }>; error?: { message?: string }; usage?: unknown }
   if (!response.ok) throw new Error(raw.error?.message ?? `Provider request failed with ${response.status}`)
-  const content = raw.choices?.[0]?.message?.content ?? ""
+  const message = raw.choices?.[0]?.message
+  const content = message?.content ?? ""
+  const toolCalls = parseOpenAIToolCalls(message)
   if (onToken && content) onToken(content)
-  return { provider, model, content, usage: openAIUsage(raw), raw }
+  return { provider, model, content, usage: openAIUsage(raw), toolCalls, raw }
 }
 
 function mergeAnthropicUsage(current: ChatUsage | undefined, next: ChatUsage | undefined): ChatUsage | undefined {
@@ -220,13 +317,40 @@ async function readAnthropicStream(response: Response, onToken: (token: string) 
   return { content, usage }
 }
 
-async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: string[], model: string, messages: ChatMessage[], onToken?: (token: string) => void, signal?: AbortSignal): Promise<ChatResponse> {
+function toAnthropicMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = []
+  for (const message of messages) {
+    if (message.role === "system") continue
+    if (message.role === "tool") {
+      out.push({ role: "user", content: [{ type: "tool_result", tool_use_id: message.toolCallId ?? "call_0", content: message.content || "(no output)" }] })
+      continue
+    }
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      const blocks: Array<Record<string, unknown>> = []
+      if (message.content) blocks.push({ type: "text", text: message.content })
+      for (const call of message.toolCalls) {
+        let input: unknown = {}
+        try {
+          input = JSON.parse(call.arguments)
+        } catch {
+          input = {}
+        }
+        blocks.push({ type: "tool_use", id: call.id, name: call.name, input })
+      }
+      out.push({ role: "assistant", content: blocks })
+      continue
+    }
+    out.push({ role: message.role === "assistant" ? "assistant" : "user", content: message.content })
+  }
+  return out
+}
+
+async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: string[], model: string, messages: ChatMessage[], tools?: ToolSchema[], onToken?: (token: string) => void, signal?: AbortSignal): Promise<ChatResponse> {
   const key = await providerKey(config, secrets, "anthropic", env)
   const system = messages.find((message) => message.role === "system")?.content
-  const bodyMessages = messages
-    .filter((message) => message.role !== "system")
-    .map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content }))
-  const stream = Boolean(onToken)
+  const bodyMessages = toAnthropicMessages(messages)
+  // Streaming Anthropic tool_use blocks are avoided; tools run over the non-streamed response for reliable parsing.
+  const stream = Boolean(onToken) && !tools?.length
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -234,14 +358,27 @@ async function anthropicChat(config: D3CodeConfig, secrets: SecretStore, env: st
       "x-api-key": key,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({ model, max_tokens: 4096, system, messages: bodyMessages, ...(stream ? { stream: true } : {}) }),
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      system,
+      messages: bodyMessages,
+      ...(tools?.length ? { tools: tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.parameters })) } : {}),
+      ...(stream ? { stream: true } : {}),
+    }),
     signal,
   })
-  if (onToken && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
-    const { content, usage } = await readAnthropicStream(response, onToken)
+  if (stream && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+    const { content, usage } = await readAnthropicStream(response, onToken!)
     return { provider: "anthropic", model, content, usage, raw: { streamed: true, usage } }
   }
-  const raw = await readJsonResponse(response) as { content?: Array<{ text?: string }>; error?: { message?: string }; usage?: unknown }
+  const raw = await readJsonResponse(response) as { content?: Array<{ type?: string; text?: string; id?: string; name?: string; input?: unknown }>; error?: { message?: string }; usage?: unknown }
   if (!response.ok) throw new Error(raw.error?.message ?? `Provider request failed with ${response.status}`)
-  return { provider: "anthropic", model, content: raw.content?.map((part) => part.text ?? "").join("") ?? "", usage: anthropicUsage(raw), raw }
+  const parts = raw.content ?? []
+  const content = parts.filter((part) => part.type !== "tool_use").map((part) => part.text ?? "").join("")
+  const toolCalls = parts
+    .filter((part) => part.type === "tool_use" && part.name)
+    .map((part, index) => ({ id: part.id ?? `call_${index}`, name: part.name!, arguments: JSON.stringify(part.input ?? {}) }))
+  if (onToken && content) onToken(content)
+  return { provider: "anthropic", model, content, usage: anthropicUsage(raw), ...(toolCalls.length ? { toolCalls } : {}), raw }
 }

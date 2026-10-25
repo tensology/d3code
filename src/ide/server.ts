@@ -343,14 +343,30 @@ function startAgentJob(
   return job
 }
 
+function framePolicyHeaders(): Record<string, string> {
+  // D3CODE_FRAME_ANCESTORS lets an embedding host (e.g. the Tensology dashboard)
+  // frame this IDE. Unset keeps the original DENY behaviour.
+  const ancestors = (process.env.D3CODE_FRAME_ANCESTORS || "").trim()
+  if (!ancestors) {
+    return {
+      "content-security-policy":
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "x-frame-options": "DENY",
+    }
+  }
+  return {
+    "content-security-policy":
+      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors ${ancestors}`,
+  }
+}
+
 function send(res: ServerResponse, status: number, body: string, contentType = "text/plain; charset=utf-8"): void {
   res.writeHead(status, {
     "content-type": contentType,
     "cache-control": "no-store",
-    "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    ...framePolicyHeaders(),
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
-    "x-frame-options": "DENY",
   })
   res.end(body)
 }

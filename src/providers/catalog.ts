@@ -29,7 +29,7 @@ export const providers: ProviderInfo[] = [
     name: "OpenRouter",
     env: ["OPENROUTER_API_KEY"],
     defaultModel: "openai/gpt-5",
-    models: ["openai/gpt-5", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro"],
+    models: ["deepseek/deepseek-v4.1-flash", "deepseek/deepseek-v4-flash", "deepseek/deepseek-chat-v3.1", "openai/gpt-5", "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro"],
     openAICompatible: true,
     baseURL: "https://openrouter.ai/api",
   },
