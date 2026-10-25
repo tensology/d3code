@@ -1,0 +1,4 @@
+* D3CODE.SEED - CLI entry point; the work lives in the D3CODE.SEEDX subroutine.
+  CALL D3CODE.SEEDX(RESULT)
+  PRINT "SEED OK " : RESULT
+  STOP

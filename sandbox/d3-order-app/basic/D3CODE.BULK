@@ -1,0 +1,18 @@
+* D3CODE.BULK - post N single-line orders for load and loop testing.
+  N = 50
+  FAILS = 0
+  FOR I = 1 TO N
+    ORD = "L" : I
+    CALL D3CODE.SALE("C002", "SKU-5", 1, ORD, RESP)
+    IF RESP <> "OK" THEN
+      GOSUB 900
+    END
+  NEXT I
+  PRINT "BULK N=" : N : " FAILS=" : FAILS
+  STOP
+
+900 * classify a failure without string slicing
+  IF RESP = "NO.STOCK:SKU-5" THEN FAILS = FAILS + 1
+  IF RESP = "CREDIT.LIMIT:C002" THEN FAILS = FAILS + 1
+  IF RESP = "UNKNOWN.CUSTOMER:C002" THEN FAILS = FAILS + 1
+  RETURN

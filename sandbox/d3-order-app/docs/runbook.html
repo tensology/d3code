@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>D3CODE Order Application — Runbook</title>
+<style>
+  :root { --ink:#101820; --muted:#5b6b7a; --line:#d7dee8; --accent:#0b6b4f; --accent2:#0b4f6b; --code:#f4f6f9; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, sans-serif; color:var(--ink); }
+  .page { padding: 38px 46px 60px; max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing:-.02em; }
+  h2 { font-size: 19px; margin: 30px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--line); color:var(--accent2); }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { background: var(--code); border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-size: 12.5px; }
+  pre { background: var(--code); border:1px solid var(--line); border-radius:7px; padding: 11px 13px; overflow:auto; font-size: 12px; line-height:1.45; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 14px; font-size: 12.5px; }
+  th, td { border:1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #eef2f7; font-weight: 650; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#fff; background:var(--accent); border-radius:999px; padding:2px 9px; margin-right:6px; }
+  .kpi { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
+  .kpi div { border:1px solid var(--line); border-radius:8px; padding:9px 13px; min-width:112px; }
+  .kpi b { display:block; font-size:18px; color:var(--accent); }
+  .kpi span { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .note { border-left:4px solid var(--accent); background:#f2f8f5; padding:9px 13px; border-radius:0 7px 7px 0; margin:10px 0; font-size:13px; }
+  .warn { border-left:4px solid #b45309; background:#fdf6ec; padding:9px 13px; border-radius:0 7px 7px 0; margin:10px 0; font-size:13px; }
+  footer { margin-top:34px; border-top:1px solid var(--line); padding-top:10px; color:var(--muted); font-size:11.5px; }
+  .page-break { break-before: page; }
+  .ok { color: var(--accent); font-weight: 650; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <span class="tag">D3 / Rocket MultiValue</span>
+  <h1>D3CODE Order Application</h1>
+  <p class="sub">An order-to-stock application on the Crystal Logic D3 server, built, verified and pressure-tested through D3&nbsp;Code. Modelled on the MerryPak order / stock / valuecard domain.</p>
+
+  <div class="kpi">
+    <div><b>6</b><span>data files</span></div>
+    <div><b>2</b><span>indexes</span></div>
+    <div><b>12</b><span>programs</span></div>
+    <div><b>76</b><span>pressure checks</span></div>
+    <div><b>16</b><span>runbook checks</span></div>
+  </div>
+
+  <h2>1. What it does</h2>
+  <p>A customer places an order made of sale lines. Each line validates the customer, product, available stock and the customer's credit limit, takes an update lock on the product to decrement stock, prices the line, and accumulates the order subtotal, 15% VAT and total. Goods can be received, orders settled and cancelled, and goods returned as credit notes. Every stock movement is journalled so stock and balances can be reconciled.</p>
+  <div class="note"><b>Business rules.</b> VAT fixed at 15%; prices come from the product record; stock can never go negative; a sale that would exceed the credit limit is refused before any write; a paid order cannot be cancelled (credit it instead); cancelling an order whose product was removed reports <code>OK.PARTIAL</code> instead of silently skipping the stock restore.</div>
+
+  <h2>2. Files and data model</h2>
+  <table>
+    <tr><th>File</th><th>Key</th><th>Attributes</th></tr>
+    <tr><td><code>D3CODE.CUSTOMERS</code></td><td>customer code</td><td>1 Name · 2 Email · 3 Credit limit · 4 Balance · 5 Terms · 6 Order list (multivalue)</td></tr>
+    <tr><td><code>D3CODE.PRODUCTS</code></td><td>SKU</td><td>1 Description · 2 Unit price · 3 Qty on hand · 4 Reorder level</td></tr>
+    <tr><td><code>D3CODE.ORDERS</code></td><td>order no</td><td>1 Date · 2 Customer · 3 Status · 4 Subtotal · 5 VAT · 6 Total · 7 Line count</td></tr>
+    <tr><td><code>D3CODE.LINES</code></td><td><code>order*seq</code></td><td>1 Order · 2 SKU · 3 Qty · 4 Price · 5 Line total</td></tr>
+    <tr><td><code>D3CODE.MOVES</code></td><td><code>order*seq</code></td><td>1 SKU · 2 Type (SALE/RECEIPT/CREDIT) · 3 Qty · 4 Reference · 5 Date</td></tr>
+    <tr><td><code>D3CODE.PAYMENTS</code></td><td><code>order*P1</code></td><td>1 Order · 2 Amount · 3 Date · 4 Type</td></tr>
+  </table>
+  <p>Dictionary items are built by <code>D3CODE.DICTGEN</code>; AQL reserved words are avoided (the total field is <code>AMOUNT</code>, not <code>TOTAL</code>). Indexes: <code>D3CODE.PRODUCTS A1</code> (description) and <code>D3CODE.ORDERS A2</code> (customer).</p>
+
+  <h2>3. Programs</h2>
+  <table>
+    <tr><th>Program</th><th>Type</th><th>Purpose</th></tr>
+    <tr><td><code>D3CODE.DICTGEN</code></td><td>main</td><td>Build every dictionary item (a BASIC writer, because the editor cannot express empty attributes).</td></tr>
+    <tr><td><code>D3CODE.SEEDX</code> / <code>SEED</code></td><td>sub / main</td><td>Baseline 4 customers and 5 products.</td></tr>
+    <tr><td><code>D3CODE.RESETX</code></td><td>subroutine</td><td>Empty every data file and re-seed, keeping dictionaries and indexes.</td></tr>
+    <tr><td><code>D3CODE.SALE</code></td><td>subroutine</td><td><code>CALL D3CODE.SALE(CUST,SKU,QTY,ORDERNO,RESP)</code> — the posting logic.</td></tr>
+    <tr><td><code>D3CODE.RECEIVE</code></td><td>subroutine</td><td><code>CALL D3CODE.RECEIVE(SKU,QTY,REF,RESP)</code> — goods in.</td></tr>
+    <tr><td><code>D3CODE.CREDIT</code></td><td>subroutine</td><td><code>CALL D3CODE.CREDIT(ORDERNO,SKU,QTY,RESP)</code> — return goods, reduce the order and the balance.</td></tr>
+    <tr><td><code>D3CODE.SETTLE</code></td><td>subroutine</td><td><code>CALL D3CODE.SETTLE(ORDERNO,AMOUNT,RESP)</code> — mark paid, reduce balance, journal a payment.</td></tr>
+    <tr><td><code>D3CODE.CANCEL</code></td><td>subroutine</td><td><code>CALL D3CODE.CANCEL(ORDERNO,RESP)</code> — reverse an unpaid order.</td></tr>
+    <tr><td><code>D3CODE.STATEMENT</code></td><td>subroutine</td><td><code>CALL D3CODE.STATEMENT(CUST,RESP)</code> — customer statement from the order list.</td></tr>
+    <tr><td><code>D3CODE.BULK</code> / <code>RUN</code> / <code>REPORT</code> / <code>PROBE</code></td><td>main</td><td>Load generator, worked example, low-stock report, file-open probe.</td></tr>
+    <tr><td><code>D3CODE.PRESSURE</code></td><td>main</td><td>Self-resetting scenario suite (26 in-D3 checks).</td></tr>
+  </table>
+
+  <h3>Return tokens from the posting subroutines</h3>
+  <table>
+    <tr><th>Token</th><th>Meaning</th></tr>
+    <tr><td><code>&lt;order&gt;*&lt;seq&gt;</code></td><td>Success — the order line written.</td></tr>
+    <tr><td><code>NO.STOCK:&lt;sku&gt;</code></td><td>Quantity exceeds quantity on hand — nothing written.</td></tr>
+    <tr><td><code>CREDIT.LIMIT:&lt;id&gt;</code></td><td>Balance + line total exceeds the limit — stock untouched.</td></tr>
+    <tr><td><code>UNKNOWN.CUSTOMER</code> / <code>UNKNOWN.PRODUCT</code> / <code>UNKNOWN.ORDER</code></td><td>Key not found.</td></tr>
+    <tr><td><code>BAD.QTY</code></td><td>Quantity below 1.</td></tr>
+    <tr><td><code>ALREADY.PAID</code> / <code>ALREADY.CANCELLED</code> / <code>PAID.CANNOT.CANCEL</code> / <code>CANCELLED.ORDER</code></td><td>State guards.</td></tr>
+    <tr><td><code>OK.PARTIAL</code></td><td>Cancelled, but stock could not be restored because a product was removed.</td></tr>
+    <tr><td><code>FILE.*</code></td><td>A required file could not be opened.</td></tr>
+  </table>
+
+  <div class="page-break"></div>
+  <h2>4. Build, verify, pressure, remove</h2>
+  <pre># build files, dictionary, indexes, programs; run the worked example
+node sandbox/d3-order-app/deploy.mjs --profile office
+
+# reset, post once, assert the exact numbers (evidence/live-run.txt)
+node sandbox/d3-order-app/verify.mjs  --profile office
+
+# 26 in-D3 scenarios + concurrency, licence, volume and tool-path checks
+node sandbox/d3-order-app/pressure.mjs --profile office
+
+# delete every D3CODE.* file and program
+node sandbox/d3-order-app/deploy.mjs --profile office --teardown</pre>
+
+  <h2>5. Verified results</h2>
+  <table>
+    <tr><th>Suite</th><th>Scope</th><th>Result</th></tr>
+    <tr><td>deploy</td><td>create files, write/compile/catalogue 16 programs, indexes, run</td><td class="ok">73/73</td></tr>
+    <tr><td>verify</td><td>worked example: totals, VAT, stock, indexes</td><td class="ok">16/16</td></tr>
+    <tr><td>pressure</td><td>boundaries, credit, locks, receipts, settle, cancel, credit notes, statements, bulk, reconciliation, missing files, 6-way and same-order contention, licence pressure, volume, index updates</td><td class="ok">76/76</td></tr>
+    <tr><td>d3code regression</td><td>harness live regression on the same account</td><td class="ok">68/68</td></tr>
+  </table>
+  <p>Worked example recorded in D3 (<code>CT D3CODE.ORDERS B2001</code>): subtotal <code>694.85</code>, VAT <code>104.2275</code>, total <code>799.0775</code>, 2 lines. Concurrency: six buyers raced a three-unit product and exactly three won; five writers on one order produced exactly five lines and the correct subtotal; no deadlocks and no orphaned locks.</p>
+
+  <h2>6. Everyday operations</h2>
+  <table>
+    <tr><th>Task</th><th>Command</th></tr>
+    <tr><td>Orders with totals</td><td><code>LIST D3CODE.ORDERS CUSTOMER SUBTOTAL VAT AMOUNT (N</code></td></tr>
+    <tr><td>Orders for a customer (index)</td><td><code>LIST D3CODE.ORDERS WITH CUSTOMER = "C002" (N</code></td></tr>
+    <tr><td>Low stock</td><td><code>D3CODE.REPORT</code> or <code>SORT D3CODE.PRODUCTS BY QOH (N</code></td></tr>
+    <tr><td>Stock journal</td><td><code>LIST D3CODE.MOVES WITH SKU = "SKU-1" (N</code></td></tr>
+    <tr><td>Customer statement</td><td><code>CALL D3CODE.STATEMENT("C002",RESP)</code> from BASIC</td></tr>
+  </table>
+
+  <div class="warn"><b>Operational cautions.</b> Recreating a file (<code>DELETE-FILE</code> + <code>CREATE-FILE</code>) drops its dictionary and indexes — run <code>D3CODE.DICTGEN</code> and recreate the indexes afterwards. Sales, receipts, credits and settlements change stock and balances permanently: point tests at the <code>D3CODE.*</code> namespace only. D3 has no TCL <code>CALL</code>; run a catalogued main program instead of calling a subroutine from the command line.</div>
+
+  <footer>
+    D3CODE Order Application runbook · built, verified and pressure-tested through D3 Code against Rocket D3 on <code>office.crystallogic.org</code> (account <code>dm</code>).<br/>
+    Companion: <code>docs/d3-live-regression.md</code> and the MerryPak ↔ D3 integration audit.
+  </footer>
+</div>
+</body>
+</html>

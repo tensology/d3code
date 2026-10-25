@@ -1,0 +1,65 @@
+* D3CODE.DICTGEN - build the dictionary items for the sandbox files.
+* Written from BASIC because ED cannot express empty attributes: a blank line
+* ends insert mode, so dictionary items with blank A3/A4/A5 must be WRITten.
+  GOSUB 100
+  GOSUB 200
+  GOSUB 300
+  GOSUB 400
+  GOSUB 500
+  GOSUB 600
+  PRINT "DICT OK"
+  STOP
+
+100 * D3CODE.CUSTOMERS
+  OPEN "DICT D3CODE.CUSTOMERS" TO DF ELSE PRINT "OPEN DICT CUSTOMERS"; RETURN
+  DREC = ""; DREC<1> = "A"; DREC<2> = "1"; DREC<6> = "Customer Name"; WRITE DREC ON DF, "NAME"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "2"; DREC<6> = "Email"; WRITE DREC ON DF, "EMAIL"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "3"; DREC<6> = "Credit Limit"; WRITE DREC ON DF, "LIMIT"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "4"; DREC<6> = "Balance"; WRITE DREC ON DF, "BALANCE"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "5"; DREC<6> = "Terms"; WRITE DREC ON DF, "TERMS"
+  RETURN
+
+200 * D3CODE.PRODUCTS
+  OPEN "DICT D3CODE.PRODUCTS" TO DF ELSE PRINT "OPEN DICT PRODUCTS"; RETURN
+  DREC = ""; DREC<1> = "A"; DREC<2> = "1"; DREC<6> = "Description"; WRITE DREC ON DF, "DESC"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "2"; DREC<6> = "Unit Price"; WRITE DREC ON DF, "PRICE"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "3"; DREC<6> = "Qty On Hand"; WRITE DREC ON DF, "QOH"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "4"; DREC<6> = "Reorder Level"; WRITE DREC ON DF, "REORDER"
+  RETURN
+
+300 * D3CODE.ORDERS
+  OPEN "DICT D3CODE.ORDERS" TO DF ELSE PRINT "OPEN DICT ORDERS"; RETURN
+  DREC = ""; DREC<1> = "A"; DREC<2> = "1"; DREC<6> = "Date"; WRITE DREC ON DF, "ORDATE"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "2"; DREC<6> = "Customer"; WRITE DREC ON DF, "CUSTOMER"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "3"; DREC<6> = "Status"; WRITE DREC ON DF, "STATUS"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "4"; DREC<6> = "Subtotal"; WRITE DREC ON DF, "SUBTOTAL"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "5"; DREC<6> = "VAT"; WRITE DREC ON DF, "VAT"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "6"; DREC<6> = "Total"; WRITE DREC ON DF, "AMOUNT"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "7"; DREC<6> = "Lines"; WRITE DREC ON DF, "NLINES"
+  RETURN
+
+400 * D3CODE.LINES
+  OPEN "DICT D3CODE.LINES" TO DF ELSE PRINT "OPEN DICT LINES"; RETURN
+  DREC = ""; DREC<1> = "A"; DREC<2> = "1"; DREC<6> = "Order"; WRITE DREC ON DF, "ORDER"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "2"; DREC<6> = "SKU"; WRITE DREC ON DF, "SKU"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "3"; DREC<6> = "Qty"; WRITE DREC ON DF, "QTY"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "4"; DREC<6> = "Price"; WRITE DREC ON DF, "PRICE"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "5"; DREC<6> = "Line Total"; WRITE DREC ON DF, "LINETOT"
+  RETURN
+
+600 * D3CODE.PAYMENTS
+  OPEN "DICT D3CODE.PAYMENTS" TO DF ELSE PRINT "OPEN DICT PAYMENTS"; RETURN
+  DREC = ""; DREC<1> = "A"; DREC<2> = "1"; DREC<6> = "Order"; WRITE DREC ON DF, "PORDER"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "2"; DREC<6> = "Amount"; WRITE DREC ON DF, "PAMOUNT"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "3"; DREC<6> = "Date"; WRITE DREC ON DF, "PDATE"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "4"; DREC<6> = "Type"; WRITE DREC ON DF, "PTYPE"
+  RETURN
+
+500 * D3CODE.MOVES
+  OPEN "DICT D3CODE.MOVES" TO DF ELSE PRINT "OPEN DICT MOVES"; RETURN
+  DREC = ""; DREC<1> = "A"; DREC<2> = "1"; DREC<6> = "SKU"; WRITE DREC ON DF, "SKU"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "2"; DREC<6> = "Type"; WRITE DREC ON DF, "TYPE"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "3"; DREC<6> = "Qty"; WRITE DREC ON DF, "QTY"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "4"; DREC<6> = "Order"; WRITE DREC ON DF, "ORDER"
+  DREC = ""; DREC<1> = "A"; DREC<2> = "5"; DREC<6> = "Date"; WRITE DREC ON DF, "DATE"
+  RETURN

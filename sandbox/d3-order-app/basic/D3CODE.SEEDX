@@ -1,0 +1,65 @@
+SUBROUTINE D3CODE.SEEDX(RESULT)
+* Seed the baseline customers and products (idempotent). Callable from BASIC.
+  RESULT = ""
+  OPEN "D3CODE.CUSTOMERS" TO CF ELSE RESULT = "FILE.CUSTOMERS"; RETURN
+  OPEN "D3CODE.PRODUCTS" TO PF ELSE RESULT = "FILE.PRODUCTS"; RETURN
+  CREC = ""
+  CREC<1> = "Highveld Hardware"
+  CREC<2> = "orders@highveld.example"
+  CREC<3> = 25000
+  CREC<4> = 0
+  CREC<5> = 30
+  WRITE CREC ON CF, "C001"
+  CREC = ""
+  CREC<1> = "Cape Coffee Co"
+  CREC<2> = "buy@capecoffee.example"
+  CREC<3> = 12000
+  CREC<4> = 0
+  CREC<5> = 14
+  WRITE CREC ON CF, "C002"
+  CREC = ""
+  CREC<1> = "Durban Drapers"
+  CREC<2> = "accounts@durbandrapers.example"
+  CREC<3> = 8000
+  CREC<4> = 0
+  CREC<5> = 30
+  WRITE CREC ON CF, "C003"
+  CREC = ""
+  CREC<1> = "Soweto Stationers"
+  CREC<2> = "info@sowetostationers.example"
+  CREC<3> = 5000
+  CREC<4> = 0
+  CREC<5> = 7
+  WRITE CREC ON CF, "C004"
+  PREC = ""
+  PREC<1> = "Claw hammer 450g"
+  PREC<2> = 89.95
+  PREC<3> = 40
+  PREC<4> = 10
+  WRITE PREC ON PF, "SKU-1"
+  PREC = ""
+  PREC<1> = "Wood screws 4x40 (200)"
+  PREC<2> = 42.5
+  PREC<3> = 120
+  PREC<4> = 25
+  WRITE PREC ON PF, "SKU-2"
+  PREC = ""
+  PREC<1> = "Tape measure 5m"
+  PREC<2> = 65
+  PREC<3> = 8
+  PREC<4> = 12
+  WRITE PREC ON PF, "SKU-3"
+  PREC = ""
+  PREC<1> = "Roasted beans 1kg"
+  PREC<2> = 210
+  PREC<3> = 30
+  PREC<4> = 8
+  WRITE PREC ON PF, "SKU-4"
+  PREC = ""
+  PREC<1> = "Filter paper (100)"
+  PREC<2> = 55.25
+  PREC<3> = 60
+  PREC<4> = 20
+  WRITE PREC ON PF, "SKU-5"
+  RESULT = "SEED.OK"
+  RETURN

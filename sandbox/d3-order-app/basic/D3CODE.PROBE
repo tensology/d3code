@@ -1,0 +1,4 @@
+* D3CODE.PROBE - prove the OPEN ... ELSE path fails gracefully on a missing file.
+  OPEN "D3CODE.NOPE" TO XF ELSE PRINT "PROBE OPEN-FAILED"; STOP
+  PRINT "PROBE OPENED"
+  STOP

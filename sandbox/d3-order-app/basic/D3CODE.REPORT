@@ -1,0 +1,21 @@
+* D3CODE.REPORT - low-stock report across the sandbox products.
+  OPEN "D3CODE.PRODUCTS" TO PF ELSE PRINT "OPEN FAILED PRODUCTS"; STOP
+  PRINT "D3CODE LOW-STOCK REPORT"
+  PRINT "SKU     QOH REORDER DESCRIPTION"
+  SKU = "SKU-1"
+  GOSUB 500
+  SKU = "SKU-2"
+  GOSUB 500
+  SKU = "SKU-3"
+  GOSUB 500
+  SKU = "SKU-4"
+  GOSUB 500
+  SKU = "SKU-5"
+  GOSUB 500
+  PRINT "END REPORT"
+  STOP
+
+500 * print the product when on-hand is at or below the reorder level
+  READ PREC FROM PF, SKU ELSE RETURN
+  IF PREC<3> <= PREC<4> THEN PRINT SKU : "   " : PREC<3> : "   " : PREC<4> : "     " : PREC<1>
+  RETURN

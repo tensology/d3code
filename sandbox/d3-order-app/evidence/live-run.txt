@@ -1,0 +1,130 @@
+D3CODE sandbox live evidence (2026-10-25T08:39:48.532Z)
+
+$ D3CODE.SEED
+D3CODE.SEED
+SEED OK SEED.OK
+
+$ D3CODE.RUN
+D3CODE.RUN
+== ORDER B2001 (Highveld Hardware) ==
+  L1 B2001*1
+  L2 B2001*2
+== ORDER B2002 (Cape Coffee Co) ==
+  L1 B2002*1
+  L2 B2002*2
+== ORDER B2003 (Durban Drapers) ==
+  L1 B2003*1
+== VALIDATION PATHS ==
+  over-stock     -> NO.STOCK:SKU-3
+  unknown product-> UNKNOWN.PRODUCT:SKU-9
+  unknown customer-> UNKNOWN.CUSTOMER:C099
+  credit limit   -> CREDIT.LIMIT:C004
+RUN DONE
+
+$ D3CODE.REPORT
+D3CODE.REPORT
+D3CODE LOW-STOCK REPORT
+SKU     QOH REORDER DESCRIPTION
+SKU-3   6   12     Tape measure 5m
+END REPORT
+
+$ CT D3CODE.PRODUCTS SKU-1 (N
+CT D3CODE.PRODUCTS SKU-1 (N
+
+    SKU-1
+001 Claw hammer 450g
+002 89.95
+003 37
+004 10
+
+$ CT D3CODE.PRODUCTS SKU-3 (N
+CT D3CODE.PRODUCTS SKU-3 (N
+
+    SKU-3
+001 Tape measure 5m
+002 65
+003 6
+004 12
+
+$ CT D3CODE.PRODUCTS SKU-4 (N
+CT D3CODE.PRODUCTS SKU-4 (N
+
+    SKU-4
+001 Roasted beans 1kg
+002 210
+003 25
+004 8
+
+$ COUNT D3CODE.LINES
+COUNT D3CODE.LINES
+[407] 5 items counted out of 5 items.
+
+$ COUNT D3CODE.MOVES
+COUNT D3CODE.MOVES
+[407] 5 items counted out of 5 items.
+
+$ LIST D3CODE.ORDERS CUSTOMER SUBTOTAL VAT AMOUNT (N
+LIST D3CODE.ORDERS CUSTOMER SUBTOTAL VAT AMOUNT (N
+Page   1     D3CODE.ORDERS                              10:39:48 25 Oct 2026
+
+D3CODE.ORDERS CUSTOMER SUBTOTAL VAT AMOUNT
+
+B2001         C001     694.85   104 799.07
+                                .22 75
+                                75
+B2002         C002     1713     256 1969.9
+                                .95 5
+B2003         C003     130      19. 149.5
+                                5
+
+[405] 3 items listed out of 3 items.
+
+$ LIST D3CODE.ORDERS WITH CUSTOMER = "C002" (N
+LIST D3CODE.ORDERS WITH CUSTOMER = "C002" (N
+Page   1     D3CODE.ORDERS                              10:39:48 25 Oct 2026
+
+D3CODE.ORDERS
+
+B2002
+
+[4051] 1 items listed.
+
+$ LIST D3CODE.PRODUCTS WITH DESC = "Tape measure 5m" (N
+LIST D3CODE.PRODUCTS WITH DESC = "Tape measure 5m" (N
+Page   1     D3CODE.PRODUCTS                            10:39:48 25 Oct 2026
+
+D3CODE.PRODUCTS
+
+SKU-3
+
+[4051] 1 items listed.
+
+$ CT D3CODE.ORDERS B2001 (N
+CT D3CODE.ORDERS B2001 (N
+
+    B2001
+001 21483
+002 C001
+003 OPEN
+004 694.85
+005 104.2275
+006 799.0775
+007 2
+
+CHECKS
+[ok] all three orders posted
+[ok] over-stock rejected (NO.STOCK)
+[ok] unknown product rejected
+[ok] unknown customer rejected
+[ok] credit limit enforced
+[ok] stock SKU-1 40->37
+[ok] stock SKU-3 8->6
+[ok] stock SKU-4 unchanged by rejected credit sale (25)
+[ok] 5 order lines recorded
+[ok] 5 stock moves recorded
+[ok] order B2001 subtotal 694.85
+[ok] order B2001 VAT 104.2275
+[ok] AQL order totals query works
+[ok] indexed customer query works
+[ok] indexed product query works
+[ok] low-stock report found SKU-3

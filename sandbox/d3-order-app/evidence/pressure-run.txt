@@ -1,0 +1,267 @@
+Pressure run 2026-10-25T08:40:03.358Z
+$ D3CODE.PRESSURE
+D3CODE.PRESSURE
+CHECK 2.1 PASS BAD.QTY
+CHECK 2.2 PASS BAD.QTY
+CHECK 2.3 PASS B9001*1
+CHECK 2.4 PASS B9002*1
+CHECK 2.5 PASS NO.STOCK:SKU-2
+CHECK 2.6 PASS qoh=0
+CHECK 3.1 PASS B9010*1
+CHECK 3.2 PASS CREDIT.LIMIT:C004
+CHECK 3.3 PASS bal=4830
+CHECK 4.1 PASS B9020*1
+CHECK 5.1 PASS qoh=58
+CHECK 5.2 PASS type=RECEIPT
+CHECK 6.1 PASS status=PAID
+CHECK 6.2 PASS bal=0 settle=OK
+CHECK 7.1 PASS ALREADY.PAID
+CHECK 8.1 PASS qoh=40
+CHECK 8.2 PASS bal=0
+CHECK 8.3 PASS status=CANCELLED
+CHECK 9.1 PASS ALREADY.CANCELLED
+CHECK 10.1 PASS PAID.CANNOT.CANCEL
+STATEMENT-PROBE-BEGIN
+STATEMENT Cape Coffee Co (C002)
+  balance 320.5
+  B9050  OPEN  241.5
+  B9051  OPEN  127.075
+  open 368.575  paid 0  cancelled 0
+STATEMENT-PROBE-END
+CHECK 11.1 PASS OK
+CHECK 12.1 PASS orders=50
+CHECK 12.2 PASS qoh=10
+CHECK 13.1 PASS sub=630 vat=94.5
+CHECK 14.1 PASS UNKNOWN.CUSTOMER:C999
+CHECK 14.2 PASS UNKNOWN.PRODUCT:SKU-99
+CHECK 14.3 PASS UNKNOWN.ORDER:NOPE
+CHECK 14.4 PASS UNKNOWN.ORDER:NOPE
+CHECK 15.1 PASS NO.STOCK:SKU-1
+CHECK 16.1 PASS len=119
+CHECK 16.2 PASS attr2=210 attr3=5
+CHECK 17.1 PASS lines=100 sub=4250
+CHECK 17.2 PASS last=M1/SKU-2
+CHECK 17.3 PASS qoh=20
+CHECK 18.1 PASS Z1*1
+CHECK 18.2 PASS sub=0 vat=0
+CHECK 19.1 PASS balance=89.95 openSum=89.95
+CHECK 20.1 PASS open=40 now=45
+CANCEL.WARNING: product removed, stock not restored: SKU-1
+CHECK 21.1 PASS cancel=OK.PARTIAL
+CHECK 22.1 PASS qoh=37 credit=OK
+CHECK 22.2 PASS sub=269.85 total=310.3275
+CHECK 22.3 PASS bal=269.85
+CHECK 23.1 PASS sub=1 vat=0.15
+CHECK 24.1 PASS CANCELLED.ORDER
+PRESSURE DONE
+$ D3CODE.PROBE
+D3CODE.PROBE
+PROBE OPEN-FAILED
+$ long-description
+ED D3CODE.PRODUCTS SKU-9
+new item
+top
+.I
+001+A very long product description used to test attribute storage limits and readback fidelity across the harness boundary
+002+210
+003+5
+004+1
+005+
+top
+.FI
+[221] 'SKU-9' filed.
+$ race
+R1: D3CODE.T.R1
+RACE1 B9080*1
+R2: D3CODE.T.R2
+RACE2 NO.STOCK:SKU-3
+$ LIST-LOCKS
+LIST-LOCKS (N
+System Locks
+    0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
+00 ### ### ### ### ### ### ### ### ### ### ### 
+
+Basic Locks
+    0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
+00 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### 
+
+Spooler Locks
+    mq  iq  fq peq msp
+00 ### ### ### ### ### 
+
+Txlog Locks
+   fof pro con
+00 ### ### ### 
+
+Phantom Locks
+   rel job pib que plk
+00 ### ### ### ### ### 
+
+Group Locks         PIB#  Lvl  Type  Filename
+$ 6-way stress
+D3CODE.T.S0
+STRESS0 S0*1
+D3CODE.T.S1
+STRESS1 S1*1
+D3CODE.T.S2
+STRESS2 S2*1
+D3CODE.T.S3
+STRESS3 NO.STOCK:SKU-3
+D3CODE.T.S4
+STRESS4 NO.STOCK:SKU-3
+D3CODE.T.S5
+STRESS5 NO.STOCK:SKU-3
+$ same-order contention
+D3CODE.T.O0
+SAME0 SAME*2
+D3CODE.T.O1
+SAME1 SAME*1
+D3CODE.T.O2
+SAME2 SAME*5
+D3CODE.T.O3
+SAME3 SAME*4
+D3CODE.T.O4
+SAME4 SAME*3
+$ mixed contention
+D3CODE.T.M0
+MIX0 MIX*2
+D3CODE.T.M1
+MIX1 MIX*1
+D3CODE.T.M2
+MIX2 MIX2*1
+$ volume
+D3CODE.T.VOL
+VOL DONE
+$ missing-file
+D3CODE.T.NOF
+NOFILE FILE.PRODUCTS
+$ licence pressure (12 sessions)
+D3CODE.T.L0
+LIC0 P0*1
+D3CODE.T.L1
+LIC1 P1*1
+D3CODE.T.L2
+LIC2 P2*1
+D3CODE.T.L3
+LIC3 P3*1
+D3CODE.T.L4
+LIC4 P4*1
+D3CODE.T.L5
+LIC5 P5*1
+D3CODE.T.L6
+LIC6 P6*1
+D3CODE.T.L7
+LIC7 P7*1
+D3CODE.T.L8
+LIC8 P8*1
+D3CODE.T.L9
+LIC9 P9*1
+D3CODE.T.L10
+LIC10 P10*1
+D3CODE.T.L11
+LIC11 P11*1
+elapsed=2361ms
+$ index update
+D3CODE.T.IDX
+IDX DONE
+COUNT D3CODE.ORDERS WITH CUSTOMER = "C003"
+[4071] 1 items counted.
+
+CHECKS
+[ok] 1 scenario program ran to completion — CHECK 23.1 PASS sub=1 vat=0.15 | CHECK 24.1 PASS CANCELLED.ORDER | PRESSURE DONE
+[ok] 1 scenario checks were emitted — count=44
+[ok] 1 scenario 2.1 — BAD.QTY
+[ok] 1 scenario 2.2 — BAD.QTY
+[ok] 1 scenario 2.3 — B9001*1
+[ok] 1 scenario 2.4 — B9002*1
+[ok] 1 scenario 2.5 — NO.STOCK:SKU-2
+[ok] 1 scenario 2.6 — qoh=0
+[ok] 1 scenario 3.1 — B9010*1
+[ok] 1 scenario 3.2 — CREDIT.LIMIT:C004
+[ok] 1 scenario 3.3 — bal=4830
+[ok] 1 scenario 4.1 — B9020*1
+[ok] 1 scenario 5.1 — qoh=58
+[ok] 1 scenario 5.2 — type=RECEIPT
+[ok] 1 scenario 6.1 — status=PAID
+[ok] 1 scenario 6.2 — bal=0 settle=OK
+[ok] 1 scenario 7.1 — ALREADY.PAID
+[ok] 1 scenario 8.1 — qoh=40
+[ok] 1 scenario 8.2 — bal=0
+[ok] 1 scenario 8.3 — status=CANCELLED
+[ok] 1 scenario 9.1 — ALREADY.CANCELLED
+[ok] 1 scenario 10.1 — PAID.CANNOT.CANCEL
+[ok] 1 scenario 11.1 — OK
+[ok] 1 scenario 12.1 — orders=50
+[ok] 1 scenario 12.2 — qoh=10
+[ok] 1 scenario 13.1 — sub=630 vat=94.5
+[ok] 1 scenario 14.1 — UNKNOWN.CUSTOMER:C999
+[ok] 1 scenario 14.2 — UNKNOWN.PRODUCT:SKU-99
+[ok] 1 scenario 14.3 — UNKNOWN.ORDER:NOPE
+[ok] 1 scenario 14.4 — UNKNOWN.ORDER:NOPE
+[ok] 1 scenario 15.1 — NO.STOCK:SKU-1
+[ok] 1 scenario 16.1 — len=119
+[ok] 1 scenario 16.2 — attr2=210 attr3=5
+[ok] 1 scenario 17.1 — lines=100 sub=4250
+[ok] 1 scenario 17.2 — last=M1/SKU-2
+[ok] 1 scenario 17.3 — qoh=20
+[ok] 1 scenario 18.1 — Z1*1
+[ok] 1 scenario 18.2 — sub=0 vat=0
+[ok] 1 scenario 19.1 — balance=89.95 openSum=89.95
+[ok] 1 scenario 20.1 — open=40 now=45
+[ok] 1 scenario 21.1 — cancel=OK.PARTIAL
+[ok] 1 scenario 22.1 — qoh=37 credit=OK
+[ok] 1 scenario 22.2 — sub=269.85 total=310.3275
+[ok] 1 scenario 22.3 — bal=269.85
+[ok] 1 scenario 23.1 — sub=1 vat=0.15
+[ok] 1 scenario 24.1 — CANCELLED.ORDER
+[ok] 1 statement printed both orders — statement block
+[ok] 2 missing file fails gracefully — D3CODE.PROBE
+PROBE OPEN-FAILED
+[ok] 3 long description write filed — .FI | [221] 'SKU-9' filed.
+[ok] 4 race sessions both completed — D3CODE.T.R1
+RACE1 B9080*1 || D3CODE.T.R2
+RACE2 NO.STOCK:SKU-3
+[ok] 4 exactly one session won the last unit — winners=1; D3CODE.T.R1
+RACE1 B9080*1 || D3CODE.T.R2
+RACE2 NO.STOCK:SKU-3
+[ok] 4 stock never went negative — start=1 end=0
+[ok] 4 stock consumed exactly once — start=1 end=0 winners=1
+[ok] 5 no item locks left behind — LIST-LOCKS (N | System Locks |     0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
+[ok] 6 blank-line body rejected loudly — Cannot write a body with a blank line: D3's editor ends insert mode on a blank line, which would silently truncate the item. Build empty attributes with a BASIC writer instead.
+[ok] 7 chunked write status — success
+[ok] 7 large item has last line — len=8771
+[ok] 7 large item compiles — ......................................... | [241] Successful compile!   2 frame(s) used.
+[ok] 8 no stress session errored — D3CODE.T.S0
+STRESS0 S0*1 | D3CODE.T.S1
+STRESS1 S1*1 | D3CODE.T.S2
+STRESS2 S2*1 | D3CODE.T.S3
+STRESS3 NO.STOCK:SKU-3 | D3CODE.T.S4
+STRESS4 NO.STOCK:SKU-3 | D3CODE.T.S5
+STRESS5 NO.STOCK:SKU-3
+[ok] 8 stock ends at 0 under 6-way contention — qoh=0
+[ok] 8 exactly 3 lines recorded for 3 units — COUNT D3CODE.LINES
+[407] 3 items counted out of 3 items.
+[ok] 9 five concurrent lines recorded on one order — lines=5; D3CODE.T.O0
+SAME0 SAME*2 | D3CODE.T.O1
+SAME1 SAME*1 | D3CODE.T.O2
+SAME2 SAME*5 | D3CODE.T.O3
+SAME3 SAME*4 | D3CODE.T.O4
+SAME4 SAME*3
+[ok] 9 order subtotal is 5 x 42.5 — sub=212.5
+[ok] 10 overlapping writers all returned (no deadlock) — D3CODE.T.M0
+MIX0 MIX*2 | D3CODE.T.M1
+MIX1 MIX*1 | D3CODE.T.M2
+MIX2 MIX2*1
+[ok] 10 no locks left after mixed contention — LIST-LOCKS (N | System Locks |     0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
+[ok] 11 volume runner built — makeRunner
+[ok] 11 300 orders written — VOL DONE; [407] 300 items counted out of 300 items.
+[ok] 11 stock 1000 -> 700 — qoh=700
+[ok] 11 indexed count matches 300 — [4071] 300 items counted.
+[ok] 12 missing file returns FILE.PRODUCTS token — NOFILE FILE.PRODUCTS
+[ok] 12 product file rebuilt — COUNT D3CODE.PRODUCTS
+[407] 5 items counted out of 5 items.
+[ok] 13 no session hung under licence pressure — 0 hung
+[ok] 13 stock conserved across 12 sessions — qoh=0
+[ok] 13 either all sold or cleanly refused — refused=0 sold=12
+[ok] 14 index update ran — IDX DONE
+[ok] 14 indexed query sees the new key — [4071] 1 items counted.

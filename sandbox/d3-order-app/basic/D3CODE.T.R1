@@ -1,0 +1,4 @@
+* D3CODE.T.R1 - race probe 1: buy the last unit of SKU-3 into order B9080.
+  CALL D3CODE.SALE("C001", "SKU-3", 1, "B9080", RESP)
+  PRINT "RACE1 " : RESP
+  STOP

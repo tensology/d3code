@@ -1,0 +1,11 @@
+SUBROUTINE D3CODE.RESETX(RESULT)
+* Empty every data file (keeping dictionaries and indexes) and re-seed.
+  EXECUTE "clear-file D3CODE.ORDERS (l"
+  EXECUTE "clear-file D3CODE.LINES (l"
+  EXECUTE "clear-file D3CODE.MOVES (l"
+  EXECUTE "clear-file D3CODE.PAYMENTS (l"
+  EXECUTE "clear-file D3CODE.CUSTOMERS (l"
+  EXECUTE "clear-file D3CODE.PRODUCTS (l"
+  CALL D3CODE.SEEDX(RESULT)
+  RESULT = "RESET.OK"
+  RETURN

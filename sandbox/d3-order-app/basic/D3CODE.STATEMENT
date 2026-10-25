@@ -1,0 +1,25 @@
+SUBROUTINE D3CODE.STATEMENT(CUST, RESP)
+* Print a customer statement from the order list held on the customer record.
+  RESP = ""
+  OPEN "D3CODE.CUSTOMERS" TO CF ELSE RESP = "FILE.CUSTOMERS"; RETURN
+  OPEN "D3CODE.ORDERS" TO OF ELSE RESP = "FILE.ORDERS"; RETURN
+  READ CREC FROM CF, CUST ELSE RESP = "UNKNOWN.CUSTOMER:" : CUST; RETURN
+  PRINT "STATEMENT " : CREC<1> : " (" : CUST : ")"
+  PRINT "  balance " : CREC<4>
+  N = DCOUNT(CREC<6>, @VM)
+  OPENED = 0
+  PAID = 0
+  CANCELLED = 0
+  FOR I = 1 TO N
+    ORD = CREC<6, I>
+    READ OREC FROM OF, ORD ELSE OREC = ""
+    IF OREC <> "" THEN
+      PRINT "  " : ORD : "  " : OREC<3> : "  " : OREC<6>
+      IF OREC<3> = "OPEN" THEN OPENED = OPENED + OREC<6>
+      IF OREC<3> = "PAID" THEN PAID = PAID + OREC<6>
+      IF OREC<3> = "CANCELLED" THEN CANCELLED = CANCELLED + OREC<6>
+    END
+  NEXT I
+  PRINT "  open " : OPENED : "  paid " : PAID : "  cancelled " : CANCELLED
+  RESP = "OK"
+  RETURN
