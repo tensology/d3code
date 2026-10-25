@@ -40,6 +40,15 @@ test("AQL tool accepts only one read-only AQL statement", async () => {
   assert.deepEqual(commands, ["LIST CUSTOMERS NAME"])
 })
 
+test("item reads quote complete item IDs without admitting TCL injection", async () => {
+  const commands:string[]=[]
+  const context=fakeContext(commands)
+  await tool("d3_read_item").execute({file:"CUSTOMERS",item:"CUSTOMER 100"},context)
+  await tool("d3_read_dict").execute({file:"CUSTOMERS",item:"FULL NAME"},context)
+  await assert.rejects(tool("d3_read_item").execute({file:"CUSTOMERS",item:'100" (N DELETE CUSTOMERS'},context),/without quotes/)
+  assert.deepEqual(commands,['CT CUSTOMERS "CUSTOMER 100" (N','CT DICT CUSTOMERS "FULL NAME" (N'])
+})
+
 test("compile, catalog, and call tools validate command identifiers", async () => {
   const context = fakeContext([])
 

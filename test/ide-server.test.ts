@@ -92,6 +92,37 @@ test("IDE opens a light terminal with connection controls and an optional agent 
   assert.deepEqual(calls, ["/api/terminal/reset", "WHO"])
 })
 
+test("item read failures keep the editor unavailable and release the loading control", async () => {
+  const server = await startTestIdeServer(config, {model:config.defaultModel,safety:"ask",profile:"fake",mode:"chat"},{port:0})
+  const html=await fetch(server.url).then(response=>response.text())
+  const script=html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ""
+  const read=script.match(/async function readSelectedItem\(\)\{[\s\S]*?(?=\$\('readItem'\)\.onclick)/)?.[0]
+  assert.ok(read)
+  const nodes:Record<string,{value?:string;disabled?:boolean;textContent?:string;dataset?:Record<string,string>}>={readItem:{},editorEmpty:{},file:{value:"bp"},item:{value:"PROBE"},itemBody:{value:"old source",dataset:{}}}
+  const body={dataset:{editorState:"loaded"}}
+  const context={document:{body},$:(id:string)=>nodes[id],URLSearchParams,confirmEditorDiscard:async()=>true,syncEditorLines:()=>{},itemBrowserSection:"data",api:async()=>({error:"Item unavailable"})}
+  await runInNewContext(read+";readSelectedItem()",context)
+  assert.equal(body.dataset.editorState,"empty")
+  assert.equal(nodes.editorEmpty?.textContent,"Item unavailable")
+  assert.equal(nodes.readItem?.disabled,false)
+  context.api=async()=>({result:"fresh source"} as any)
+  await runInNewContext(read+";readSelectedItem()",context)
+  assert.equal(body.dataset.editorState,"loaded")
+  assert.equal(nodes.itemBody?.value,"fresh source")
+})
+
+test("item browsing validates input and uses the active profile", async () => {
+  const listingConfig={...config,profiles:[{...config.profiles[0]!,entryCommand:`node -e "process.stdin.on('data',()=>console.log('50524F4245\\n[405] 1 items listed.'))"`}]}
+  const server=await startTestIdeServer(listingConfig,{model:config.defaultModel,safety:"ask",profile:"fake",mode:"chat"},{port:0})
+  const response=await fetch(`${server.url}/api/items?file=bp&limit=1&profile=alt`)
+  assert.equal(response.status,200)
+  const listing=await response.json() as {items:string[];mayHaveMore:boolean}
+  assert.deepEqual(listing.items,["PROBE"])
+  assert.equal(listing.mayHaveMore,true)
+  assert.equal((await fetch(`${server.url}/api/items?file=bp&section=invalid`)).status,400)
+  assert.equal((await fetch(`${server.url}/api/items?file=bp%0AWHO`)).status,400)
+})
+
 test("IDE server serves browser shell and D3 profile APIs", async () => {
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
 
@@ -102,8 +133,7 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.match(shellResponse.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/)
   assert.match(html, /D3 Code IDE/)
   assert.match(html, /D3 Browser/)
-  assert.match(html, /D3 Screen/)
-  assert.match(html, /Live terminal \/ screen output/)
+  assert.match(html, /Hide output/)
   assert.match(html, /id="d3Browser"/)
   assert.match(html, /id="editorScreen"/)
   assert.match(html, /mutationConfirmed\(\)/)
@@ -119,12 +149,12 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.match(html, /id="editorTerminalCommand"/)
   assert.match(html, /bindTerminalCommandInput/)
   assert.match(html, /Startup input/)
-  assert.match(html, /Item \/ BASIC Editor/)
+  assert.match(html, /id="editorEmpty"/)
   assert.match(html, /Agent/)
   assert.match(html, /Compile/)
   assert.match(html, /Build BASIC/)
-  assert.match(html, /Write Dict/)
-  assert.match(html, /Create File/)
+  assert.match(html, /Write dictionary/)
+  assert.match(html, /Create file/)
   assert.match(html, /SB\+ Discover/)
   assert.match(html, /SB\+ Plan/)
   assert.match(html, /id="capabilitiesPanel"/)

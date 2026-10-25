@@ -44,6 +44,14 @@ function quoteTclArg(value: string): string {
   return /^[A-Za-z0-9_.:-]+$/.test(value) ? value : `"${value.replace(/"/g, '\\"')}"`
 }
 
+function readItemReference(value: unknown, label: string): string {
+  const item = String(value ?? "")
+  if (!item || Buffer.byteLength(item, "latin1") > 100 || /["\\\u0000-\u001f\u007f]/.test(item)) {
+    throw new Error(`${label} must contain only printable characters without quotes or backslashes, up to 100 bytes.`)
+  }
+  return quoteTclArg(item)
+}
+
 function requireName(value: unknown, label: string): string {
   const text = String(value ?? "").trim()
   if (!/^[A-Za-z0-9_.:-]+$/.test(text)) throw new Error(`${label} must contain only letters, numbers, underscore, dot, colon, or hyphen.`)
@@ -170,7 +178,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT ${requireName(args.file, "file")} ${requireName(args.item, "item")} (N`, true)
+      return runTcl(context, `CT ${requireName(args.file, "file")} ${readItemReference(args.item, "item")} (N`, true)
     },
   },
   {
@@ -205,7 +213,7 @@ export const d3Tools: ToolDefinition[] = [
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { file: string; item: string }
-      return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${requireName(args.item, "dictionary item")} (N`, true)
+      return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${readItemReference(args.item, "dictionary item")} (N`, true)
     },
   },
   {
