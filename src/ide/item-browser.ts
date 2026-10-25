@@ -45,12 +45,12 @@ async function confirmEditorDiscard(){
 }
 function renderItemBrowser(){
   const items=itemBrowserItems;
-  $('itemList').innerHTML=items.map(id=>'<button type="button" class="d3-item-row" data-item-id="'+escapeHtml(id)+'">'+escapeHtml(id)+'</button>').join('');
+  $('itemList').innerHTML=items.map(id=>'<button type="button" class="d3-item-row" aria-current="'+(document.body.dataset.editorState==='loaded'&&id===$('item').value?'true':'false')+'" data-item-id="'+escapeHtml(id)+'">'+escapeHtml(id)+'</button>').join('');
   if(!items.length)$('itemList').textContent=$('itemFilter').value?'No matching items.':'No items in this section.';
   $('itemList').querySelectorAll('[data-item-id]').forEach(button=>button.onclick=async()=>{
     if(!await confirmEditorDiscard())return;
     resetEditorSelection();$('item').value=button.dataset.itemId;
-    closeMobilePanel();await readSelectedItem();
+    closeMobilePanel();await readSelectedItem();renderItemBrowser();
   });
 }
 async function loadFileItems(){
@@ -61,7 +61,7 @@ async function loadFileItems(){
     const report=await api('/api/items?'+query);
     if(request!==itemBrowserRequest)return;
     if(report.error)throw new Error(report.error);
-    itemBrowserItems=report.items||[];
+    itemBrowserItems=(report.items||[]).sort((left,right)=>left.localeCompare(right));
     $('itemBrowserStatus').textContent=report.mayHaveMore?'Showing '+itemBrowserItems.length+' items. Open another item by ID.':itemBrowserItems.length+' item'+(itemBrowserItems.length===1?'':'s');
     renderItemBrowser();
   }catch(error){if(request===itemBrowserRequest){itemBrowserItems=[];$('itemList').textContent=error.message||String(error);$('itemBrowserStatus').textContent='Could not load items. Refresh to retry.'}}
