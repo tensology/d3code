@@ -42,6 +42,17 @@ test.afterEach(async () => {
   await stopIdeServers()
 })
 
+test("terminal displays the complete report instead of summarising account names away", async () => {
+  const stdout = Array.from({ length: 100 }, (_, n) => n === 50 ? "MPSTORE MULTISNACK" : `ACCOUNT-${n}`).join("\n")
+  const session: D3Session = { run: async command => ({ command, stdout, stderr: "", exitCode: 0 }), close: async () => {} }
+  const server = await startTestIdeServer(config, { model: config.defaultModel, safety: "ask", profile: "fake", mode: "chat", terminalSessions: new Map([["fake", session]]) }, { port: 0 })
+  const response = await fetch(`${server.url}/api/terminal/send`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ command: "WHO" }) })
+  const result = await response.json() as { displayTranscript: string }
+  assert.match(result.displayTranscript, /MPSTORE MULTISNACK/)
+  assert.match(result.displayTranscript, /ACCOUNT-99/)
+  assert.doesNotMatch(result.displayTranscript, /lines omitted/)
+})
+
 test("IDE opens a light terminal with connection controls and an optional agent panel", async () => {
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
   const html = await fetch(server.url).then(response => response.text())

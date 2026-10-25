@@ -116,7 +116,7 @@ function formatTerminalCleanOutput(result: D3CommandResult): string {
   if (issue) return compactText(issue, { maxLines: 24, maxChars: 4000 })
   const body = [result.stdout, result.stderr].filter(Boolean).join("\n")
   const clean = sanitizeD3TerminalOutput(body)
-  return compactText((clean || body.trim() || "(no visible output)").trim(), { maxLines: 40, maxChars: 6000 })
+  return (clean || body.trim() || "(no visible output)").trim()
 }
 
 function appendTerminalTranscript(state: IdeRuntimeState, profileName: string | undefined, command: string, result: D3CommandResult): string {
