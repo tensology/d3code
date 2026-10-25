@@ -27,6 +27,24 @@ export const skills: D3CodeSkill[] = [
     bakedBehavior: ["select mode-specific workflow", "announce active skill pack", "keep evidence tied to each step"],
   },
   {
+    id: "d3-practical",
+    source: "d3code",
+    description:
+      "Verified Rocket D3 operator and BASIC rules learned from live D3 10.3.6 work: the ED editor, compile traps, files and indexes, AQL, prompt handling, pseudo-floppy devices, and phantom scheduling. See skills/d3-practical/SKILL.md and docs/d3-errors-and-fixes.md.",
+    appliesToD3: true,
+    bakedBehavior: [
+      "strip ANSI and NUL before matching a D3 prompt, and accept both ':' and '>'",
+      "write items with ED as I, body, blank line, FI; delete first to replace; chunk writes over ~5 KB",
+      "never start a main program with PROGRAM; SUBROUTINE must be line 1; RELEASE releases a READU item lock",
+      "there is no TCL CALL - catalogue a main program to run logic from the command line",
+      "prefer clear-file; after DELETE-FILE rebuild the dictionary and indexes",
+      "keep AQL reserved words (TOTAL, DATE, LINES) out of dictionary item names",
+      "select tape/pseudo-floppy devices by name with set-device, never set-floppy (it is density, not a device number)",
+      "store backgrounds ACTIVATE.DATE as DATE() and ACTIVATE.TIME as seconds since midnight",
+      "treat production accounts as read-only and develop in a scratch namespace",
+    ],
+  },
+  {
     id: "harness-doctor",
     source: "jcode",
     description: "Adapt JCode-style doctor diagnostics into D3Code readiness checks across model, profile, RAG, references, skills, and Hermes/ECC state.",
