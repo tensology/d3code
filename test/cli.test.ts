@@ -761,14 +761,12 @@ test("CLI exposes first-class D3 item, dictionary, lock, diff, and write command
     /Confirmation required/,
   )
 
-  const write = await execFileAsync("node", ["dist/src/cli.js", "write-item", "CUSTOMERS", "100", "--profile", "fake", "--body-file", proposed, "--confirm"], { cwd: process.cwd(), env })
-  assert.match(write.stdout, /ITEM SAVED/)
+  await assert.rejects(execFileAsync("node", ["dist/src/cli.js", "write-item", "CUSTOMERS", "100", "--profile", "fake", "--body-file", proposed, "--confirm"], { cwd: process.cwd(), env }), /supply its baseline/)
 
   const created = await execFileAsync("node", ["dist/src/cli.js", "create-file", "ORDERS", "--profile", "fake", "--dict-modulo", "3", "--data-modulo", "11", "--confirm"], { cwd: process.cwd(), env })
   assert.match(created.stdout, /ORDERS created/)
 
-  const dictWrite = await execFileAsync("node", ["dist/src/cli.js", "write-dict", "CUSTOMERS", "STATUS", "D\\n4\\nStatus", "--profile", "fake", "--confirm"], { cwd: process.cwd(), env })
-  assert.match(dictWrite.stdout, /DICT SAVED/)
+  await assert.rejects(execFileAsync("node", ["dist/src/cli.js", "write-dict", "CUSTOMERS", "STATUS", "D\\n4\\nStatus", "--profile", "fake", "--confirm"], { cwd: process.cwd(), env }), /supply its baseline/)
 })
 
 test("CLI exposes first-class D3 AQL, compile, catalog, and call commands", async () => {
@@ -804,8 +802,7 @@ test("CLI exposes first-class D3 AQL, compile, catalog, and call commands", asyn
 
   const source = join(home, "GET.CUSTOMER.b")
   await writeFile(source, "SUBROUTINE GET.CUSTOMER(ID)\nRETURN\n")
-  const build = await execFileAsync("node", ["dist/src/cli.js", "build-basic", "BP", "GET.CUSTOMER", "--profile", "fake", "--body-file", source, "--compile", "--catalog", "--confirm"], { cwd: process.cwd(), env })
-  assert.match(build.stdout, /BUILT BASIC OK/)
+  await assert.rejects(execFileAsync("node", ["dist/src/cli.js", "build-basic", "BP", "GET.CUSTOMER", "--profile", "fake", "--body-file", source, "--compile", "--catalog", "--confirm"], { cwd: process.cwd(), env }), /supply its baseline/)
 
   const catalog = await execFileAsync("node", ["dist/src/cli.js", "catalog-basic", "BP", "GET.CUSTOMER", "--profile", "fake", "--global", "--confirm"], { cwd: process.cwd(), env })
   assert.match(catalog.stdout, /CATALOG GLOBAL OK/)

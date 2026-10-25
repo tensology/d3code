@@ -89,6 +89,10 @@ function compactD3CommandResult(result: D3CommandResult, toolName?: string): str
 }
 
 export function compactToolOutput(output: unknown, toolName?: string): string {
+  if ((toolName === "d3_read_item" || toolName === "d3_read_dict") && output && typeof output === "object" && "baseline" in output) {
+    const { baseline: _baseline, ...visible } = output
+    return compactText(JSON.stringify(visible, null, 2), { maxLines: 24, maxChars: 4000 })
+  }
   if (hasCompact(output)) return compactText(output.compact, { maxLines: 24, maxChars: 4000 })
   if (isD3CommandResult(output)) return compactD3CommandResult(output, toolName)
   if (typeof output === "string") return compactText(sanitizeD3TerminalOutput(output), { maxLines: 24, maxChars: 4000 })

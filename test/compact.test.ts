@@ -1,3 +1,4 @@
+import { formatD3ToolResultForModel } from "../src/d3/connection-message.js"
 import assert from "node:assert/strict"
 import test from "node:test"
 import { compactToolOutput, sanitizeD3TerminalOutput } from "../src/tools/compact.js"
@@ -52,4 +53,15 @@ test("compactToolOutput reports persistent session completion without exit unkno
 
   assert.match(compact, /completed · 55ms/)
   assert.doesNotMatch(compact, /exit unknown/)
+})
+
+
+test("lossless read baselines survive compact tool feedback without truncation", () => {
+  const record = { body: "A".repeat(8192), baseline: { profile: "office", connection: "f".repeat(64), original: Buffer.alloc(8192,65).toString("base64") } }
+  for (const name of ["d3_read_item", "d3_read_dict"]) {
+    const compact = compactToolOutput(record,name)
+    assert.ok(!compact.includes("baseline"))
+    assert.ok(compact.length < 4100)
+    assert.deepEqual(JSON.parse(formatD3ToolResultForModel({compact, raw:record})),record)
+  }
 })

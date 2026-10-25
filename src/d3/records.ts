@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from "node:crypto"
 import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 import { assertD3Allowed } from "../core/permissions.js"
-import { recordBytes, recordWriteAllowed, RECORD_MAX_BYTES, type RecordResponse } from "../d3/record-protocol.js"
-import { runRecordOperation } from "../d3/record-session.js"
+import { recordBytes, recordWriteAllowed, RECORD_MAX_BYTES, type RecordResponse } from "./record-protocol.js"
+import { runRecordOperation } from "./record-session.js"
 
 export class EditorRecordError extends Error {
+  get statusCode(): number { return this.status }
   constructor(readonly status: number, message: string, readonly bridgeUnavailable = false) { super(message) }
 }
 

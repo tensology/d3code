@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { Script } from "node:vm"
-import { readEditorRecord, saveEditorRecord, recordConnection, EditorRecordError } from "../src/ide/records.js"
+import { readEditorRecord, saveEditorRecord, recordConnection, EditorRecordError } from "../src/d3/records.js"
 import { startIdeServer } from "../src/ide/server.js"
 import type { runRecordOperation } from "../src/d3/record-session.js"
 import type { ConnectionProfile } from "../src/domain/types.js"

@@ -31,7 +31,7 @@ import { itemBrowserClientScript } from "./item-browser.js"
 import { confirmationClientScript, confirmationHtml } from "./confirmation.js"
 import { listD3Items } from "../d3/items.js"
 import { recordEditorClientScript, recordEditorStyles } from "./record-editor.js"
-import { EditorRecordError, readEditorRecord, saveEditorRecord } from "./records.js"
+import { EditorRecordError, readEditorRecord, saveEditorRecord } from "../d3/records.js"
 import type { runRecordOperation } from "../d3/record-session.js"
 
 export interface IdeRuntimeState {
@@ -1285,8 +1285,8 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     return sendJson(res, 200, editorReadPayload(result))
   }
   if (req.method === "PUT" && url.pathname === "/api/item") {
-    const body = await readJson(req) as { file?: string; item?: string; body?: string; confirmed?: boolean }
-    const result = await runToolByName(config, { name: "d3_write_item", input: { file: body.file, item: body.item, body: body.body ?? "", confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
+    const body = await readJson(req) as { file?: string; item?: string; body?: string; baseline?: unknown; confirmed?: boolean }
+    const result = await runToolByName(config, { name: "d3_write_item", input: { file: body.file, item: body.item, body: body.body ?? "", baseline: body.baseline, confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
   if (req.method === "POST" && url.pathname === "/api/file/create") {
@@ -1300,8 +1300,8 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     return sendJson(res, 200, editorReadPayload(result))
   }
   if (req.method === "PUT" && url.pathname === "/api/dict") {
-    const body = await readJson(req) as { file?: string; item?: string; body?: string; confirmed?: boolean }
-    const result = await runToolByName(config, { name: "d3_write_dict", input: { file: body.file, item: body.item, body: body.body ?? "", confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
+    const body = await readJson(req) as { file?: string; item?: string; body?: string; baseline?: unknown; confirmed?: boolean }
+    const result = await runToolByName(config, { name: "d3_write_dict", input: { file: body.file, item: body.item, body: body.body ?? "", baseline: body.baseline, confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
   if (req.method === "POST" && url.pathname === "/api/aql") {
@@ -1321,7 +1321,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     return sendJson(res, 200, toolResultPayload(result))
   }
   if (req.method === "POST" && url.pathname === "/api/basic/build") {
-    const body = await readJson(req) as { file?: string; item?: string; source?: string; compile?: boolean; catalog?: boolean; global?: boolean; confirmed?: boolean }
+    const body = await readJson(req) as { file?: string; item?: string; source?: string; baseline?: unknown; compile?: boolean; catalog?: boolean; global?: boolean; confirmed?: boolean }
     const result = await runToolByName(config, { name: "d3_build_basic_program", input: body, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }

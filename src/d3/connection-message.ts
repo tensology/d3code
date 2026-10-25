@@ -85,3 +85,9 @@ export function formatD3ToolResultForDisplay(result: { compact: string; raw: unk
   }
   return result.compact
 }
+
+export function formatD3ToolResultForModel(result: { compact: string; raw: unknown }): string {
+  // The model needs exact read baselines; visible tool cards omit encoded record bytes.
+  if (result.raw && typeof result.raw === "object" && "baseline" in result.raw) return JSON.stringify(result.raw)
+  return formatD3ToolResultForDisplay(result)
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { platform } from "node:os"
@@ -1031,20 +1032,20 @@ program.command("estate").description("Explain the selected D3 account estate: l
   console.log(output.compact)
 })
 
-program.command("read-item").argument("<file>").argument("<item>").description("Read a D3 item from the selected profile using CT.").option("--profile <name>").option("--safety <mode>").action(async (file: string, item: string, options: { profile?: string; safety?: string }) => {
+program.command("read-item").argument("<file>").argument("<item>").description("Read a D3 item from the selected profile using CT.").option("--lossless", "return exact record JSON and replacement baseline").option("--profile <name>").option("--safety <mode>").action(async (file: string, item: string, options: { profile?: string; safety?: string; lossless?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
-  const output = await runToolByName(config, { name: "d3_read_item", input: { file, item }, safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile })
-  console.log(output.compact)
+  const output = await runToolByName(config, { name: "d3_read_item", input: { file, item, lossless: options.lossless }, safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile })
+  console.log(options.lossless ? JSON.stringify(output.raw, null, 2) : output.compact)
 })
 
-program.command("write-item").argument("<file>").argument("<item>").argument("[body...]").description("Write a D3 item through ED batch input.").option("--profile <name>").option("--safety <mode>").option("--body-file <file>", "read item body from a local file").option("--confirm", "confirm the write under ask safety").action(async (file: string, item: string, bodyParts: string[] | undefined, options: { profile?: string; safety?: string; bodyFile?: string; confirm?: boolean }) => {
+program.command("write-item").argument("<file>").argument("<item>").argument("[body...]").description("Write a D3 item by guarded replacement.").option("--profile <name>").option("--safety <mode>").option("--baseline-file <file>", "JSON from a prior read-item/read-dict --lossless").option("--body-file <file>", "read item body from a local file").option("--confirm", "confirm the write under ask safety").action(async (file: string, item: string, bodyParts: string[] | undefined, options: { profile?: string; safety?: string; bodyFile?: string; baselineFile?: string; confirm?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
   const output = await runToolByName(config, {
     name: "d3_write_item",
-    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), confirmed: options.confirm },
+    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), baseline: options.baselineFile ? JSON.parse(await readFile(options.baselineFile, "utf8")).baseline : undefined, confirmed: options.confirm },
     safety,
     profile: options.profile,
   })
@@ -1064,20 +1065,20 @@ program.command("create-file").argument("<file>").description("Create a D3 file 
   console.log(output.compact)
 })
 
-program.command("read-dict").argument("<file>").argument("<item>").description("Read a D3 dictionary item using CT DICT.").option("--profile <name>").option("--safety <mode>").action(async (file: string, item: string, options: { profile?: string; safety?: string }) => {
+program.command("read-dict").argument("<file>").argument("<item>").description("Read a D3 dictionary item using CT DICT.").option("--lossless", "return exact record JSON and replacement baseline").option("--profile <name>").option("--safety <mode>").action(async (file: string, item: string, options: { profile?: string; safety?: string; lossless?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
-  const output = await runToolByName(config, { name: "d3_read_dict", input: { file, item }, safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile })
-  console.log(output.compact)
+  const output = await runToolByName(config, { name: "d3_read_dict", input: { file, item, lossless: options.lossless }, safety: effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile), profile: options.profile })
+  console.log(options.lossless ? JSON.stringify(output.raw, null, 2) : output.compact)
 })
 
-program.command("write-dict").argument("<file>").argument("<item>").argument("[body...]").description("Write a D3 dictionary item through ED DICT batch input.").option("--profile <name>").option("--safety <mode>").option("--body-file <file>", "read dictionary body from a local file").option("--confirm", "confirm the write under ask safety").action(async (file: string, item: string, bodyParts: string[] | undefined, options: { profile?: string; safety?: string; bodyFile?: string; confirm?: boolean }) => {
+program.command("write-dict").argument("<file>").argument("<item>").argument("[body...]").description("Write a D3 dictionary item by guarded replacement.").option("--profile <name>").option("--safety <mode>").option("--baseline-file <file>", "JSON from a prior read-item/read-dict --lossless").option("--body-file <file>", "read dictionary body from a local file").option("--confirm", "confirm the write under ask safety").action(async (file: string, item: string, bodyParts: string[] | undefined, options: { profile?: string; safety?: string; bodyFile?: string; baselineFile?: string; confirm?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
   const output = await runToolByName(config, {
     name: "d3_write_dict",
-    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), confirmed: options.confirm },
+    input: { file, item, body: await bodyFromOptions(bodyParts, options.bodyFile), baseline: options.baselineFile ? JSON.parse(await readFile(options.baselineFile, "utf8")).baseline : undefined, confirmed: options.confirm },
     safety,
     profile: options.profile,
   })
@@ -1113,13 +1114,13 @@ program.command("compile-basic").argument("<file>").argument("<item>").descripti
   console.log(output.compact)
 })
 
-program.command("build-basic").argument("<file>").argument("<item>").description("Write BASIC source, then optionally compile and catalog it.").option("--profile <name>").option("--safety <mode>").option("--body-file <file>", "read BASIC source from a local file").option("--compile", "run BASIC after writing").option("--catalog", "run CATALOG after writing or compiling").option("--global", "catalog globally with (G").option("--confirm", "confirm write/build commands under ask safety").action(async (file: string, item: string, options: { profile?: string; safety?: string; bodyFile?: string; compile?: boolean; catalog?: boolean; global?: boolean; confirm?: boolean }) => {
+program.command("build-basic").argument("<file>").argument("<item>").description("Write BASIC source, then optionally compile and catalog it.").option("--profile <name>").option("--safety <mode>").option("--baseline-file <file>", "JSON from a prior read-item/read-dict --lossless").option("--body-file <file>", "read BASIC source from a local file").option("--compile", "run BASIC after writing").option("--catalog", "run CATALOG after writing or compiling").option("--global", "catalog globally with (G").option("--confirm", "confirm write/build commands under ask safety").action(async (file: string, item: string, options: { profile?: string; safety?: string; bodyFile?: string; baselineFile?: string; compile?: boolean; catalog?: boolean; global?: boolean; confirm?: boolean }) => {
   const config = await loadConfig()
   const profile = selectProfile(config, options.profile)
   const safety = effectiveSafety(config, options.safety ? parseSafety(options.safety) : undefined, profile)
   const output = await runToolByName(config, {
     name: "d3_build_basic_program",
-    input: { file, item, source: await bodyFromOptions(undefined, options.bodyFile), compile: options.compile, catalog: options.catalog, global: options.global, confirmed: options.confirm },
+    input: { file, item, source: await bodyFromOptions(undefined, options.bodyFile), compile: options.compile, catalog: options.catalog, global: options.global, baseline: options.baselineFile ? JSON.parse(await readFile(options.baselineFile, "utf8")).baseline : undefined, confirmed: options.confirm },
     safety,
     profile: options.profile,
   })

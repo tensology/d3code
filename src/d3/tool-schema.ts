@@ -19,6 +19,7 @@ const limit = (description: string) => ({ type: "integer", minimum: 1, maximum: 
 const bool = (description: string) => ({ type: "boolean", description })
 const confirmation = bool("Operator confirmation. Never set this from the model; only the CLI/IDE can confirm mutations.")
 
+const baseline = object({ profile: string("Profile from the lossless read."), connection: string("Connection fingerprint from the lossless read."), original: string("Exact base64 original from the lossless read.") }, ["profile", "connection", "original"])
 const emptyObject = object({})
 
 const parameters: Record<string, Record<string, unknown>> = {
@@ -27,8 +28,8 @@ const parameters: Record<string, Record<string, unknown>> = {
   d3_tcl: object({ command: string("One TCL command to run under the active profile."), confirmed: confirmation }, ["command"]),
   d3_login: object({ account: d3Name("D3 account to LOGTO before proof."), confirmed: confirmation }),
   d3_list_files: emptyObject,
-  d3_read_item: object({ file: d3Name("File (master dictionary entry) name."), item: d3Name("Item id to read.") }, ["file", "item"]),
-  d3_write_item: object({ file: d3Name("File name."), item: d3Name("Item id to write."), body: string("Full replacement item body."), confirmed: confirmation }, ["file", "item", "body"]),
+  d3_read_item: object({ file: d3Name("File (master dictionary entry) name."), item: d3Name("Item id to read."), lossless: bool("Return exact bytes and a baseline for replacement.") }, ["file", "item"]),
+  d3_write_item: object({ file: d3Name("File name."), item: d3Name("Item id to write."), body: string("Full replacement item body; newlines are attribute marks."), baseline, confirmed: confirmation }, ["file", "item", "body", "baseline"]),
   d3_create_file: object(
     {
       file: d3Name("New file name."),
@@ -40,8 +41,8 @@ const parameters: Record<string, Record<string, unknown>> = {
     },
     ["file"],
   ),
-  d3_read_dict: object({ file: d3Name("File name."), item: d3Name("Dictionary item id.") }, ["file", "item"]),
-  d3_write_dict: object({ file: d3Name("File name."), item: d3Name("Dictionary item id."), body: string("Full replacement dictionary item body."), confirmed: confirmation }, ["file", "item", "body"]),
+  d3_read_dict: object({ file: d3Name("File name."), item: d3Name("Dictionary item id."), lossless: bool("Return exact bytes and a baseline for replacement.") }, ["file", "item"]),
+  d3_write_dict: object({ file: d3Name("File name."), item: d3Name("Dictionary item id."), body: string("Full replacement dictionary item body; newlines are attribute marks."), baseline, confirmed: confirmation }, ["file", "item", "body", "baseline"]),
   d3_query_aql: object({ query: string("A single read-only LIST/SORT/SELECT/SSELECT/COUNT AQL statement.") }, ["query"]),
   d3_compile_basic: object({ file: d3Name("BASIC source file."), item: d3Name("Program item."), confirmed: confirmation }, ["file", "item"]),
   d3_catalog: object({ file: d3Name("Source file."), item: d3Name("Program item."), global: bool("Catalog globally with (G."), confirmed: confirmation }, ["file", "item"]),
@@ -50,12 +51,13 @@ const parameters: Record<string, Record<string, unknown>> = {
       file: d3Name("Target BASIC file."),
       item: d3Name("Program item."),
       source: string("Full BASIC source."),
+      baseline,
       compile: bool("Compile after writing."),
       catalog: bool("Catalog after a clean compile."),
       global: bool("Catalog globally."),
       confirmed: confirmation,
     },
-    ["file", "item", "source"],
+    ["file", "item", "source", "baseline"],
   ),
   d3_locks: emptyObject,
   d3_call_subroutine: object({ name: d3Name("Cataloged subroutine name."), args: { type: "array", items: { type: "string" }, maxItems: 100, description: "Positional arguments." }, confirmed: confirmation }, ["name"]),

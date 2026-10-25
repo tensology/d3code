@@ -618,8 +618,9 @@ test("IDE server exposes D3/SB+ builder capabilities and build endpoints", async
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ file: "BP", item: "GET.CUSTOMER", source: "SUBROUTINE GET.CUSTOMER(ID)\nRETURN", compile: true, catalog: true, confirmed: true }),
-  }).then((response) => response.json()) as { result: string }
-  assert.match(built.result, /BASIC OK|CATALOG OK|OK/)
+  })
+  assert.equal(built.status, 409)
+  assert.match((await built.json() as { error: string }).error, /supply its baseline/)
 
   const plan = await fetch(`${server.url}/api/sbplus/plan`, {
     method: "POST",

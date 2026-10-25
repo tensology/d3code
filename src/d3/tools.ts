@@ -6,6 +6,9 @@ import { d3Capabilities, renderD3Capabilities } from "./capabilities.js"
 import { detectLocalD3 } from "./detect.js"
 import { inspectD3Estate, listD3Files, dataFileListCommand } from "./estate.js"
 import { formatManualSearchResult, searchDefaultManuals } from "./manual-search.js"
+import { EditorRecordError, readEditorRecord, saveEditorRecord } from "./records.js"
+import { runRecordOperation } from "./record-session.js"
+import { recordBytes } from "./record-protocol.js"
 import { discoverSbplus } from "./sbplus.js"
 
 function requireSession(context: ToolContext) {
@@ -18,27 +21,28 @@ async function runTcl(context: ToolContext, command: string, confirmed = false):
   return requireSession(context).run(command, context.commandTimeoutMs, { signal: context.signal })
 }
 
-// D3's line editor inserts before the current line, so writing over an existing
-// item would prepend instead of replace. Gate the write first, clear the item,
-// then write it in chunks (`I` creates, `9999` + `I` appends).
-async function runReplaceWrite(
-  context: ToolContext,
-  options: { kind: "item" | "dict"; file: string; item: string; body: string; confirmed?: boolean },
-): Promise<D3CommandResult> {
-  const target = options.kind === "dict" ? `DICT ${options.file}` : options.file
-  const buildCommand = options.kind === "dict" ? edWriteDictCommand : edWriteCommand
-  const chunks = chunkForEditor(options.body ?? "")
+interface RecordBaseline { profile: string; connection: string; original: string }
+
+async function runReplaceWrite(context: ToolContext, options: { kind: "item" | "dict"; file: string; item: string; body: string; baseline?: RecordBaseline; confirmed?: boolean }) {
   const profile = context.profile ?? context.session?.profile
-  // Validate every chunk before deleting the previous item or writing any bytes.
-  const commands = chunks.map((chunk, index) => buildCommand(options.file, options.item, chunk, index > 0))
-  for (const command of commands) assertD3Allowed(context.safety, command, options.confirmed, profile?.allowedAccounts, profile)
-  const session = requireSession(context)
-  await session.run(`DELETE ${target} ${options.item}`, context.commandTimeoutMs, { signal: context.signal }).catch(() => undefined)
-  let result: D3CommandResult | undefined
-  for (const command of commands) {
-    result = await session.run(command, context.commandTimeoutMs, { signal: context.signal })
-  }
-  return result ?? session.run(buildCommand(options.file, options.item, ""), context.commandTimeoutMs, { signal: context.signal })
+  assertD3Allowed(context.safety, `UPDATE ${options.file}`, options.confirmed === true, profile?.allowedAccounts, profile)
+  if (!profile) throw new Error("Select a D3 profile before writing.")
+  if (!options.baseline) throw new EditorRecordError(409, "Read this item with lossless:true and supply its baseline before replacing it. No record was changed.")
+  if (/[\r\n]/.test(Buffer.from(options.baseline.original, "base64").toString("latin1"))) throw new EditorRecordError(422, "This text tool cannot replace a record containing literal CR or LF bytes. Use the byte-exact record API.")
+  const replacement = Buffer.from(recordBytes(options.body.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n/g, "\xfe"))).toString("base64")
+  return saveEditorRecord(profile, context.safety, {
+    profile: options.baseline.profile, connection: options.baseline.connection,
+    file: options.file, item: options.item, section: options.kind === "dict" ? "dict" : "data",
+    expected: options.baseline.original, replacement, confirmed: options.confirmed,
+  }, (profile, request) => runRecordOperation(profile, request, { signal: context.signal, timeoutMs: context.commandTimeoutMs }))
+}
+
+async function readLossless(context: ToolContext, file: string, item: string, section: "data" | "dict") {
+  const profile = context.profile ?? context.session?.profile
+  if (!profile) throw new Error("Select a D3 profile before reading.")
+  assertD3Allowed(context.safety, `CT ${file} ${item}`, false, profile.allowedAccounts, profile)
+  const value = await readEditorRecord(profile, { profile: profile.name, file, item, section }, (profile, request) => runRecordOperation(profile, request, { signal: context.signal, timeoutMs: context.commandTimeoutMs }))
+  return { file, item, section, body: Buffer.from(value.original, "base64").toString("latin1").replace(/\xfe/g, "\n"), baseline: { profile: value.profile, connection: value.connection, original: value.original }, writable: value.writable && !/[\r\n]/.test(Buffer.from(value.original, "base64").toString("latin1")) }
 }
 
 function quoteTclArg(value: string): string {
@@ -81,51 +85,6 @@ function requireModulo(value: unknown, label: string): number {
   const modulo = Number(value)
   if (!Number.isInteger(modulo) || modulo <= 0) throw new Error(`${label} must be a positive integer modulo.`)
   return modulo
-}
-
-// D3's line editor ends insert mode on a blank line, then `FI` files the item.
-// Without the blank line the editor stays open and the session never returns to
-// the TCL prompt. `append` positions at a high line number first, which appends.
-function edWriteCommand(file: string, item: string, body: string, append = false): string {
-  const payload = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-  return append
-    ? `ED ${file} ${item}\n9999\nI\n${payload}\n\nFI`
-    : `ED ${file} ${item}\nI\n${payload}\n\nFI`
-}
-
-function edWriteDictCommand(file: string, item: string, body: string, append = false): string {
-  const payload = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-  return append
-    ? `ED DICT ${file} ${item}\n9999\nI\n${payload}\n\nFI`
-    : `ED DICT ${file} ${item}\nI\n${payload}\n\nFI`
-}
-
-// A single ED write stops the session returning to its prompt above roughly
-// 5 KB of payload, so a large item is written in chunks.
-const EDIT_CHUNK_BYTES = 2800
-
-export function chunkForEditor(body: string, maxBytes = EDIT_CHUNK_BYTES): string[] {
-  const lines = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
-  // A blank line ends ED insert mode, so a body with one would be silently
-  // truncated (and any empty attributes lost). Fail loudly instead.
-  if (lines.slice(0, -1).some((line) => line.trim() === "")) {
-    throw new Error("Cannot write a body with a blank line: D3's editor ends insert mode on a blank line, which would silently truncate the item. Build empty attributes with a BASIC writer instead.")
-  }
-  const chunks: string[] = []
-  let current: string[] = []
-  let size = 0
-  for (const line of lines) {
-    const lineSize = line.length + 1
-    if (current.length > 0 && size + lineSize > maxBytes) {
-      chunks.push(current.join("\n"))
-      current = []
-      size = 0
-    }
-    current.push(line)
-    size += lineSize
-  }
-  if (current.length > 0 || chunks.length === 0) chunks.push(current.join("\n"))
-  return chunks
 }
 
 function assertAllowedAccount(context: ToolContext, account: string): void {
@@ -182,22 +141,23 @@ export const d3Tools: ToolDefinition[] = [
   },
   {
     name: "d3_read_item",
-    description: "Read a D3 item using CT.",
+    description: "Read a D3 item. Use lossless:true to obtain exact bytes and the baseline required for a replacement.",
     mutates: false,
     execute: async (input: unknown, context) => {
-      const args = input as { file: string; item: string }
+      const args = input as { file: string; item: string; lossless?: boolean }
+      if (args.lossless) return readLossless(context, requireName(args.file, "file"), requireName(args.item, "item"), "data")
       return runTcl(context, `CT ${requireName(args.file, "file")} ${readItemReference(args.item, "item")} (N`)
     },
   },
   {
     name: "d3_write_item",
-    description: "Write a D3 item through ED batch input (replaces any existing item).",
+    description: "Replace an existing sandbox item using the baseline returned by d3_read_item with lossless:true. Newlines represent attribute marks.",
     mutates: true,
     execute: async (input: unknown, context) => {
-      const args = input as { file: string; item: string; body: string; confirmed?: boolean }
+      const args = input as { file: string; item: string; body: string; baseline?: RecordBaseline; confirmed?: boolean }
       const file = requireName(args.file, "file")
       const item = requireName(args.item, "item")
-      return runReplaceWrite(context, { kind: "item", file, item, body: args.body ?? "", confirmed: args.confirmed })
+      return runReplaceWrite(context, { kind: "item", file, item, body: args.body ?? "", baseline: args.baseline, confirmed: args.confirmed })
     },
   },
   {
@@ -217,22 +177,23 @@ export const d3Tools: ToolDefinition[] = [
   },
   {
     name: "d3_read_dict",
-    description: "Read a D3 dictionary item using CT DICT.",
+    description: "Read a D3 dictionary. Use lossless:true to obtain the baseline required for a replacement.",
     mutates: false,
     execute: async (input: unknown, context) => {
-      const args = input as { file: string; item: string }
+      const args = input as { file: string; item: string; lossless?: boolean }
+      if (args.lossless) return readLossless(context, requireName(args.file, "file"), requireName(args.item, "dictionary item"), "dict")
       return runTcl(context, `CT DICT ${requireName(args.file, "file")} ${readItemReference(args.item, "dictionary item")} (N`)
     },
   },
   {
     name: "d3_write_dict",
-    description: "Write a D3 dictionary item through ED DICT batch input (replaces any existing item).",
+    description: "Replace an existing sandbox dictionary using the baseline returned by d3_read_dict with lossless:true. Newlines represent attribute marks.",
     mutates: true,
     execute: async (input: unknown, context) => {
-      const args = input as { file: string; item: string; body: string; confirmed?: boolean }
+      const args = input as { file: string; item: string; body: string; baseline?: RecordBaseline; confirmed?: boolean }
       const file = requireName(args.file, "file")
       const item = requireName(args.item, "dictionary item")
-      return runReplaceWrite(context, { kind: "dict", file, item, body: args.body ?? "", confirmed: args.confirmed })
+      return runReplaceWrite(context, { kind: "dict", file, item, body: args.body ?? "", baseline: args.baseline, confirmed: args.confirmed })
     },
   },
   {
@@ -264,16 +225,25 @@ export const d3Tools: ToolDefinition[] = [
   },
   {
     name: "d3_build_basic_program",
-    description: "Write BASIC source through ED, then optionally compile and catalog it.",
+    description: "Replace existing sandbox BASIC source using a lossless read baseline, then optionally compile and catalog after a successful compile.",
     mutates: true,
     execute: async (input: unknown, context) => {
-      const args = input as { file: string; item: string; source: string; compile?: boolean; catalog?: boolean; global?: boolean; confirmed?: boolean }
+      const args = input as { file: string; item: string; source: string; baseline?: RecordBaseline; compile?: boolean; catalog?: boolean; global?: boolean; confirmed?: boolean }
       const file = requireName(args.file, "file")
       const item = requireName(args.item, "item")
-      const commands = [edWriteCommand(file, item, args.source ?? "")]
+      if (args.catalog && !args.compile) throw new Error("Catalog requires compile:true so the newly saved source is compiled first.")
+      const commands: string[] = []
       if (args.compile) commands.push(`BASIC ${file} ${item}`)
       if (args.catalog) commands.push(`CATALOG ${file} ${item}${args.global ? " (G" : ""}`)
-      return runTcl(context, commands.join("\n"), args.confirmed)
+      for (const command of commands) assertD3Allowed(context.safety, command, args.confirmed === true, context.profile?.allowedAccounts, context.profile)
+      const saved = await runReplaceWrite(context, { kind: "item", file, item, body: args.source, baseline: args.baseline, confirmed: args.confirmed })
+      const results: D3CommandResult[] = []
+      for (const command of commands) {
+        const result = await runTcl(context, command, args.confirmed)
+        results.push(result)
+        if (command.startsWith("BASIC ") && ((result.exitCode !== null && result.exitCode !== 0) || !/\[241\].*Successful compile/i.test(result.stdout))) return { ...saved, results, status: "warning", message: "BASIC compilation was not successful. Source was saved; catalog was not run." }
+      }
+      return { ...saved, results }
     },
   },
   {

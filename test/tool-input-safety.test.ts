@@ -97,10 +97,22 @@ test("AQL comparisons execute only through native transport and never self-confi
 })
 
 
-test("structured writes preflight later chunks before deleting the old item", async () => {
+test("structured writes without a baseline never execute line-editor commands", async () => {
   const commands: string[] = []
   const context = { ...fakeContext(commands), safety: "trust" as const }
   const body = [...Array(40).fill("X".repeat(100)), "! echo UNAPPROVED"].join("\n")
-  await assert.rejects(tool("d3_write_item").execute({ file: "BP", item: "TEST", body }, context), /Confirmation required/)
+  await assert.rejects(tool("d3_write_item").execute({ file: "BP", item: "TEST", body }, context), /supply its baseline/)
+  assert.deepEqual(commands, [])
+})
+
+
+test("all replacement tools reject missing or stale baselines before running D3 commands", async () => {
+  const commands: string[] = []
+  const context = { ...fakeContext(commands), safety: "ask" as const }
+  for (const name of ["d3_write_item", "d3_write_dict", "d3_build_basic_program"]) {
+    const input = { file: "D3CODE.TEST", item: "ITEM", body: "A\n\nB\xfdC\xfcD  ", source: "STOP", confirmed: true }
+    await assert.rejects(tool(name).execute(input, context), /supply its baseline/)
+    await assert.rejects(tool(name).execute({ ...input, baseline: { profile: "fake", connection: "stale", original: "" } }, context), /Connection settings changed/)
+  }
   assert.deepEqual(commands, [])
 })
