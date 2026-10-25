@@ -1,0 +1,20 @@
+LOCAL NATIVE TOOL CHECK
+PASS native tool exact same-byte replacement, approval and stale refusal d3_read_item
+PASS native tool exact same-byte replacement, approval and stale refusal d3_read_dict
+PASS native build tool saves before successful compilation
+PASS native failed compilation prevents catalog and returns diagnostics
+PASS source fixture restored byte-for-byte and original recompiled
+
+PRODUCTION IDENTITY CHECK
+PASS native tool exact same-byte replacement, approval and stale refusal d3_read_item
+PASS native tool exact same-byte replacement, approval and stale refusal d3_read_dict
+PASS native build tool saves before successful compilation
+PASS native failed compilation prevents catalog and returns diagnostics
+PASS source fixture restored byte-for-byte and original recompiled
+
+BRANDED BROWSER CHECK
+PASS record API denies anonymous and unflagged other customer
+PASS production legacy API writes require a lossless baseline
+PASS model reports four attributes including the trailing empty attribute
+PASS production OpenRouter lossless read and readable tool card at four widths
+Test browser closed and temporary login sessions removed

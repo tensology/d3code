@@ -1,8 +1,8 @@
 # D3Code production checkpoint, 25 October 2026
 
-Verdict: **Incomplete for the requested full developer IDE.** The deployed connection, read/browse workflow and command approval changes have live evidence. This checkpoint does not approve the legacy record writer for production data.
+Verdict: **Incomplete for the requested full developer IDE.** The deployed connection, read/browse workflow and command approval changes have live evidence. The 26 October typed-write checkpoint below replaces the old automated line-editor writers; broader production data use remains unapproved.
 
-Application revision: `a562ed4` (26 October record editor and contextual output checkpoint). Shared standalone and Tensology application, deployed at `/var/www/d3code`, serving Crystal Logic through `d3code@51.service` and the authenticated Tensology proxy.
+Application revision: `0e63377` (26 October record editor and contextual output checkpoint). Shared standalone and Tensology application, deployed at `/var/www/d3code`, serving Crystal Logic through `d3code@51.service` and the authenticated Tensology proxy.
 
 Entry point: https://tickets.crystallogic.co.za/dashboard/d3code
 
@@ -54,7 +54,7 @@ Additional captures: [prefix search](evidence/2026-10-25-d3code/item-search-1440
 
 ## Outstanding product work
 
-1. Migrate the remaining legacy tool and item/dictionary API writers to the native record protocol. The shared editor now uses guarded compare-and-replace, but the legacy text-editor replacement paths can still lose record structure or concurrent edits.
+1. Broaden the verified existing-record sandbox workflow to creation and other explicitly approved data scopes. The typed item/dictionary/build writers and their legacy API routes now use guarded native replacement. Generated migration adapter templates still contain their own line-editor writes and require a separate correction before use.
 2. Complete record creation, structural attribute/value editing, dictionary-aware labels, code editing, catalog/run integration, and recovery. Existing-record source, structured data and dictionary saves have the bounded live evidence below.
 3. Verified per-account discovery of native D3, SB and SB+ facilities, with relevant screen-building tools only when supported.
 4. Usable phantom, scheduler, spooler, lock and operational workflows with explicit mutation controls.
@@ -135,3 +135,39 @@ Final production structured-data and dictionary captures at `a562ed4` were rende
 | Dictionary | [390](evidence/2026-10-26-record-editor/dict-current-390.png) | [768](evidence/2026-10-26-record-editor/dict-current-768.png) | [1280](evidence/2026-10-26-record-editor/dict-current-1280.png) | [1440](evidence/2026-10-26-record-editor/dict-current-1440.png) |
 
 Shared MemPalace filing failed with Transport closed. This committed report is the durable checkpoint; no successful memory write is claimed.
+
+## Typed-write checkpoint, 26 October
+
+Revisions `a66ef77`, `2b65ee0` and `0e63377` route item, dictionary and BASIC build replacements through the same native save service as the editor. The service moved from `src/ide/records.ts` to `src/d3/records.ts`; its connection fingerprint, byte comparison, scope checks, approval boundary and verified readback are shared. Automated typed writes no longer delete and reconstruct records through ED.
+
+| Caller | Replacement contract | Evidence |
+| --- | --- | --- |
+| Item/dictionary tools | Prior `lossless:true` read returns profile, connection fingerprint and exact original bytes. Writes require that baseline and explicit approval. | Live sandbox exact replacement and stale refusal, both locally and through the production service identity. |
+| BASIC build tool | Save first, then compile; catalog requires compile and only follows a successful native `[241]` result. | Live successful build and deliberate compile failure; catalog skipped on failure, source restored and original recompiled. |
+| Legacy item/dictionary/build HTTP routes | Forward the baseline and reject its absence or stale connection. | Local API regression checks and branded production 409 rejection without a baseline. |
+| CLI | `read-item`/`read-dict --lossless` emits full JSON; write/build accepts `--baseline-file`. | Two affected CLI regression journeys pass; the native CLI proof is recorded below after completion. |
+| Agent tool feedback | Model receives exact baseline; visible read/write cards omit encoded original bytes. Lossless reads include the existing record-shape analysis. | Unit checks cover full baseline preservation and compact visible feedback. Production model verification is recorded below. |
+
+Focused automated checks: 81 permission/input, compact-feedback, record API, IDE and agent-loop tests passed; 12 guidance/recipe tests passed. TypeScript compilation passed. The old shell-only CLI success fixtures were changed to require baseline rejection, because they cannot prove native replacement; real D3 evidence supplies that positive proof. A new HTTP regression initially sent a source field to item/dictionary routes and failed strict input validation; the fixture was corrected before the passing run.
+
+Native checks used only existing `D3CODE.RECORD.TEST` items and the owned `D3CODE.EDIT.UI.*` source fixture. Data and dictionary replacements used the identical original bytes. The source test verified successful compilation, then deliberately saved invalid fixture source and requested compile plus catalog. Compilation failed and catalog did not run. Finally, the test compared known fixture versions, restored the exact original and recompiled it. The production identity repeated the same checks and closed all dedicated sessions.
+
+The practical skill, built-in mode guidance and CLI recipes no longer recommend delete-first replacement. Automatic port allocation is documented. Missing helper or baseline, conflict, unsupported text, or scope denial stops a typed write. Literal CR/LF in an existing record is refused by the text tool to avoid confusing it with attribute marks; the byte-exact API remains the route for those records. New records and arbitrary production files remain outside this verified scope.
+
+During the first live model review, the model successfully read the record but miscounted a trailing empty attribute. That answer was rejected as semantic evidence. Lossless results now include `analyzeD3Record` output, with a regression for four attributes including the trailing empty field. Full final model and visual results are recorded below, not inferred from successful tool execution.
+
+The server temporary-login harness uses the existing `/opt/venvs/tensology/bin/python`, verified as Python 3.12.3 with Django 5.2.10. No local Python environment or new dependency was used.
+
+### Final typed-write verification
+
+The actual CLI completed `read-item --lossless`, loaded that JSON through `--baseline-file`, performed an approved identical-byte replacement and independently read back the exact original bytes. The production browser repeated anonymous 401 and unflagged other-customer 403 denial, plus baseline-required 409 rejection for the three legacy write routes. OpenRouter invoked a native lossless read and then reported the supplied attribute count of four. The tool card omitted baseline/original encodings, and no JavaScript errors occurred. All temporary browser/login sessions were cleaned up.
+
+The four final production chat captures below were individually inspected at readable resolution. The composer and controls stay within the workspace; tool details and conversation history use contained scrolling. The visible tool result includes the record-shape evidence and no encoded baseline.
+
+| Final lossless tool card | 390 | 768 | 1280 | 1440 |
+| --- | --- | --- | --- | --- |
+| Chat | [390](evidence/2026-10-26-record-editor/lossless-chat-390.png) | [768](evidence/2026-10-26-record-editor/lossless-chat-768.png) | [1280](evidence/2026-10-26-record-editor/lossless-chat-1280.png) | [1440](evidence/2026-10-26-record-editor/lossless-chat-1440.png) |
+
+Semantic limit: although the final answer correctly reported four attributes, it added an unsupported "M" attribute label. That extra interpretation is not accepted as evidence. The verified claim is the native read, exact metadata count and baseline availability; general model data interpretation remains under review. This checkpoint does not approve arbitrary production writes, new-record creation, generated migration adapter writers, SB/SB+ builders, operational workflows or multiple-enabled-customer isolation.
+
+Interaction rationale: retain exact baselines for optimistic concurrency while showing readable result summaries (Nielsen #1 and #5, visibility and error prevention). A failed compile keeps diagnostics and skips catalog instead of treating a saved source as a successful build (Nielsen #1 and #9).
