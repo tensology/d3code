@@ -31,7 +31,7 @@ import { itemBrowserClientScript } from "./item-browser.js"
 import { confirmationClientScript, confirmationHtml } from "./confirmation.js"
 import { listD3Items } from "../d3/items.js"
 import { recordEditorClientScript, recordEditorStyles } from "./record-editor.js"
-import { EditorRecordError, readEditorRecord, saveEditorRecord } from "../d3/records.js"
+import { EditorRecordError, readEditorRecord, saveEditorRecord, prepareEditorRecord, createEditorRecord } from "../d3/records.js"
 import type { runRecordOperation } from "../d3/record-session.js"
 
 export interface IdeRuntimeState {
@@ -1264,16 +1264,16 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     const result = await runToolByName(config, { name: "d3_index_account", input: { saveAs: body.saveAs }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
-  if ((req.method === "GET" || req.method === "PUT") && url.pathname === "/api/record") {
+  if ((["GET", "PUT", "POST"].includes(req.method ?? "") && url.pathname === "/api/record") || (req.method === "GET" && url.pathname === "/api/record/new")) {
     try {
       const profile = selectProfile(config, state.profile)
       if (!profile) return sendJson(res, 400, { error: "Select a D3 connection first." })
       const input = req.method === "GET" ? Object.fromEntries(url.searchParams) : await readJson(req)
       if (!input || typeof input !== "object" || Array.isArray(input)) return sendJson(res, 400, { error: "Record request must be an object." })
       const value = req.method === "GET"
-        ? await readEditorRecord(profile, input as Record<string, unknown>, options.recordOperation)
-        : await saveEditorRecord(profile, state.safety, input as Record<string, unknown>, options.recordOperation)
-      return sendJson(res, 200, value)
+        ? await (url.pathname === "/api/record/new" ? prepareEditorRecord : readEditorRecord)(profile, input as Record<string, unknown>, options.recordOperation)
+        : await (req.method === "POST" ? createEditorRecord : saveEditorRecord)(profile, state.safety, input as Record<string, unknown>, options.recordOperation)
+      return sendJson(res, req.method === "POST" ? 201 : 200, value)
     } catch (error) {
       if (error instanceof EditorRecordError) return sendJson(res, error.status, { error: error.message, bridgeUnavailable: error.bridgeUnavailable })
       throw error

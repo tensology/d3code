@@ -2,11 +2,11 @@ import { createHash } from "node:crypto"
 
 export const RECORD_MAX_BYTES = 8192
 export const RECORD_FRAME_HEX_CHARS = 64
-export const RECORD_CAPABILITIES = "D3CODE.RECORD/1;MAX_BYTES=8192;READ;CAS_EXISTING;WRITE_PREFIX=D3CODE.;WRITE_SOURCE=bp:D3CODE."
+export const RECORD_CAPABILITIES = "D3CODE.RECORD/1;MAX_BYTES=8192;READ;CAS_EXISTING;CREATE_ONLY;WRITE_PREFIX=D3CODE.;WRITE_SOURCE=bp:D3CODE."
 const maxRequestBytes = 32 + 200 + 2 * RECORD_MAX_BYTES
 
 export type RecordRequest = { operation: "VERSION"; nonce: string } | {
-  operation: "READ" | "CAS_EXISTING"
+  operation: "READ" | "CAS_EXISTING" | "CREATE_ONLY"
   nonce: string
   file: string
   section?: "data" | "dict"
@@ -47,7 +47,7 @@ export function encodeRecordRequest(request: RecordRequest): { nonce: string; fr
   Buffer.from(nonce, "hex").copy(header, 6)
   let fields: Buffer[] = []
   if (request.operation !== "VERSION") {
-    if (request.operation !== "READ" && request.operation !== "CAS_EXISTING") throw new Error("Unknown record operation.")
+    if (request.operation !== "READ" && request.operation !== "CAS_EXISTING" && request.operation !== "CREATE_ONLY") throw new Error("Unknown record operation.")
     if (!/^[A-Za-z0-9_.:$-]{1,100}$/.test(request.file)) throw new Error("Invalid record file name.")
     const section = request.section ?? "data"
     if (section !== "data" && section !== "dict") throw new Error("Record section must be data or dict.")
@@ -55,10 +55,11 @@ export function encodeRecordRequest(request: RecordRequest): { nonce: string; fr
     if (!item.length || item.some(byte => byte >= 247)) throw new Error("Item ID must contain 1-100 bytes below 247.")
     const file = Buffer.from(request.file, "ascii")
     const expected = request.operation === "CAS_EXISTING" ? checkedBytes(request.expected, RECORD_MAX_BYTES, "Expected record") : Buffer.alloc(0)
-    const replacement = request.operation === "CAS_EXISTING" ? checkedBytes(request.replacement, RECORD_MAX_BYTES, "Replacement record") : Buffer.alloc(0)
+    const replacement = request.operation !== "READ" ? checkedBytes(request.replacement, RECORD_MAX_BYTES, "Replacement record") : Buffer.alloc(0)
     if (request.operation === "READ" && (request.expected !== undefined || request.replacement !== undefined)) throw new Error("READ must not contain write payloads.")
-    if (request.operation === "CAS_EXISTING" && !recordWriteAllowed(request.file, item, section)) throw new Error("Record writes are restricted to D3CODE. sandbox files and programs.")
-    header[4] = request.operation === "READ" ? 1 : 2
+    if (request.operation === "CREATE_ONLY" && request.expected !== undefined) throw new Error("CREATE_ONLY must not contain an expected record.")
+    if (request.operation !== "READ" && !recordWriteAllowed(request.file, item, section)) throw new Error("Record writes are restricted to D3CODE. sandbox files and programs.")
+    header[4] = request.operation === "READ" ? 1 : request.operation === "CAS_EXISTING" ? 2 : 3
     header[5] = section === "dict" ? 1 : 0
     header[22] = file.length
     header[23] = item.length
@@ -70,7 +71,7 @@ export function encodeRecordRequest(request: RecordRequest): { nonce: string; fr
   return { nonce, frames: [...hex.match(/.{1,64}/g)!, "."] }
 }
 
-const statuses = ["VERSION", "READ", "OK", "NOT_FOUND", "BUSY", "CONFLICT", "WRITE_DENIED", "WRITE_ERROR", "VERIFY_FAILED", "OPEN_FAILED", "UNSUPPORTED_BINARY", "TOO_LARGE", "BAD_REQUEST", "INPUT_TIMEOUT"] as const
+const statuses = ["VERSION", "READ", "OK", "ALREADY_EXISTS", "NOT_FOUND", "BUSY", "CONFLICT", "WRITE_DENIED", "WRITE_ERROR", "VERIFY_FAILED", "OPEN_FAILED", "UNSUPPORTED_BINARY", "TOO_LARGE", "BAD_REQUEST", "INPUT_TIMEOUT"] as const
 export type RecordStatus = typeof statuses[number]
 export interface RecordResponse { status: RecordStatus; bytes: Uint8Array; lockOwner?: number }
 
@@ -162,7 +163,7 @@ IF MODE = 0 THEN
   RESP = "${RECORD_CAPABILITIES}"
   GOTO FINISH
 END
-IF MODE # 1 AND MODE # 2 THEN GOTO FINISH
+IF MODE # 1 AND MODE # 2 AND MODE # 3 THEN GOTO FINISH
 IF SECTION > 1 OR FILE.LEN < 1 OR FILE.LEN > 100 OR ID.LEN < 1 OR ID.LEN > 100 THEN GOTO FINISH
 RAW = ""
 FOR POS = 65 TO LEN(WIRE) STEP 2
@@ -181,7 +182,8 @@ FOR POS = 1 TO ID.LEN
   IF SEQ(ITEM.ID[POS,1]) > 246 THEN GOTO FINISH
 NEXT POS
 IF MODE = 1 AND (OLD.LEN # 0 OR NEW.LEN # 0) THEN GOTO FINISH
-IF MODE = 2 THEN
+IF MODE = 3 AND OLD.LEN # 0 THEN GOTO FINISH
+IF MODE = 2 OR MODE = 3 THEN
   PREFIX = "D3CODE."
   WRITE.OK = 0
   IF FILE.LEN > 7 THEN
@@ -220,8 +222,9 @@ END ELSE
   END THEN FOUND = 1
   HELD = 1
 END
+IF MODE = 3 AND FOUND THEN STATUS = "ALREADY_EXISTS"; GOTO FINISH
 IF SYSTEM(0) = 10 THEN STATUS = "UNSUPPORTED_BINARY"; GOTO FINISH
-IF FOUND = 0 THEN STATUS = "NOT_FOUND"; GOTO FINISH
+IF FOUND = 0 AND MODE # 3 THEN STATUS = "NOT_FOUND"; GOTO FINISH
 IF LEN(CURRENT) > MAX.BYTES THEN STATUS = "TOO_LARGE"; GOTO FINISH
 RESP = CURRENT
 IF MODE = 1 THEN STATUS = "READ"; GOTO FINISH

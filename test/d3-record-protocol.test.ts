@@ -122,3 +122,18 @@ test("immutable deployment identity hashes final source and includes lock-safe s
   assert.match(recordHelper.source, /PREFIX = "D3CODE\."/)
   assert.doesNotMatch(recordHelper.source, /\bDELETE\b|\bEXECUTE\b|\bCATALOG\b(?! REQUIRED)/)
 })
+
+test("creation has a distinct operation and cannot replace an existing zero-byte record", () => {
+  const request={operation:"CREATE_ONLY" as const,nonce,file:"D3CODE.TEST",item:recordBytes("NEW"),replacement:recordBytes("A\xfe\xfeB\xfdC\xfcD  \xfe")}
+  const encoded=encodeRecordRequest(request)
+  const bytes=Buffer.from(encoded.frames.slice(0,-1).join(""),"hex")
+  assert.equal(bytes[4],3)
+  assert.equal(bytes.readUInt32BE(24),0)
+  assert.equal(bytes.readUInt32BE(28),request.replacement.length)
+  assert.throws(()=>encodeRecordRequest({...request,expected:Buffer.alloc(0)}),/must not contain an expected record/)
+  assert.throws(()=>encodeRecordRequest({...request,replacement:undefined}),/Replacement record must be bytes/)
+  assert.throws(()=>encodeRecordRequest({...request,file:"CUSTOMERS"}),/restricted/)
+  assert.throws(()=>encodeRecordRequest({...request,file:"bp",section:"dict"}),/restricted/)
+  assert.deepEqual(parseRecordResponse(response(Buffer.alloc(0),"ALREADY_EXISTS"),nonce),{status:"ALREADY_EXISTS",bytes:Buffer.alloc(0)})
+  assert.throws(()=>parseRecordResponse(response(recordBytes("private existing data"),"ALREADY_EXISTS"),nonce),/Unexpected payload/)
+})

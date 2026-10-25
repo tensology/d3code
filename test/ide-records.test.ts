@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { Script } from "node:vm"
-import { readEditorRecord, saveEditorRecord, recordConnection, EditorRecordError } from "../src/d3/records.js"
+import { readEditorRecord, saveEditorRecord, createEditorRecord, prepareEditorRecord, recordConnection, EditorRecordError } from "../src/d3/records.js"
 import { startIdeServer } from "../src/ide/server.js"
 import type { runRecordOperation } from "../src/d3/record-session.js"
 import type { ConnectionProfile } from "../src/domain/types.js"
@@ -53,13 +53,18 @@ test("read errors distinguish unavailable bridge from missing or unsupported rec
 })
 
 test("IDE record API enforces the active connection, approval and native conflict response", async () => {
-  let stored = Buffer.from(original), writes = 0
+  let stored: Buffer | undefined = Buffer.from(original), writes = 0
   const handle = await startIdeServer({ version: 1, defaultModel: "openai/gpt-5", defaultSafety: "ask", defaultProfile: "office", profiles: [profile], modelSecrets: {} }, { model: "openai/gpt-5", safety: "ask", profile: "office", mode: "chat" }, {
     port: 0, host: "127.0.0.1", requireAuth: false,
     recordOperation: async (_profile, request) => {
       assert.notEqual(request.operation, "VERSION")
       if (request.operation === "VERSION") throw Error("unexpected")
-      if (request.operation === "READ") return { status: "READ", bytes: stored }
+      if (request.operation === "READ") return stored === undefined ? { status: "NOT_FOUND", bytes: Buffer.alloc(0) } : { status: "READ", bytes: stored }
+      if (request.operation === "CREATE_ONLY") {
+        if (stored !== undefined) return { status: "ALREADY_EXISTS", bytes: Buffer.alloc(0) }
+        writes++;stored=Buffer.from(request.replacement!);return { status: "OK", bytes: stored }
+      }
+      if (stored === undefined) return { status: "NOT_FOUND", bytes: Buffer.alloc(0) }
       writes++
       if (!stored.equals(Buffer.from(request.expected!))) return { status: "CONFLICT", bytes: stored }
       stored = Buffer.from(request.replacement!);return { status: "OK", bytes: stored }
@@ -76,5 +81,37 @@ test("IDE record API enforces the active connection, approval and native conflic
     const conflict = await put(input);assert.equal(conflict.status, 409);assert.match((await conflict.json() as { error: string }).error, /draft is kept/)
     query.set("profile", "other");assert.equal((await fetch(handle.url + "/api/record?" + query)).status, 409)
     assert.equal((await put([])).status, 400)
+    query.set("profile", "office");stored=undefined
+    const prepared=await fetch(handle.url+"/api/record/new?"+query)
+    assert.equal(prepared.status,200)
+    assert.equal((await prepared.json() as {connection:string}).connection,recordConnection(profile))
+    const {expected:_expected,...creation}=input
+    const post=(body:unknown)=>fetch(handle.url+"/api/record",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+    const before=writes
+    assert.equal((await post({...creation,confirmed:false})).status,409);assert.equal(writes,before)
+    assert.equal((await post(creation)).status,201)
+    assert.equal((await post({...creation,replacement:Buffer.from("must not overwrite").toString("base64")})).status,409)
+    assert.deepEqual(stored,Buffer.from(input.replacement,"base64"))
+    assert.equal((await fetch(handle.url+"/api/record/new?"+query)).status,409)
+    stored=undefined
+    assert.equal((await fetch(handle.url+"/api/record/new?"+query)).status,200)
+    stored=Buffer.alloc(0)
+    assert.equal((await post(creation)).status,409);assert.equal(stored.length,0)
+
   } finally { await handle.close() }
+})
+
+test("creation preparation distinguishes a missing item from an existing empty item or missing file",async()=>{
+  const prepared=await prepareEditorRecord(profile,input,async()=>({status:"NOT_FOUND",bytes:Buffer.alloc(0)}))
+  assert.equal(prepared.missing,true);assert.equal(prepared.connection,recordConnection(profile))
+  for(const [status,code]of[["READ",409],["OPEN_FAILED",404],["BUSY",409]]as const) await assert.rejects(prepareEditorRecord(profile,input,async()=>({status,bytes:Buffer.alloc(0)})),error=>error instanceof EditorRecordError&&error.status===code)
+})
+
+test("creation requires unchanged connection, bounded bytes, sandbox scope and approval",async()=>{
+  const {expected:_expected,...creation}=input;let calls=0
+  const operation:typeof runRecordOperation=async(_profile,request)=>{calls++;assert.equal(request.operation,"CREATE_ONLY");assert.equal(request.expected,undefined);return{status:"OK",bytes:Buffer.from(input.replacement,"base64")}}
+  for(const [mode,changed,code]of[["ask",{confirmed:false},409],["plan",{},403],["ask",{connection:"stale"},409],["ask",{expected:""},400],["ask",{replacement:"@@@"},400],["ask",{replacement:Buffer.alloc(8193).toString("base64")},400],["ask",{file:"CUSTOMERS"},403]]as const)await assert.rejects(createEditorRecord(profile,mode,{...creation,...changed},operation),error=>error instanceof EditorRecordError&&error.status===code)
+  assert.equal(calls,0);assert.equal((await createEditorRecord(profile,"ask",creation,operation)).saved,true);assert.equal(calls,1)
+  await assert.rejects(createEditorRecord(profile,"ask",creation,async()=>({status:"ALREADY_EXISTS",bytes:Buffer.alloc(0)})),error=>error instanceof EditorRecordError&&error.status===409&&/draft is kept/.test(error.message))
+  await assert.rejects(createEditorRecord(profile,"ask",creation,async()=>{throw Error("private payload")}),error=>error instanceof EditorRecordError&&/may have been created/.test(error.message)&&!error.message.includes("private"))
 })
