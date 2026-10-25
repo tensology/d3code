@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
+import { Script, runInNewContext } from "node:vm"
 import type { D3CodeConfig } from "../src/config/config.js"
 import type { D3Session } from "../src/domain/types.js"
 import { basicAuthHeader, defaultIdeAuth } from "../src/ide/auth.js"
@@ -39,6 +40,45 @@ function startTestIdeServer(config: D3CodeConfig, state: IdeRuntimeState, option
 
 test.afterEach(async () => {
   await stopIdeServers()
+})
+
+test("IDE opens a light terminal with connection controls and an optional agent panel", async () => {
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const html = await fetch(server.url).then(response => response.text())
+  assert.match(html, /<body data-theme="light" data-view="terminal" data-agent-panel="hidden">/)
+  assert.match(html, /id="terminalProfile" aria-label="D3 connection profile"/)
+  assert.match(html, /id="terminalAccount"/)
+  assert.match(html, /id="agentPanelToggle"[^>]*aria-pressed="false"/)
+  assert.match(html, /setView\('terminal'\)/)
+  assert.doesNotMatch(html, /chat-welcome|What do you want to inspect, change, or prove|animateComposerDock/)
+  assert.doesNotMatch(html, /\.chat-main\.chat-empty [^{]+\{|\.agent-shell\.chat-empty [^{]+\{/)
+  assert.match(html, /\.chat-stage\{[^}]*display:grid;grid-template-rows:1fr auto/)
+  assert.match(html, /\.chat-main\{height:calc\(100dvh - 44px\);min-height:0\}/)
+  assert.doesNotMatch(html, /\.chat-main\{display:block|\.chat-thread-main\{min-height:360px/)
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1]
+  assert.ok(script)
+  new Script(script)
+  const button = { classList: { toggle() {} }, setAttribute(name: string, value: string) { attributes[name] = value }, title: "" }
+  const attributes: Record<string, string> = {}
+  const body = { dataset: { agentPanel: "hidden", view: "terminal" } }
+  const toggle = script.match(/function setAgentPanel\(open\)\{[\s\S]*?(?=\$\('agentPanelToggle'\)\.onclick)/)?.[0]
+  assert.ok(toggle)
+  runInNewContext(toggle + ";setAgentPanel(true)", { document: { body, querySelector: () => null }, $: () => button, requestAnimationFrame: () => {} })
+  assert.equal(body.dataset.agentPanel, "visible")
+  assert.equal(attributes["aria-pressed"], "true")
+  runInNewContext(toggle + ";setAgentPanel(false)", { document: { body }, $: () => button })
+  assert.equal(body.dataset.agentPanel, "hidden")
+  assert.equal(attributes["aria-pressed"], "false")
+
+  const calls: string[] = []
+  const reconnect = script.match(/async function reconnectTerminal\(\)\{[\s\S]*?(?=bindTerminalInput\(\$\('terminalMain'\)\))/)?.[0]
+  assert.ok(reconnect)
+  await runInNewContext(reconnect + ";reconnectTerminal()", {
+    terminalBusy: false, terminalConnectionState: {}, renderTerminalConnection() {}, setTerminalTranscript() {},
+    api: async (path: string) => { calls.push(path); return {} },
+    sendTerminalCommand: async (command: string) => { calls.push(command) },
+  })
+  assert.deepEqual(calls, ["/api/terminal/reset", "WHO"])
 })
 
 test("IDE server serves browser shell and D3 profile APIs", async () => {
@@ -101,7 +141,7 @@ test("IDE server serves browser shell and D3 profile APIs", async () => {
   assert.match(html, /shouldProcessAgentEvent/)
   assert.match(html, /runKey/)
   assert.match(html, /id="mobilePanelButton"/)
-  assert.match(html, /class="chat-welcome"/)
+  assert.doesNotMatch(html, /class="chat-welcome"/)
   assert.match(html, /editor-action-group/)
   assert.match(html, /aria-pressed="true"/)
   assert.match(html, /prefers-reduced-motion:reduce/)

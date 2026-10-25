@@ -1,4 +1,4 @@
-Pressure run 2026-10-25T08:40:03.358Z
+Pressure run 2026-10-25T13:36:28.507Z
 $ D3CODE.PRESSURE
 D3CODE.PRESSURE
 CHECK 2.1 PASS BAD.QTY
@@ -72,9 +72,9 @@ top
 [221] 'SKU-9' filed.
 $ race
 R1: D3CODE.T.R1
-RACE1 B9080*1
+RACE1 NO.STOCK:SKU-3
 R2: D3CODE.T.R2
-RACE2 NO.STOCK:SKU-3
+RACE2 B9081*1
 $ LIST-LOCKS
 LIST-LOCKS (N
 System Locks
@@ -100,28 +100,28 @@ Phantom Locks
 Group Locks         PIB#  Lvl  Type  Filename
 $ 6-way stress
 D3CODE.T.S0
-STRESS0 S0*1
+STRESS0 NO.STOCK:SKU-3
 D3CODE.T.S1
 STRESS1 S1*1
 D3CODE.T.S2
-STRESS2 S2*1
+STRESS2 NO.STOCK:SKU-3
 D3CODE.T.S3
 STRESS3 NO.STOCK:SKU-3
 D3CODE.T.S4
-STRESS4 NO.STOCK:SKU-3
+STRESS4 S4*1
 D3CODE.T.S5
-STRESS5 NO.STOCK:SKU-3
+STRESS5 S5*1
 $ same-order contention
 D3CODE.T.O0
-SAME0 SAME*2
+SAME0 SAME*5
 D3CODE.T.O1
-SAME1 SAME*1
+SAME1 SAME*2
 D3CODE.T.O2
-SAME2 SAME*5
+SAME2 SAME*3
 D3CODE.T.O3
 SAME3 SAME*4
 D3CODE.T.O4
-SAME4 SAME*3
+SAME4 SAME*1
 $ mixed contention
 D3CODE.T.M0
 MIX0 MIX*2
@@ -143,24 +143,20 @@ LIC1 P1*1
 D3CODE.T.L2
 LIC2 P2*1
 D3CODE.T.L3
-LIC3 P3*1
+LIC3 P3*1
 D3CODE.T.L4
 LIC4 P4*1
 D3CODE.T.L5
 LIC5 P5*1
 D3CODE.T.L6
 LIC6 P6*1
-D3CODE.T.L7
-LIC7 P7*1
-D3CODE.T.L8
-LIC8 P8*1
-D3CODE.T.L9
-LIC9 P9*1
+ERR Persistent D3 session exited before the prompt was seen: code=0 signal=null
+ERR D3 refused the session because all licensed user slots are occupied. Close an unused D3 session, then reconnect.
+ERR D3 refused the session because all licensed user slots are occupied. Close an unused D3 session, then reconnect.
 D3CODE.T.L10
 LIC10 P10*1
-D3CODE.T.L11
-LIC11 P11*1
-elapsed=2361ms
+ERR Persistent D3 session exited before the prompt was seen: code=0 signal=null
+elapsed=980ms
 $ index update
 D3CODE.T.IDX
 IDX DONE
@@ -219,11 +215,11 @@ CHECKS
 PROBE OPEN-FAILED
 [ok] 3 long description write filed — .FI | [221] 'SKU-9' filed.
 [ok] 4 race sessions both completed — D3CODE.T.R1
-RACE1 B9080*1 || D3CODE.T.R2
-RACE2 NO.STOCK:SKU-3
+RACE1 NO.STOCK:SKU-3 || D3CODE.T.R2
+RACE2 B9081*1
 [ok] 4 exactly one session won the last unit — winners=1; D3CODE.T.R1
-RACE1 B9080*1 || D3CODE.T.R2
-RACE2 NO.STOCK:SKU-3
+RACE1 NO.STOCK:SKU-3 || D3CODE.T.R2
+RACE2 B9081*1
 [ok] 4 stock never went negative — start=1 end=0
 [ok] 4 stock consumed exactly once — start=1 end=0 winners=1
 [ok] 5 no item locks left behind — LIST-LOCKS (N | System Locks |     0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
@@ -232,21 +228,21 @@ RACE2 NO.STOCK:SKU-3
 [ok] 7 large item has last line — len=8771
 [ok] 7 large item compiles — ......................................... | [241] Successful compile!   2 frame(s) used.
 [ok] 8 no stress session errored — D3CODE.T.S0
-STRESS0 S0*1 | D3CODE.T.S1
+STRESS0 NO.STOCK:SKU-3 | D3CODE.T.S1
 STRESS1 S1*1 | D3CODE.T.S2
-STRESS2 S2*1 | D3CODE.T.S3
+STRESS2 NO.STOCK:SKU-3 | D3CODE.T.S3
 STRESS3 NO.STOCK:SKU-3 | D3CODE.T.S4
-STRESS4 NO.STOCK:SKU-3 | D3CODE.T.S5
-STRESS5 NO.STOCK:SKU-3
+STRESS4 S4*1 | D3CODE.T.S5
+STRESS5 S5*1
 [ok] 8 stock ends at 0 under 6-way contention — qoh=0
 [ok] 8 exactly 3 lines recorded for 3 units — COUNT D3CODE.LINES
 [407] 3 items counted out of 3 items.
 [ok] 9 five concurrent lines recorded on one order — lines=5; D3CODE.T.O0
-SAME0 SAME*2 | D3CODE.T.O1
-SAME1 SAME*1 | D3CODE.T.O2
-SAME2 SAME*5 | D3CODE.T.O3
+SAME0 SAME*5 | D3CODE.T.O1
+SAME1 SAME*2 | D3CODE.T.O2
+SAME2 SAME*3 | D3CODE.T.O3
 SAME3 SAME*4 | D3CODE.T.O4
-SAME4 SAME*3
+SAME4 SAME*1
 [ok] 9 order subtotal is 5 x 42.5 — sub=212.5
 [ok] 10 overlapping writers all returned (no deadlock) — D3CODE.T.M0
 MIX0 MIX*2 | D3CODE.T.M1
@@ -261,7 +257,7 @@ MIX2 MIX2*1
 [ok] 12 product file rebuilt — COUNT D3CODE.PRODUCTS
 [407] 5 items counted out of 5 items.
 [ok] 13 no session hung under licence pressure — 0 hung
-[ok] 13 stock conserved across 12 sessions — qoh=0
-[ok] 13 either all sold or cleanly refused — refused=0 sold=12
+[ok] 13 stock conserved across 12 sessions — qoh=4
+[ok] 13 either all sold or cleanly refused — refused=0 sold=8
 [ok] 14 index update ran — IDX DONE
 [ok] 14 indexed query sees the new key — [4071] 1 items counted.
