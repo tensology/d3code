@@ -6,6 +6,8 @@ Latest checkpoint: [program code editor](2026-10-26-program-code-editor/README.m
 
 Subsequent runtime update: [validation dependency security fix](2026-10-26-validation-upgrade.md), application `9c42d43`. Production configuration semantics and bytes unchanged; 116 tests, zero reported npm advisories and the live branded-domain model journey reverified.
 
+Latest operations checkpoint: [native read-only reports](2026-10-26-operations-status/README.md), application `981f004`. Production model calls, access denial, report states and final responsive captures verified. Structured operations presentation and controls remain unfinished.
+
 ## Original outcome
 
 Deploy the verified D3Code version on Tensology production with agreed customer/user authorization, approved D3 connection, instructions and OpenRouter, after a capacity audit; complete only after access denial tests, live D3/model checks, and visual inspection pass. Later user requirements include a polished shared standalone/embedded IDE for programs, data, dictionaries, adaptive screen frameworks and operations.
@@ -14,7 +16,7 @@ Deploy the verified D3Code version on Tensology production with agreed customer/
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Shared production application | verified | Application 9c42d43; active customer51 service and branded tickets journey. Current evidence linked above. |
+| Shared production application | verified | Application 981f004; active customer51 service and branded tickets journey. Current evidence linked above. |
 | Agreed customer/user authorization | verified | Existing enabled Crystal Logic director; fresh 11 Django proxy checks, including real HTTP fixture upstreams for two enabled customers. No second live customer was provisioned. |
 | Negative access boundaries | verified | Live anonymous401/unflagged other-customer403; fresh tests cover revoked flag, inactive user/parent, forged routing/identity, CSRF, invalid upstreams and redirects. |
 | Per-user runtime and approvals | verified | Fresh 52 agent/IDE checks plus 10 approval checks, including owner isolation, replay, cancellation, expiry and connection invalidation. |
@@ -25,7 +27,7 @@ Deploy the verified D3Code version on Tensology production with agreed customer/
 | Full program IDE | blocked | CodeMirror editing and native save/compile/noninteractive Run are now evidenced through the branded site. New program creation and the full program-development journey remain unfinished. |
 | Record structure and New item | blocked | Existing lossless read/save works in approved sandbox; structural add/remove fields, dictionary-aware labels and visible New item remain unfinished. Focused UI questions are pending. |
 | Adaptive screen frameworks | blocked | Filename candidates now explicitly unverified. Actual installation detection and native/SB/SB+ builders remain unfinished. |
-| Run and operate | blocked | Phantom, scheduler, spooler and operational workflows remain unfinished. |
+| Run and operate | incomplete | Native read-only jobs, printers and queue reports verified through the production model. Structured workspace, controls and scheduling remain unfinished. |
 | Full product acceptance | blocked | Full standalone plus embedded real developer journeys across all areas remain incomplete. |
 
 ## Negative-space audit
