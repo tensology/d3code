@@ -2,6 +2,8 @@
 
 Verdict: incomplete for the full user request. Deployment evidence must not be presented as completion of the requested developer IDE.
 
+Latest checkpoint: [program code editor](2026-10-26-program-code-editor/README.md), application `04f88f1`. The plain program textarea is now replaced by bundled CodeMirror; native save/compile/run, access denial, instructions, actual OpenRouter tools and final responsive screenshots were reverified. Full program development, structural record creation/editing, framework builders and operations remain incomplete. The ledger below records the earlier audit and must be read with this update.
+
 ## Original outcome
 
 Deploy the verified D3Code version on Tensology production with agreed customer/user authorization, approved D3 connection, instructions and OpenRouter, after a capacity audit; complete only after access denial tests, live D3/model checks, and visual inspection pass. Later user requirements include a polished shared standalone/embedded IDE for programs, data, dictionaries, adaptive screen frameworks and operations.

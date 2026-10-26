@@ -1,0 +1,22 @@
+{
+  "target": {
+    "profile": "Office demo",
+    "file": "bp",
+    "item": "D3CODE.EDIT.UI.5D09BB011AAF4462F299B4E125219688",
+    "section": "data"
+  },
+  "checks": [
+    "anonymous401",
+    "unflagged403",
+    "stale-program-actions409",
+    "browse-owned-source",
+    "dirty-run-no-request",
+    "save-cancel-no-write",
+    "native-save-exact-readback",
+    "native-compile241",
+    "run-cancel-no-confirmed-request",
+    "single-approved-run",
+    "native-output-marker"
+  ],
+  "output": "D3CODE UI RUN BUTTON VERIFIED"
+}

@@ -1,6 +1,6 @@
 # Program code editor checkpoint
 
-Status: local verification passed; production verification pending. This is one program-editing component, not completion of the full IDE.
+Status: application commit `04f88f1` deployed and the bounded program workflow verified in production. This is one program-editing component, not completion of the full IDE.
 
 ## Scope and acceptance
 
@@ -17,7 +17,35 @@ Save still uses the existing connection-pinned native record protocol, approval 
 - Local program-action matrix: same widths/themes, approved Run review and output: 16 final captures, inspected individually. Save Cancel preserves the native baseline; approved Save matches exact readback; dirty Run is refused; Compile and approved Run produce expected fixture output.
 - Shared button-colour review: settings and terminal at 390/1440, both themes, eight captures inspected individually. Computed terminal Send contrast is at least 4.5:1. Blue fills use a separate token so white button text stays readable without darkening link and syntax foregrounds.
 
-Local captures: `/tmp/d3-codemirror-evidence`, `/tmp/d3-codemirror-actions-evidence`, `/tmp/d3-editor-shared-colors`. Search match foreground/background, close-button overlap, go-to-line sizing and syntax contrast were corrected before the final capture matrix. No page overflow or clipping found in that matrix. Small inherited metadata text remains a wider typography limitation; this is not a whole-product accessibility sign-off.
+Final captures are retained in [local-editor](local-editor), [local-actions](local-actions) and [shared-colors](shared-colors). Search match foreground/background, close-button overlap, go-to-line sizing and syntax contrast were corrected before the final capture matrix. No page overflow or clipping found in that matrix. Small inherited metadata text remains a wider typography limitation; this is not a whole-product accessibility sign-off.
+
+## Production result
+
+- Existing single checkout updated, dependencies installed with `npm ci`, browser bundle built, both TypeScript checks passed and all 53 focused tests passed on the server before restarting only `d3code@51`. Service active at application commit `04f88f1`.
+- Fresh capacity: root 8.8GB free (87% used), approximately 1406MiB available RAM before build. No local model or second runtime installed.
+- Branded tickets domain: anonymous 401 and active unflagged other-customer 403. Enabled Crystal Logic director opens the shared editor.
+- Real office demo `dm`: all program actions reject missing/stale connection snapshots (409); owned program found by prefix search and opened in CodeMirror. Dirty Run sends no execution request. Cancelled Save preserves original bytes. Approved Save matches independent native readback exactly.
+- Native Compile returns successful compilation; each Run review can be cancelled without a confirmed execution. One approved Run returns `D3CODE UI RUN BUTTON VERIFIED` in the editor output. Original owned sandbox source restored by comparison-and-replace and its original program recompiled afterward.
+- [Production captures](production): source, search panel, Run review and output at 390/768/1280/1440, 16 screens inspected individually after deployment. No page overflow, clipped action controls, support-widget overlap or extra page scrollbar found. Long source lines scroll within the code editor.
+- [Model and startup captures](model-startup): error, Retry recovery and actual OpenRouter D3 `WHO` response at 390/1440, six screens inspected individually. Retry preserves the draft; final model response contains native `7 dm dm` output. Temporary authentication sessions and headless browsers removed in `finally` blocks.
+- Current process cwd verified as `/var/lib/d3code/customer-51`; its `D3CODE.md` is present in the generated system prompt. Private configuration permissions verified. Current config asserts Office demo, host `office.crystallogic.org`, `dm` allowlist only, model `openrouter/deepseek/deepseek-v4.1-flash`. No instruction or credential contents printed.
+
+In total this checkpoint retains 94 individually inspected screenshots. [Native result record](production/result.json) lists the exact program checks. The fixture is a D3CODE-prefixed test program, not customer application source.
+
+## Bounded component review
+
+| Area | Score | Limitation |
+|---|---:|---|
+| States | 17/20 | Program loaded, dirty, saved, read-only and asset failure exercised; full product states remain outside this checkpoint. |
+| Safety and flow | 12/15 | Existing guarded writes retained; New item and structural CRUD remain pending. |
+| Forms | 8/10 | Search and line navigation work; broader form consistency unfinished. |
+| Hierarchy | 12/15 | Editor receives the workspace; inherited small metadata still needs review. |
+| Tokens | 8/10 | Shared colours and editor surfaces use existing tokens; existing spacing/type values remain. |
+| Accessibility | 10/15 | Keyboard escape, labels, read-only behavior and colour pairing checked; no screen-reader certification. |
+| Responsive | 9/10 | Four widths and both themes inspected; physical mobile keyboard not tested. |
+| Rationale | 5/5 | Significant interactions explained below. |
+
+Component score: 81/100. Full-product completion gates remain incomplete, including create/delete journeys, framework-aware editing, operations and full accessibility review. This score does not make the full IDE production-ready.
 
 ## Interaction rationale
 
@@ -29,7 +57,7 @@ Local captures: `/tmp/d3-codemirror-evidence`, `/tmp/d3-codemirror-actions-evide
 
 ## Limits and remaining verification
 
-Production must independently prove branded-domain authentication, program browsing, native Save/Compile/Run, exact readback and restoration of the owned sandbox fixture. Local fixture success does not prove that path.
+The branded-domain program journey is now evidenced above. Other workflows cannot inherit that verification merely because they use the same editor.
 
 No native mobile hardware keyboard, Safari, screen reader or full IDE accessibility certification was performed. Native writes remain limited to the verified D3CODE sandbox and existing byte/encoding limits. Structural record editing, New item, framework builders and operations are separate incomplete work.
 
