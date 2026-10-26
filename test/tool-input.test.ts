@@ -20,3 +20,14 @@ test("create-only tool requires explicit content and a supported section", () =>
   assert.throws(() => parseD3ToolInput("d3_create_item", { file: input.file, item: input.item }), /Invalid/)
   assert.throws(() => parseD3ToolInput("d3_create_item", { ...input, baseline: {} }), /Unrecognized key/)
 })
+
+test("oversized invalid tool collections fail without accumulating per-element errors", () => {
+  assert.throws(() => parseD3ToolInput("d3_call_subroutine", { name: "TEST", args: Array(10_000).fill(null) }), (error: unknown) => {
+    assert.ok(error instanceof Error)
+    assert.match(error.message, /Invalid d3_call_subroutine input/)
+    assert.ok(error.message.length < 1000, "collection bounds must reject before collecting thousands of element issues")
+    return true
+  })
+  assert.throws(() => parseD3ToolInput("d3_call_subroutine", { name: "TEST", args: [null] }), /Invalid/)
+  assert.deepEqual(parseD3ToolInput("d3_call_subroutine", { name: "TEST", args: Array(100).fill("value") }), { name: "TEST", args: Array(100).fill("value") })
+})

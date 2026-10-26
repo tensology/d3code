@@ -7,7 +7,7 @@ const optionalConfirmation = { confirmed: z.boolean().optional() }
 const positiveLimit = z.number().int().positive().max(1000).optional()
 const singleLine = z.string().min(1).refine((value) => !/[\r\n\u0000-\u001f\u007f]/.test(value), "must be one line without control characters")
 
-const schemas: Record<string, z.ZodTypeAny> = {
+const schemas: Record<string, z.ZodType> = {
   d3_detect: empty,
   d3_builder_capabilities: empty,
   d3_tcl: z.object({ command: z.string().min(1), ...optionalConfirmation }).strict(),

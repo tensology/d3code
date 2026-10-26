@@ -30,7 +30,7 @@ const ConfigSchema = z.object({
   defaultSafety: SafetySchema.default("ask"),
   defaultProfile: z.string().optional(),
   profiles: z.array(ProfileSchema).default([]),
-  modelSecrets: z.record(z.string()).default({}),
+  modelSecrets: z.record(z.string(), z.string()).default({}),
   hermes: z.object({
     enabled: z.boolean().default(true),
     eccRoot: z.string().optional(),

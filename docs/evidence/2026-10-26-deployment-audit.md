@@ -12,15 +12,15 @@ Deploy the verified D3Code version on Tensology production with agreed customer/
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Shared production application | verified | Application 0b0f802, evidence HEAD 0c47483; active customer51 service and branded tickets journey. |
+| Shared production application | verified | Application 04f88f1, evidence HEAD 294d312; active customer51 service and branded tickets journey. |
 | Agreed customer/user authorization | verified | Existing enabled Crystal Logic director; fresh 11 Django proxy checks, including real HTTP fixture upstreams for two enabled customers. No second live customer was provisioned. |
 | Negative access boundaries | verified | Live anonymous401/unflagged other-customer403; fresh tests cover revoked flag, inactive user/parent, forged routing/identity, CSRF, invalid upstreams and redirects. |
 | Per-user runtime and approvals | verified | Fresh 52 agent/IDE checks plus 10 approval checks, including owner isolation, replay, cancellation, expiry and connection invalidation. |
 | Approved D3 target | verified | Current service config/status asserts Office demo at office.crystallogic.org, dm only; native read-only model journeys and sandbox program/record evidence linked below. |
 | Instructions and model | verified | Actual service cwd loads D3CODE.md into generated system prompt; nonsecret instruction lines asserted without printing contents. Status confirms OpenRouter DeepSeek v4.1 flash, migrate mode, Ask safety and available harness context. |
-| Capacity audit | verified | Root 9.0GB available at 87% used; 1396MiB RAM available in recent check. No local model runtime installed. |
+| Capacity audit | verified | Root 8.8GB available at 87% used; 1406MiB RAM available before the last build. No local model runtime installed. |
 | Existing deployed visual states | verified | Individual desktop/mobile light/dark component captures in linked evidence. This is bounded visual coverage, not full product usability acceptance. |
-| Full program IDE | blocked | Native save/compile/catalog/noninteractive Run are evidenced, but basic code editing still lacks the mature editing environment requested. Replace the plain editor and verify the whole program workflow. |
+| Full program IDE | blocked | CodeMirror editing and native save/compile/noninteractive Run are now evidenced through the branded site. New program creation and the full program-development journey remain unfinished. |
 | Record structure and New item | blocked | Existing lossless read/save works in approved sandbox; structural add/remove fields, dictionary-aware labels and visible New item remain unfinished. Focused UI questions are pending. |
 | Adaptive screen frameworks | blocked | Filename candidates now explicitly unverified. Actual installation detection and native/SB/SB+ builders remain unfinished. |
 | Run and operate | blocked | Phantom, scheduler, spooler and operational workflows remain unfinished. |
