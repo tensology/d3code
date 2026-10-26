@@ -31,7 +31,7 @@ import { itemBrowserClientScript } from "./item-browser.js"
 import { confirmationClientScript, confirmationHtml } from "./confirmation.js"
 import { listD3Items } from "../d3/items.js"
 import { recordEditorClientScript, recordEditorStyles } from "./record-editor.js"
-import { EditorRecordError, readEditorRecord, saveEditorRecord, prepareEditorRecord, createEditorRecord } from "../d3/records.js"
+import { EditorRecordError, readEditorRecord, saveEditorRecord, prepareEditorRecord, createEditorRecord, recordConnection } from "../d3/records.js"
 import type { runRecordOperation } from "../d3/record-session.js"
 
 export interface IdeRuntimeState {
@@ -157,6 +157,14 @@ async function closeAllTerminalSessions(state: IdeRuntimeState): Promise<void> {
   const sessions = [...terminalSessionsFor(state).values()]
   terminalSessionsFor(state).clear()
   await Promise.all(sessions.map((session) => session.close().catch(() => {})))
+}
+
+function assertTerminalConnection(config: D3CodeConfig, state: IdeRuntimeState, input: { profile?: string; connection?: string }, required: boolean): void {
+  if (!required && input.profile === undefined && input.connection === undefined) return
+  const profile = selectProfile(config, state.profile)
+  if (!profile || input.profile !== profile.name || input.connection !== recordConnection(profile)) {
+    throw new EditorRecordError(409, "Connection settings changed. Use Connect to review the updated connection before sending commands.")
+  }
 }
 
 async function invalidateProfileRuntimes(runtimes: Iterable<IdeRuntimeState>, names: string[], replacement?: string): Promise<void> {
@@ -772,12 +780,12 @@ function html(storageScope = ""): string {
     "async function refreshTerminalState(){try{const state=await api('/api/terminal/state');terminalConnectionState={...terminalConnectionState,...state,error:''};if(state&&typeof (state.displayTranscript||state.transcript)==='string')setTerminalTranscript(state.displayTranscript||state.transcript);else renderTerminalConnection()}catch(error){terminalConnectionState={...terminalConnectionState,connected:false,error:error?.message||String(error)};renderTerminalConnection()}}",
     "async function boot(){const status=await api('/api/status');await applyStatus(status);const profiles=await api('/api/profiles');profileCache=profiles.profiles||[];renderTerminalProfiles();await refreshTerminalState();const providersData=await api('/api/model-providers');$('modelProvider').innerHTML=(providersData.providers||[]).map(p=>`<option value=\"${escapeHtml(p.id)}\">${escapeHtml(p.name)}</option>`).join('');const parsed=modelParts(status.model);if(parsed.provider)$('modelProvider').value=parsed.provider;await refreshModels($('modelProvider').value,status.model);await refreshPythonRuntime();migrateChatProfiles(status.profile||'');syncActiveChatForProfile();renderChatList();renderD3Browser();renderActiveChat();renderTerminal();await resumeAgentJobs();if(document.body.dataset.view==='editor')await refreshD3Browser()}",
     "function mutationConfirmed(){return false}",
-    "async function sendTerminalCommand(command){const line=(command??terminalDraft??'').trim();if(!line||terminalBusy)return;const out=terminalEls()[0]?.dataset.output||'';terminalHistory.push(line);terminalHistory=terminalHistory.slice(-100);terminalHistoryIndex=terminalHistory.length;terminalEls().forEach(el=>el.dataset.output=(out.replace(/\\s*$/,'')+'\\n: '+line+'\\n').trimStart());terminalDraft='';terminalBusy=true;renderTerminal();try{const invoke=confirmed=>api('/api/terminal/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({command:line,confirmed})});let response=await invoke(false);if(response.requiresConfirmation){if(!await confirmD3Action('Run D3 command?',line,'Run command')){setTerminalTranscript((out+'\\n: '+line+'\\nNot run: approval cancelled.').trim());addToolEvent({name:'d3_tcl',status:'blocked',result:'Command not run: approval cancelled.'});return {cancelled:true}}response=await invoke(true)}if(response.error)throw new Error(response.error);terminalConnectionState={...terminalConnectionState,connected:response.mechanism==='persistent-pty',mechanism:response.mechanism||terminalConnectionState.mechanism,error:''};setTerminalTranscript(response.displayTranscript||response.transcript||'');addToolEvent({name:'d3_tcl',status:'done',result:(response.label?response.label+'\\n':'')+(response.clean||response.result||'Done')});return response}catch(error){const msg=error?.message||String(error);const label=/Confirmation required|Denied by|blocked|outside the allowed accounts/i.test(msg)?'Permission blocked':'Connection/login issue';const detail=label+'\\n'+msg;terminalConnectionState={...terminalConnectionState,connected:label==='Permission blocked'?terminalConnectionState.connected:false,error:label};setTerminalTranscript((out.replace(/\\s*$/,'')+'\\n: '+line+'\\n'+detail).trim());addToolEvent({name:'d3_tcl',status:'blocked',result:detail});return {error:msg}}finally{terminalBusy=false;renderTerminal();$('terminalCommand')?.focus()}}",
+    "async function sendTerminalCommand(command){const line=(command??terminalDraft??'').trim();if(!line||terminalBusy)return;const out=terminalEls()[0]?.dataset.output||'';terminalHistory.push(line);terminalHistory=terminalHistory.slice(-100);terminalHistoryIndex=terminalHistory.length;terminalEls().forEach(el=>el.dataset.output=(out.replace(/\\s*$/,'')+'\\n: '+line+'\\n').trimStart());terminalDraft='';terminalBusy=true;renderTerminal();try{const invoke=confirmed=>api('/api/terminal/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({command:line,confirmed,profile:selectedProfile,connection:terminalConnectionState.connection})});let response=await invoke(false);if(response.requiresConfirmation){if(!await confirmD3Action('Run D3 command?',line,'Run command')){setTerminalTranscript((out+'\\n: '+line+'\\nNot run: approval cancelled.').trim());addToolEvent({name:'d3_tcl',status:'blocked',result:'Command not run: approval cancelled.'});return {cancelled:true}}response=await invoke(true)}if(response.error)throw new Error(response.error);terminalConnectionState={...terminalConnectionState,connected:response.mechanism==='persistent-pty',mechanism:response.mechanism||terminalConnectionState.mechanism,error:''};setTerminalTranscript(response.displayTranscript||response.transcript||'');addToolEvent({name:'d3_tcl',status:'done',result:(response.label?response.label+'\\n':'')+(response.clean||response.result||'Done')});return response}catch(error){const msg=error?.message||String(error);const label=/Confirmation required|Denied by|blocked|outside the allowed accounts/i.test(msg)?'Permission blocked':'Connection/login issue';const detail=label+'\\n'+msg;terminalConnectionState={...terminalConnectionState,connected:label==='Permission blocked'?terminalConnectionState.connected:false,error:label};setTerminalTranscript((out.replace(/\\s*$/,'')+'\\n: '+line+'\\n'+detail).trim());addToolEvent({name:'d3_tcl',status:'blocked',result:detail});return {error:msg}}finally{terminalBusy=false;renderTerminal();$('terminalCommand')?.focus()}}",
     "function terminalHistoryStep(delta){if(!terminalHistory.length)return;terminalHistoryIndex=Math.max(0,Math.min(terminalHistory.length,terminalHistoryIndex+delta));terminalDraft=terminalHistoryIndex===terminalHistory.length?'':terminalHistory[terminalHistoryIndex]||'';renderTerminal();const input=$('terminalCommand');if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length)}}",
     "function bindTerminalInput(el){if(!el)return;el.addEventListener('click',()=>{$('terminalCommand')?.focus()});el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendTerminalCommand(terminalDraft);return}if(e.key==='ArrowUp'){e.preventDefault();terminalHistoryStep(-1);return}if(e.key==='ArrowDown'){e.preventDefault();terminalHistoryStep(1);return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='l'){e.preventDefault();clearTerminalTranscript();return}})}",
     "function bindTerminalCommandInput(inputId,buttonId){const input=$(inputId);const button=$(buttonId);if(!input||!button)return;const send=()=>{const value=input.value.trim();if(!value)return;sendTerminalCommand(value)};button.onclick=send;input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();return}if(e.key==='ArrowUp'){e.preventDefault();terminalHistoryStep(-1);return}if(e.key==='ArrowDown'){e.preventDefault();terminalHistoryStep(1);return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='l'){e.preventDefault();clearTerminalTranscript()}});input.addEventListener('input',()=>{terminalDraft=input.value})}",
     "async function clearTerminalTranscript(){await api('/api/terminal/clear',{method:'POST'});setTerminalTranscript('');toast('Terminal cleared')}",
-    "async function reconnectTerminal(){if(terminalBusy)return;const previous=terminalEls()[0]?.dataset.output||'';terminalBusy=true;renderTerminalConnection();try{const reset=await api('/api/terminal/reset',{method:'POST'});if(reset.error)throw new Error(reset.error);setTerminalTranscript('');terminalConnectionState={...terminalConnectionState,connected:false,error:''}}catch(error){const message=error?.message||String(error);terminalConnectionState={...terminalConnectionState,connected:false,error:'Connection/login issue'};setTerminalTranscript((previous+'\\nConnection/login issue\\n'+message).trim());return}finally{terminalBusy=false;renderTerminalConnection()}await sendTerminalCommand('WHO')}",
+    "async function reconnectTerminal(){if(terminalBusy)return;const previous=terminalEls()[0]?.dataset.output||'';terminalBusy=true;renderTerminalConnection();try{const status=await api('/api/status');if(status.error)throw new Error(status.error);if(status.profile&&(status.profile!==selectedProfile||status.connection!==terminalConnectionState.connection)){terminalConnectionState={...terminalConnectionState,connected:false,error:'Connection changed'};renderTerminalConnection();const updatedProfiles=await api('/api/profiles');if(updatedProfiles.error)throw new Error(updatedProfiles.error);const target=(updatedProfiles.profiles||[]).find(profile=>profile.name===status.profile);if(!await confirmD3Action('Connection settings changed','Reconnect to '+status.profile+' / '+(status.account||'no account')+' at '+(target?.host||'local D3')+' using the updated settings?','Reconnect'))return;await applyStatus(status);profileCache=updatedProfiles.profiles||[];renderTerminalProfiles();terminalConnectionState={...terminalConnectionState,profile:status.profile,account:status.account,connection:status.connection}}const reset=await api('/api/terminal/reset',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({profile:selectedProfile,connection:terminalConnectionState.connection})});if(reset.error)throw new Error(reset.error);setTerminalTranscript('');terminalConnectionState={...terminalConnectionState,connected:false,error:''}}catch(error){const message=error?.message||String(error);terminalConnectionState={...terminalConnectionState,connected:false,error:'Connection/login issue'};setTerminalTranscript((previous+'\\nConnection/login issue\\n'+message).trim());return}finally{terminalBusy=false;renderTerminalConnection()}await sendTerminalCommand('WHO')}",
     "bindTerminalInput($('terminalMain'));",
     "bindTerminalCommandInput('terminalCommand','terminalSend');",
     "$('terminalCopy').onclick=async()=>{const text=terminalEls()[0]?.dataset.output||'';if(!text){toast('Nothing to copy');return}try{await navigator.clipboard.writeText(text);toast('Terminal transcript copied')}catch{toast('Could not copy the terminal transcript')}};",
@@ -916,7 +924,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   if (req.method === "GET" && url.pathname === "/favicon.ico") return send(res, 204, "")
   if (req.method === "GET" && url.pathname === "/api/status") {
     const profile = selectProfile(config, state.profile)
-    return sendJson(res, 200, { model: state.model, safety: state.safety, mode: state.mode, profile: profile?.name, account: profile?.account })
+    return sendJson(res, 200, { model: state.model, safety: state.safety, mode: state.mode, profile: profile?.name, account: profile?.account, connection: profile ? recordConnection(profile) : undefined })
   }
   if (req.method === "GET" && url.pathname === "/api/model-providers") {
     return sendJson(res, 200, { providers: providers.map((provider) => ({ id: provider.id, name: provider.name, defaultModel: provider.defaultModel, models: provider.models })) })
@@ -1194,8 +1202,9 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     }
   }
   if (req.method === "POST" && url.pathname === "/api/terminal/send") {
-    const body = await readJson(req) as { command?: string; confirmed?: boolean }
+    const body = await readJson(req) as { command?: string; confirmed?: boolean; profile?: string; connection?: string }
     if (!body.command) return sendJson(res, 400, { error: "command is required" })
+    assertTerminalConnection(config, state, body, userScoped)
     try {
       const terminal = await runTerminalCommand(config, state, body.command, body.confirmed)
       return sendJson(res, 200, {
@@ -1221,6 +1230,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     return sendJson(res, 200, {
       profile: profile?.name,
       account: profile?.account,
+      connection: profile ? recordConnection(profile) : undefined,
       transcript: terminalTranscriptsFor(state).get(key) ?? "",
       displayTranscript: terminalDisplayTranscriptsFor(state).get(key) ?? "",
       connected: terminalSessionsFor(state).has(key),
@@ -1228,6 +1238,8 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     })
   }
   if (req.method === "POST" && url.pathname === "/api/terminal/reset") {
+    const body = await readJson(req) as { profile?: string; connection?: string }
+    assertTerminalConnection(config, state, body, userScoped)
     const profile = selectProfile(config, state.profile)
     const key = terminalKey(profile?.name)
     terminalTranscriptsFor(state).delete(key)

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {loadConfig} from "/var/www/d3code/dist/src/config/config.js";
 import {basicAuthHeader} from "/var/www/d3code/dist/src/ide/auth.js";
 const config=await loadConfig();const authorization=basicAuthHeader(config.ideAuth);
-const call=async(actor,path,body)=>{const response=await fetch("http://127.0.0.1:3737"+path,{method:body===undefined?"GET":"POST",headers:{authorization,"content-type":"application/json",...(actor?{"x-d3code-user":actor}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});assert.equal(response.status,actor?200:403);return response.json()};
+const call=async(actor,path,body)=>{if(body!==undefined&&["/api/terminal/send","/api/terminal/reset"].includes(path)){const target=await call(actor,"/api/terminal/state");body={profile:target.profile,connection:target.connection,...body}}const response=await fetch("http://127.0.0.1:3737"+path,{method:body===undefined?"GET":"POST",headers:{authorization,"content-type":"application/json",...(actor?{"x-d3code-user":actor}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});assert.equal(response.status,actor?200:403);return response.json()};
 const actors=["900000001","900000002"];
 try{
 await call(undefined,"/api/status");

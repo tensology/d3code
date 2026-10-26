@@ -85,11 +85,11 @@ test("IDE opens a light terminal with connection controls and an optional agent 
   const reconnect = script.match(/async function reconnectTerminal\(\)\{[\s\S]*?(?=bindTerminalInput\(\$\('terminalMain'\)\))/)?.[0]
   assert.ok(reconnect)
   await runInNewContext(reconnect + ";reconnectTerminal()", {
-    terminalBusy: false, terminalConnectionState: {}, terminalEls: () => [{dataset:{output: ""}}], renderTerminalConnection() {}, setTerminalTranscript() {},
+    selectedProfile: "fake", terminalBusy: false, terminalConnectionState: {}, terminalEls: () => [{dataset:{output: ""}}], renderTerminalConnection() {}, setTerminalTranscript() {},
     api: async (path: string) => { calls.push(path); return {} },
     sendTerminalCommand: async (command: string) => { calls.push(command) },
   })
-  assert.deepEqual(calls, ["/api/terminal/reset", "WHO"])
+  assert.deepEqual(calls, ["/api/status", "/api/terminal/reset", "WHO"])
   let transcript = "WHO\n7 dm"
   const failed = {
     terminalBusy: false, terminalConnectionState: {connected:true,error:""},
@@ -920,15 +920,22 @@ test("embedded workspace isolates runtime state by authenticated proxy user", as
       port: 0, requireAuth: true, saveConfigFn: async () => { saves++ },
       agentChatFn: async (_config, _secrets, request) => ({ provider: "test", model: "fake", content: request.messages.map(message => message.content).join("\n").includes("alpha-private") ? "alpha remembered" : "clean" }),
     })
-    const json = (response: Awaited<ReturnType<typeof fetch>>) => response.json() as Promise<{ transcript: string; output: string; status: string; safety: string; model: string; profile: string }>
+    const json = (response: Awaited<ReturnType<typeof fetch>>) => response.json() as Promise<{ transcript: string; output: string; status: string; safety: string; model: string; profile: string; connection: string }>
     const authorization = basicAuthHeader(scopedConfig.ideAuth)
-    const call = async (actor: string | undefined, path: string, body?: unknown) => fetch(`${server.url}${path}`, {
+    const call = async (actor: string | undefined, path: string, body?: unknown) => {
+      if (body !== undefined && ["/api/terminal/send", "/api/terminal/reset"].includes(path)) {
+        const target = await call(actor, "/api/terminal/state").then(json)
+        body = { profile: target.profile, connection: target.connection, ...(body as Record<string, unknown>) }
+      }
+      return fetch(`${server.url}${path}`, {
       method: body === undefined ? "GET" : "POST",
       headers: { authorization, "content-type": "application/json", ...(actor === undefined ? {} : { "x-d3code-user": actor }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
+    }
     for (const actor of [undefined, "", "0", "1,2", "actor-one"]) assert.equal((await call(actor, "/api/status")).status, 403)
     assert.equal((await fetch(`${server.url}/api/status`, { headers: { "x-d3code-user": "1" } })).status, 401)
+    assert.equal((await call("1", "/api/terminal/send", { command: "WHO", connection: "" })).status, 409)
     await call("1", "/api/terminal/send", { command: "WHO" }).then(json)
     assert.match((await call("1", "/api/terminal/state").then(json)).transcript, /DM/)
     assert.equal((await call("2", "/api/terminal/state").then(json)).transcript, "")
@@ -1001,15 +1008,22 @@ test("shared profile changes invalidate every affected user's jobs and terminal 
         request.signal?.addEventListener("abort", () => { aborted++; reject(new Error("Connection changed")) }, { once: true })
       }),
     })
-    const call = (actor: string, path: string, body?: unknown, method = "POST", stream = false) => fetch(`${server.url}${path}`, {
+    const call = async (actor: string, path: string, body?: unknown, method = "POST", stream = false) => {
+      if (body !== undefined && ["/api/terminal/send", "/api/terminal/reset"].includes(path)) {
+        const target = await call(actor, "/api/terminal/state").then(json)
+        body = { profile: target.profile, connection: target.connection, ...(body as Record<string, unknown>) }
+      }
+      return fetch(`${server.url}${path}`, {
       method: body === undefined ? "GET" : method,
       headers: { authorization: basicAuthHeader(scopedConfig.ideAuth), "x-d3code-user": actor, "content-type": "application/json", ...(stream ? { accept: "text/event-stream" } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    const json = (response: Awaited<ReturnType<typeof fetch>>) => response.json() as Promise<{ profile?: string; transcript: string; status: string }>
+    }
+    const json = (response: Awaited<ReturnType<typeof fetch>>) => response.json() as Promise<{ profile?: string; transcript: string; status: string; connection: string }>
     await call("9", "/api/profile", { profile: "alt" }).then(json)
     await call("9", "/api/terminal/send", { command: "WHO" }).then(json)
     const streams = []
+    const originalConnection = await call("1", "/api/terminal/state").then(json)
     for (const actor of ["1", "2"]) {
       await call(actor, "/api/terminal/send", { command: "WHO" }).then(json)
       streams.push(await call(actor, "/api/agent", { chat_id: "same-id", input: "Review D3 account" }, "POST", true))
@@ -1020,6 +1034,11 @@ test("shared profile changes invalidate every affected user's jobs and terminal 
     assert.equal((await call("1", "/api/profile/manage", { previousName: "fake", profile, confirmed: true }, "PUT")).status, 200)
     await Promise.all(streams.map(response => response.text()))
     assert.equal(aborted, 2)
+    for (const path of ["/api/terminal/send", "/api/terminal/reset"]) {
+      const stale = await call("1", path, { command: "WHO", profile: originalConnection.profile, connection: originalConnection.connection })
+      assert.equal(stale.status, 409)
+      assert.match(await stale.text(), /Connection settings changed/)
+    }
     assert.equal((await call("9", "/api/status").then(json)).profile, "alt")
     assert.match((await call("9", "/api/terminal/state").then(json)).transcript, /SALES/)
     for (const actor of ["1", "2", "3"]) {
@@ -1044,6 +1063,7 @@ test("editing a standalone profile closes its existing persistent session", asyn
     terminalSessions: new Map([["office", session]]), terminalTranscripts: new Map([["office", "old account transcript"]]),
   }
   const server = await startTestIdeServer({ ...config, profiles: [profile], defaultProfile: "office" }, state, { port: 0 })
+  const originalTarget = await fetch(`${server.url}/api/terminal/state`).then(response => response.json()) as { profile: string; connection: string }
   const response = await fetch(`${server.url}/api/profile/manage`, {
     method: "PUT", headers: { "content-type": "application/json" },
     body: JSON.stringify({ previousName: "office", profile: { ...profile, host: "changed.invalid" }, confirmed: true }),
@@ -1052,6 +1072,14 @@ test("editing a standalone profile closes its existing persistent session", asyn
   assert.equal(closed, 1)
   assert.equal(state.terminalSessions?.size, 0)
   assert.equal(state.terminalTranscripts?.size, 0)
+  for (const path of ["/api/terminal/send", "/api/terminal/reset"]) {
+    const stale = await fetch(`${server.url}${path}`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...originalTarget, command: "WHO" }),
+    })
+    assert.equal(stale.status, 409)
+    assert.match(await stale.text(), /Connection settings changed/)
+  }
 })
 
 test("IDE server streams browser agent tokens and D3 tool events", async () => {
