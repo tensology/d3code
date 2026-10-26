@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
+import { randomUUID } from "node:crypto"
 import type { AddressInfo } from "node:net"
 import type { D3CodeConfig } from "../config/config.js"
 import { saveConfig, selectProfile } from "../config/config.js"
@@ -10,7 +11,7 @@ import { d3Tools } from "../d3/tools.js"
 import { assertD3Allowed } from "../core/permissions.js"
 import { defaultSecretStore, secretRefForProvider } from "../security/secrets.js"
 import { runToolByName } from "../tools/runner.js"
-import { runD3AgentTurn, createD3AgentSystemPrompt, type AgentChatFunction, type D3AgentTurnEvent } from "../tui/agent.js"
+import { runD3AgentTurn, createD3AgentSystemPrompt, type AgentChatFunction, type D3AgentTurnEvent, type D3ToolApproval } from "../tui/agent.js"
 import type { ChatMessage } from "../llm/client.js"
 import type { D3CommandResult, D3Session } from "../domain/types.js"
 import { normalizeD3PromptPattern, D3_TCL_PROMPT_PATTERN } from "../d3/prompts.js"
@@ -68,6 +69,12 @@ export interface AgentJob {
   startedAt: number
   finishedAt?: number
   controller: AbortController
+  approval?: {
+    id: string
+    proposal: D3ToolApproval
+    expiresAt: number
+    resolve: (approved: boolean, reason?: "approved" | "declined" | "expired" | "cancelled" | "invalidated") => void
+  }
 }
 
 export interface IdeServerOptions {
@@ -251,6 +258,35 @@ function pushAgentJobEvent(job: AgentJob, type: string, data: unknown): number {
   return seq
 }
 
+function approvalView(job: AgentJob) {
+  const pending = job.approval
+  return pending ? { id: pending.id, proposal: pending.proposal, expires_at: pending.expiresAt } : undefined
+}
+
+function awaitAgentApproval(job: AgentJob, proposal: D3ToolApproval, signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const id = randomUUID(), expiresAt = Date.now() + 120_000
+    let settled = false
+    const finish: NonNullable<AgentJob["approval"]>["resolve"] = (approved, reason = approved ? "approved" : "declined") => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      signal.removeEventListener("abort", onAbort)
+      if (job.approval?.id === id) job.approval = undefined
+      pushAgentJobEvent(job, "approval_resolved", { approval_id: id, approved, reason })
+      if (reason === "expired" || reason === "invalidated") reject(new Error(`Approval ${reason}. This action was not run.`))
+      else resolve(approved)
+    }
+    const onAbort = () => finish(false, "cancelled")
+    const timer = setTimeout(() => finish(false, "expired"), 120_000)
+    timer.unref()
+    job.approval = { id, proposal, expiresAt, resolve: finish }
+    signal.addEventListener("abort", onAbort, { once: true })
+    pushAgentJobEvent(job, "approval_required", { approval: approvalView(job) })
+    if (signal.aborted) onAbort()
+  })
+}
+
 function normalizeAgentHistory(
   config: D3CodeConfig,
   state: IdeRuntimeState,
@@ -279,6 +315,7 @@ async function executeAgentJob(
       chatFn: options.agentChatFn,
       signal: job.controller.signal,
       onEvent: (event: D3AgentTurnEvent) => pushAgentJobEvent(job, event.type, event),
+      approveTool: (proposal, signal) => awaitAgentApproval(job, proposal, signal),
     })
     setAgentHistoryFor(state, job.chatId, turn.messages)
     pushAgentJobEvent(job, "done", {
@@ -291,6 +328,7 @@ async function executeAgentJob(
     pushAgentJobEvent(job, "error", { error: (error as Error).message })
     job.status = "error"
   } finally {
+    job.approval?.resolve(false, "cancelled")
     job.finishedAt = Date.now()
   }
 }
@@ -1127,6 +1165,27 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     job.controller.abort(new Error("Stopped by operator"))
     return sendJson(res, 200, { cancelled: true, chat_id: chatId, job_id: job.id })
   }
+  if (req.method === "POST" && url.pathname === "/api/agent/approval") {
+    const body = await readJson(req) as Record<string, unknown>
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.chat_id !== "string" || typeof body.job_id !== "string" || typeof body.approval_id !== "string" || typeof body.approved !== "boolean") {
+      return sendJson(res, 400, { error: "chat_id, job_id, approval_id and boolean approved are required." })
+    }
+    const job = agentJobsFor(state).get(body.chat_id)
+    if (!job) return sendJson(res, 404, { error: "No agent job for this user and chat." })
+    const approval = job.approval
+    if (job.id !== body.job_id || job.status !== "running" || !approval || approval.id !== body.approval_id) return sendJson(res, 409, { error: "No matching pending approval." })
+    if (Date.now() >= approval.expiresAt) {
+      approval.resolve(false, "expired")
+      return sendJson(res, 409, { error: "Approval expired. This action was not run." })
+    }
+    const profile = selectProfile(config, state.profile)
+    if (state.safety === "plan" || !profile || profile.name !== approval.proposal.profile || recordConnection(profile) !== approval.proposal.connection) {
+      approval.resolve(false, "invalidated")
+      return sendJson(res, 409, { error: "Connection or permission settings changed. This action was not run." })
+    }
+    approval.resolve(body.approved)
+    return sendJson(res, 200, { resolved: true, approved: body.approved, approval_id: body.approval_id })
+  }
   if (req.method === "POST" && url.pathname === "/api/agent/reset") {
     const body = await readJson(req) as { chat_id?: string }
     const chatId = body.chat_id?.trim()
@@ -1136,7 +1195,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   if (req.method === "GET" && url.pathname === "/api/agent/jobs") {
     const jobs = [...agentJobsFor(state).values()]
       .filter((job) => job.status === "running" || job.status === "pending")
-      .map((job) => ({ job_id: job.id, chat_id: job.chatId, status: job.status, started_at: job.startedAt }))
+      .map((job) => ({ job_id: job.id, chat_id: job.chatId, status: job.status, started_at: job.startedAt, pending_approval: approvalView(job) }))
     return sendJson(res, 200, { jobs })
   }
   if (req.method === "GET" && url.pathname === "/api/agent/job") {
@@ -1150,6 +1209,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
       chat_id: job.chatId,
       status: job.status,
       events: agentJobEventsSince(job, since),
+      pending_approval: approvalView(job),
     })
   }
   if (req.method === "POST" && url.pathname === "/api/agent") {
