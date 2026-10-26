@@ -10,6 +10,8 @@ Latest operations checkpoint: [native read-only reports](2026-10-26-operations-s
 
 Latest follow-up: application `f01ac7e` instructs the model to qualify omitted report evidence; a real queue response explicitly did so. Application `c73c889` fixes split short labels in chat tables, with final standalone and branded-domain table captures. This does not certify model accuracy or complete the operations workspace. See the operations evidence above.
 
+Latest data-editor checkpoint: [dictionary field names](2026-10-26-dictionary-field-names/README.md), application `ff6218a`. Bounded native metadata, draft-preserving label updates, endpoint denial and final standalone/branded captures verified. Structural editing and New item remain unfinished.
+
 ## Original outcome
 
 Deploy the verified D3Code version on Tensology production with agreed customer/user authorization, approved D3 connection, instructions and OpenRouter, after a capacity audit; complete only after access denial tests, live D3/model checks, and visual inspection pass. Later user requirements include a polished shared standalone/embedded IDE for programs, data, dictionaries, adaptive screen frameworks and operations.
@@ -18,7 +20,7 @@ Deploy the verified D3Code version on Tensology production with agreed customer/
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Shared production application | verified | Application c73c889; active customer51 service and branded tickets journey. Current evidence linked above. |
+| Shared production application | verified | Application ff6218a; active customer51 service and branded tickets journey. Current evidence linked above. |
 | Agreed customer/user authorization | verified | Existing enabled Crystal Logic director; fresh 11 Django proxy checks, including real HTTP fixture upstreams for two enabled customers. No second live customer was provisioned. |
 | Negative access boundaries | verified | Live anonymous401/unflagged other-customer403; fresh tests cover revoked flag, inactive user/parent, forged routing/identity, CSRF, invalid upstreams and redirects. |
 | Per-user runtime and approvals | verified | Fresh 52 agent/IDE checks plus 10 approval checks, including owner isolation, replay, cancellation, expiry and connection invalidation. |
@@ -27,7 +29,7 @@ Deploy the verified D3Code version on Tensology production with agreed customer/
 | Capacity audit | verified | Root 8.8GB available at 87% used; 1406MiB RAM available before the last build. No local model runtime installed. |
 | Existing deployed visual states | verified | Individual desktop/mobile light/dark component captures in linked evidence. This is bounded visual coverage, not full product usability acceptance. |
 | Full program IDE | blocked | CodeMirror editing and native save/compile/noninteractive Run are now evidenced through the branded site. New program creation and the full program-development journey remain unfinished. |
-| Record structure and New item | blocked | Existing lossless read/save works in approved sandbox; structural add/remove fields, dictionary-aware labels and visible New item remain unfinished. Focused UI questions are pending. |
+| Record structure and New item | blocked | Existing lossless read/save works in approved sandbox; bounded dictionary labels now verified; structural add/remove fields, complete dictionary mapping and visible New item remain unfinished. Focused UI questions are pending. |
 | Adaptive screen frameworks | blocked | Filename candidates now explicitly unverified. Actual installation detection and native/SB/SB+ builders remain unfinished. |
 | Run and operate | incomplete | Native read-only jobs, printers and queue reports verified through the production model. Structured workspace, controls and scheduling remain unfinished. |
 | Full product acceptance | blocked | Full standalone plus embedded real developer journeys across all areas remain incomplete. |
