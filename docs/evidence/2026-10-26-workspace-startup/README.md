@@ -1,4 +1,4 @@
-# Workspace startup recovery (local, incomplete verification)
+# Workspace startup recovery
 
 Acceptance: delayed or failed core startup keeps drafts and attachments, prevents premature sending, offers Retry, keeps Stop available, and does not wait for optional model choices. Older startup results must not replace newer state.
 
@@ -18,4 +18,12 @@ Acceptance: delayed or failed core startup keeps drafts and attachments, prevent
 
 ## Remaining gates
 
-Deploy and verify through the authenticated branded production site. Broader IDE polish and full accessibility remain outside this component proof. No production readiness claim. No D3 data writes in these local checks.
+Broader IDE polish and full accessibility remain outside this component proof. No production readiness claim. No D3 data writes in these local checks.
+
+## Production verification
+
+Application db9c687 deployed to customer 51 shared service; server compilation and 49 checks passed; service active with zero restarts. Branded tickets site returned 401 to anonymous and 403 to an unflagged other-customer identity. At 390 and 1440, injected startup failure preserved the draft, Retry restored the real configured workspace, and actual DeepSeek/OpenRouter invoked d3_tcl WHO, returned 7 dm dm, and completed its response. Six final production captures individually inspected for readable controls, containment, alignment and clipping. Temporary browser contexts and Django sessions removed. No D3 data writes.
+
+The initial model probe chose d3_login: WHO succeeded but VERSION was unsupported, and its tool label misleadingly said Switched account. That existing diagnostic wording remains a separate follow-up; the final explicit WHO-only proof completed successfully.
+
+Fresh capacity: root 67G total, 58G used, 9.0G available (87%); 1396 MiB RAM available, swap 4604 MiB used. D3Code RSS about 66 MiB. No model runtime installed and no production-owned data removed.
