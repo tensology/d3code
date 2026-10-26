@@ -7,7 +7,7 @@
     "d3code": "./dist/src/cli.js"
   },
   "scripts": {
-    "build": "npm run build:sidecar && tsc -p tsconfig.json",
+    "build": "npm run build:sidecar && npm run build:ide && tsc -p tsconfig.json && tsc -p tsconfig.ide.json",
     "build:sidecar": "cargo build --manifest-path sidecar/Cargo.toml --release",
     "sidecar:check": "cargo check --manifest-path sidecar/Cargo.toml",
     "dev": "node --loader ts-node/esm src/cli.ts",
@@ -15,9 +15,17 @@
     "test": "PYTHONPATH=python python3 -m unittest discover -s python/tests && TEST_D3CODE_HOME=\"${TMPDIR:-/tmp}/d3code-node-test-home\"; TEST_PATH=$(printf '%s' \"$PATH\" | tr ':' '\\n' | grep -v \"^$HOME/.local/bin$\" | paste -sd ':' -); rm -rf \"$TEST_D3CODE_HOME\"; PATH=\"$TEST_PATH\" D3CODE_HOME=\"$TEST_D3CODE_HOME\" npm run build && PATH=\"$TEST_PATH\" D3CODE_HOME=\"$TEST_D3CODE_HOME\" node --test dist/**/*.test.js",
     "test:python": "PYTHONPATH=python python3 -m unittest discover -s python/tests",
     "regression": "npm test && node dist/src/cli.js doctor && node dist/src/cli.js install-proof && node dist/src/cli.js manual-scope reference/d3_reference_manual_10.3.4_5-28-2026.pdf && node dist/src/cli.js manual-scope reference/d3_user_guide_version_10_3_4_2026-05-28-20-56-09.pdf && node dist/src/cli.js product-audit --with-acceptance --allow-incomplete && node dist/src/cli.js acceptance",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.ide.json",
+    "build:ide": "node scripts/build-ide.mjs"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
+    "codemirror": "^6.0.2",
     "commander": "^13.1.0",
     "ink": "^5.1.0",
     "jsonc-parser": "^3.3.1",
@@ -27,6 +35,7 @@
   "devDependencies": {
     "@types/node": "^22.13.1",
     "@types/react": "^18.3.18",
+    "esbuild": "^0.28.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   },

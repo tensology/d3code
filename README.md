@@ -133,6 +133,8 @@ npm link
 d3code
 ```
 
+The browser program editor is bundled locally by `npm run build:ide` (also included in `npm run build`). TypeScript-only deployments must run that step before restarting the IDE. The bundle includes its third-party licenses. Program editing supports Find/Replace, go to line, undo/redo and guarded Save. Tab indents; Escape followed by Tab moves focus out of the editor. Highlighting is a visual aid; D3 compilation remains the syntax authority.
+
 On a fresh D3 Linux server, use the setup script instead:
 
 ```bash

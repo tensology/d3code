@@ -5,6 +5,7 @@ function syncEditorLines(){
   const editor=$('itemBody'),gutter=$('editorGutter');
   gutter.textContent=Array.from({length:editor.value.split('\n').length},(_,index)=>index+1).join('\n');
   gutter.scrollTop=editor.scrollTop;
+  document.dispatchEvent(new Event('d3-editor-sync'));
 }
 function editorContextPrefix(){
   if(document.body.dataset.editorState!=='loaded')return '';
@@ -24,9 +25,10 @@ function resetEditorSelection(){
   $('file').readOnly=false;$('item').readOnly=false;
   $('editorEmpty').textContent='Select an item to open it.';
 }
+function hasEditorDraft(){const editor=$('itemBody');return document.body.dataset.editorState==='loaded'&&editor.value!==(editor.dataset.savedBody||'')}
+window.addEventListener('beforeunload',event=>{if(hasEditorDraft()){event.preventDefault();event.returnValue=''}});
 async function confirmEditorDiscard(){
-  const editor=$('itemBody');
-  if(document.body.dataset.editorState!=='loaded'||editor.value===(editor.dataset.savedBody||''))return true;
+  if(!hasEditorDraft())return true;
   const modal=$('discardEditorModal'),previous=document.activeElement;
   modal.classList.add('open');$('keepEditorChanges').focus();
   return new Promise(resolve=>{

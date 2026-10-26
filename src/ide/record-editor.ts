@@ -54,6 +54,7 @@ async function readSelectedItem(){
     editorRecord=record;
     $('recordFields').hidden=!structured;$('itemBody').closest('.editor-wrap').hidden=structured;
     $('itemBody').value=structured?JSON.stringify(record.attributes):raw.replace(/\xfe/g,'\n');
+    $('itemBody').dataset.recordVersion=String(request);
     $('itemBody').readOnly=record.readOnly;$('itemBody').dataset.savedBody=$('itemBody').value;$('itemBody').dataset.profile=target.profile;
     $('writeItem').disabled=record.readOnly;$('writeItem').textContent='Save';$('buildBasic').disabled=record.readOnly;
     $('file').readOnly=true;$('item').readOnly=true;document.body.dataset.editorState='loaded';
