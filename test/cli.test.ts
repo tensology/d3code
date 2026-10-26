@@ -967,7 +967,7 @@ test("CLI captures a terminal transcript and parsed screen artifacts", async () 
   const home = await mkdtemp(join(tmpdir(), "d3code-terminal-capture-"))
   const out = join(home, "terminal-proof")
   const env = { ...process.env, D3CODE_HOME: home }
-  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "fake", "--account", "SALES", "--session", "persistent"], { cwd: process.cwd(), env })
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "fake", "--account", "SALES", "--session", "oneshot", "--entry", "sh"], { cwd: process.cwd(), env })
 
   const result = await execFileAsync("node", ["dist/src/cli.js", "terminal-capture", "--confirm", "--profile", "fake", "--out", out, "--width", "24", "--height", "6", "printf", "'@(-1)MENU@(5,2)Choice:'"], { cwd: process.cwd(), env })
   assert.match(result.stdout, /D3 Terminal Capture/)
@@ -1230,7 +1230,7 @@ test("CLI setup can bootstrap a persistent D3 profile noninteractively", async (
 test("CLI executes compact tool output", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-tool-"))
   const env = { ...process.env, D3CODE_HOME: home }
-  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "local"], { cwd: process.cwd(), env })
+  await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "local", "--session", "oneshot", "--entry", "sh"], { cwd: process.cwd(), env })
   const result = await execFileAsync("node", ["dist/src/cli.js", "tool-compact", "d3_tcl", "{\"command\":\"printf TOOL_OK\",\"confirmed\":true}", "--profile", "local"], { cwd: process.cwd(), env })
   assert.match(result.stdout, /TOOL_OK/)
 })

@@ -19,4 +19,8 @@ Interaction rationale:
 - Pending and execution outcomes have separate labels: approval does not imply a successful write (Nielsen #1).
 - Source is text, with invisible controls escaped: makes the actual action reviewable without executing markup (Nielsen #5).
 
-Remaining: additional expiry/background-thread recovery checks, editing-mode configuration, deployment and a real OpenRouter-to-office-DM approval/write/readback journey. Production remains on the previously deployed version. The fixture performs no D3 writes and is not evidence of live record integrity.
+Production checkpoint: version 20cb86b was deployed and passed the same 113 tests on the server. Anonymous requests returned 401 and an active but unflagged user from another customer returned 403. The initial real-model create request was blocked in chat mode and performed no write. Investigation reproduced Commander consuming the IDE's mode option at the parent command, leaving the IDE default active. Positional command options and an actual CLI-to-HTTP runtime regression test correct this mismatch.
+
+Customer 51 has a systemd override at `/etc/systemd/system/d3code@51.service.d/editing.conf` selecting `--mode migrate --safety ask`. It retains the office DM connection and the existing account allowlist. The override does not change other customer units. Verify `/api/status` after deployment, since process arguments alone did not prove the effective mode.
+
+Remaining: additional expiry/background-thread recovery checks, deployment of the CLI correction and a real OpenRouter-to-office-DM approval/write/readback journey. The fixture performs no D3 writes and is not evidence of live record integrity.

@@ -304,6 +304,7 @@ function registerSidecarCleanup(child: ChildProcess | undefined): void {
 }
 
 const program = new Command()
+  .enablePositionalOptions()
   .name("d3code")
   .description("Agentic terminal coding environment for Rocket D3.")
   .argument("[path]", "project path", ".")
