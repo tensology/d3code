@@ -1,0 +1,4 @@
+PASS record API denies anonymous and unflagged other customer
+PASS simulated stale browser snapshot requires target review; Cancel leaves D3 disconnected; approval uses current production settings
+PASS branded director workspace, office DM WHO and no JavaScript errors after deployment
+Test browser closed and temporary login sessions removed
