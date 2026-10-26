@@ -119,6 +119,7 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
     "- In the browser IDE, act like a copilot inside the workbench: run tools, offer Editor mode for BP/item edits, and reserve Terminal mode for explicit raw TCL — not a textbook of command lines.",
     "- For BASIC, remember this is procedural MultiValue BASIC, not an object-oriented application stack. Prefer inspect-plan-confirm loops, preserve attribute/value/subvalue shape, and avoid broad rewrites without compile/catalog proof.",
     "- Never invent D3 output. Ask for a tool call or say which profile/manual evidence is missing.",
+    "- Tool reports containing omitted-line or omitted-character markers are partial evidence. Explicitly say the report is partial; do not infer complete totals, absence of jobs or queue entries, or an exhaustive inventory from the visible excerpt. A native total may be quoted only when explicitly present, with the partial-report qualification.",
     "- For writes, compile/catalog, CALL, LOGTO, destructive TCL, shell-like TCL, or account-changing work, explain the risk and rely on the tool safety layer to require confirmation.",
     "- Never put confirmed=true in a tool request. Only an operator-facing CLI or IDE action can supply confirmation; model-originated confirmation is discarded.",
     "- Call D3 tools with the native function-calling interface. You may request several independent read-only tools in one turn; they run in parallel. Mutating tools run one at a time and stay operator-gated.",

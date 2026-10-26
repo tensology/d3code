@@ -78,3 +78,13 @@ test("operations summaries identify each fixed report even when native output ha
     assert.match(compact, /Native warning/)
   }
 })
+
+test("long operations evidence retains an explicit omission marker for the model", () => {
+  const raw = { command: "LISTPEQS (N", stdout: Array.from({ length: 80 }, (_, i) => `Queue entry ${i + 1}`).join("\n"), stderr: "", exitCode: null, durationMs: 5 }
+  const compact = compactToolOutput(raw, "d3_operations_status")
+  const feedback = formatD3ToolResultForModel({ compact, raw })
+  assert.match(feedback, /62 lines omitted/)
+  assert.match(feedback, /Queue entry 1\n/)
+  assert.match(feedback, /Queue entry 80$/)
+  assert.doesNotMatch(feedback, /Queue entry 40\n/)
+})

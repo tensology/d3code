@@ -254,6 +254,7 @@ test("agent system prompt is D3-only and names reference-manual grounding", () =
   assert.match(prompt, /Do not start general-purpose coding/)
   assert.match(prompt, /After D3 tool output, explain the practical meaning/)
   assert.match(prompt, /Prefer the most specific registered D3 tool/)
+  assert.match(prompt, /omitted-line or omitted-character markers are partial evidence/)
   assert.match(prompt, /persistent PTY/)
   assert.match(prompt, /D3PY\/UOPY is optional/)
   assert.match(prompt, /Hermes is the backbone memory\/orchestration layer/)
