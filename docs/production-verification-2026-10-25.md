@@ -216,3 +216,11 @@ A separate production journey created a new BASIC source only after both source 
 | New source and successful compile | [390](evidence/2026-10-26-record-editor/create-program-390.png) | [768](evidence/2026-10-26-record-editor/create-program-768.png) | [1280](evidence/2026-10-26-record-editor/create-program-1280.png) | [1440](evidence/2026-10-26-record-editor/create-program-1440.png) |
 
 All eight final captures were inspected individually at readable resolution for field hierarchy, source/build placement, actions, typography, clipping, overflow and overlap. No new containment defect was found in these states. The visible New item action has not been implemented; its draft-versus-immediate-creation choice is pending. The full IDE remains incomplete, including the richer source editor, agent application/approval flow, adaptive native/SB builders and operations.
+
+### Terminal header checkpoint, 2026-10-26
+
+Local shared header: connection marker grouped with status, redundant Connection label and repeated status target removed, account uses inherited typography, mobile target controls restored to 44px and selector to 16px. Connect contrast and mobile reconnect icon spacing corrected after visual inspection. Reconnect reset failure now marks disconnected, preserves previous transcript and appends the error.
+
+Acceptance evidence: TypeScript compilation and 45 tests in ide-server and ide-records pass. Headless Chrome exercised idle, busy, connected and reset-failure states at 390, 768, 1280 and 1440 in light and dark. All 32 final screenshots individually inspected for header alignment, containment, status legibility, target sizing and button contrast. Mock terminal transport, not live D3, used for these state checks.
+
+Interaction rationale: status dot and text share a group (Gestalt proximity); reconnect failure preserves history (Nielsen error recovery); mobile controls use 44px targets (UI/UX system responsive rule). Live branded iframe verification and publication remain pending for this checkpoint. Broader IDE acceptance remains incomplete.

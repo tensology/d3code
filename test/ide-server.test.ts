@@ -85,11 +85,24 @@ test("IDE opens a light terminal with connection controls and an optional agent 
   const reconnect = script.match(/async function reconnectTerminal\(\)\{[\s\S]*?(?=bindTerminalInput\(\$\('terminalMain'\)\))/)?.[0]
   assert.ok(reconnect)
   await runInNewContext(reconnect + ";reconnectTerminal()", {
-    terminalBusy: false, terminalConnectionState: {}, renderTerminalConnection() {}, setTerminalTranscript() {},
+    terminalBusy: false, terminalConnectionState: {}, terminalEls: () => [{dataset:{output: ""}}], renderTerminalConnection() {}, setTerminalTranscript() {},
     api: async (path: string) => { calls.push(path); return {} },
     sendTerminalCommand: async (command: string) => { calls.push(command) },
   })
   assert.deepEqual(calls, ["/api/terminal/reset", "WHO"])
+  let transcript = "WHO\n7 dm"
+  const failed = {
+    terminalBusy: false, terminalConnectionState: {connected:true,error:""},
+    terminalEls: () => [{dataset:{output:transcript}}], renderTerminalConnection() {},
+    setTerminalTranscript(value:string) { transcript=value },
+    api: async () => ({error:"SSH reset failed"}),
+    sendTerminalCommand: async () => { throw new Error("Must not send after a failed reset") },
+  }
+  await runInNewContext(reconnect+";reconnectTerminal()",failed)
+  assert.equal(failed.terminalConnectionState.connected,false)
+  assert.equal(failed.terminalConnectionState.error,"Connection/login issue")
+  assert.equal(transcript,"WHO\n7 dm\nConnection/login issue\nSSH reset failed")
+  assert.equal(failed.terminalBusy,false)
 })
 
 test("item read failures keep the editor unavailable and release the loading control", async () => {
