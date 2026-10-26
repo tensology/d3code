@@ -61,7 +61,7 @@ The branded-domain program journey is now evidenced above. Other workflows canno
 
 No native mobile hardware keyboard, Safari, screen reader or full IDE accessibility certification was performed. Native writes remain limited to the verified D3CODE sandbox and existing byte/encoding limits. Structural record editing, New item, framework builders and operations are separate incomplete work.
 
-`npm audit` reports an existing high-severity Zod advisory (GHSA-mrhx-c7xc-m3w5). Its advertised fix is a major-version migration, which is not silently included in this editor change. No added CodeMirror or esbuild advisory was reported. Dependency security remains an open production risk.
+At this editor checkpoint, `npm audit` reported an existing high-severity Zod advisory (GHSA-mrhx-c7xc-m3w5). It was subsequently fixed and production-verified in the separate [native v4 validation upgrade](../2026-10-26-validation-upgrade.md). No added CodeMirror or esbuild advisory was reported.
 
 ## Deployment requirement
 

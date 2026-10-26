@@ -4,6 +4,8 @@ Verdict: incomplete for the full user request. Deployment evidence must not be p
 
 Latest checkpoint: [program code editor](2026-10-26-program-code-editor/README.md), application `04f88f1`. The plain program textarea is now replaced by bundled CodeMirror; native save/compile/run, access denial, instructions, actual OpenRouter tools and final responsive screenshots were reverified. Full program development, structural record creation/editing, framework builders and operations remain incomplete. The ledger below records the earlier audit and must be read with this update.
 
+Subsequent runtime update: [validation dependency security fix](2026-10-26-validation-upgrade.md), application `9c42d43`. Production configuration semantics and bytes unchanged; 116 tests, zero reported npm advisories and the live branded-domain model journey reverified.
+
 ## Original outcome
 
 Deploy the verified D3Code version on Tensology production with agreed customer/user authorization, approved D3 connection, instructions and OpenRouter, after a capacity audit; complete only after access denial tests, live D3/model checks, and visual inspection pass. Later user requirements include a polished shared standalone/embedded IDE for programs, data, dictionaries, adaptive screen frameworks and operations.
@@ -12,7 +14,7 @@ Deploy the verified D3Code version on Tensology production with agreed customer/
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Shared production application | verified | Application 04f88f1, evidence HEAD 294d312; active customer51 service and branded tickets journey. |
+| Shared production application | verified | Application 9c42d43; active customer51 service and branded tickets journey. Current evidence linked above. |
 | Agreed customer/user authorization | verified | Existing enabled Crystal Logic director; fresh 11 Django proxy checks, including real HTTP fixture upstreams for two enabled customers. No second live customer was provisioned. |
 | Negative access boundaries | verified | Live anonymous401/unflagged other-customer403; fresh tests cover revoked flag, inactive user/parent, forged routing/identity, CSRF, invalid upstreams and redirects. |
 | Per-user runtime and approvals | verified | Fresh 52 agent/IDE checks plus 10 approval checks, including owner isolation, replay, cancellation, expiry and connection invalidation. |
