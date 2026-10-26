@@ -8,6 +8,8 @@ Subsequent runtime update: [validation dependency security fix](2026-10-26-valid
 
 Latest operations checkpoint: [native read-only reports](2026-10-26-operations-status/README.md), application `981f004`. Production model calls, access denial, report states and final responsive captures verified. Structured operations presentation and controls remain unfinished.
 
+Latest follow-up: application `f01ac7e` instructs the model to qualify omitted report evidence; a real queue response explicitly did so. Application `c73c889` fixes split short labels in chat tables, with final standalone and branded-domain table captures. This does not certify model accuracy or complete the operations workspace. See the operations evidence above.
+
 ## Original outcome
 
 Deploy the verified D3Code version on Tensology production with agreed customer/user authorization, approved D3 connection, instructions and OpenRouter, after a capacity audit; complete only after access denial tests, live D3/model checks, and visual inspection pass. Later user requirements include a polished shared standalone/embedded IDE for programs, data, dictionaries, adaptive screen frameworks and operations.
@@ -16,7 +18,7 @@ Deploy the verified D3Code version on Tensology production with agreed customer/
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Shared production application | verified | Application 981f004; active customer51 service and branded tickets journey. Current evidence linked above. |
+| Shared production application | verified | Application c73c889; active customer51 service and branded tickets journey. Current evidence linked above. |
 | Agreed customer/user authorization | verified | Existing enabled Crystal Logic director; fresh 11 Django proxy checks, including real HTTP fixture upstreams for two enabled customers. No second live customer was provisioned. |
 | Negative access boundaries | verified | Live anonymous401/unflagged other-customer403; fresh tests cover revoked flag, inactive user/parent, forged routing/identity, CSRF, invalid upstreams and redirects. |
 | Per-user runtime and approvals | verified | Fresh 52 agent/IDE checks plus 10 approval checks, including owner isolation, replay, cancellation, expiry and connection invalidation. |

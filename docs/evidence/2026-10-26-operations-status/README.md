@@ -73,3 +73,16 @@ Bounded component score: 82/100. Full-product gates remain incomplete. This scor
 The existing chat compaction limits still apply (18 lines / 3500 characters), with omitted-line markers. Model summaries are not authoritative complete inventories. CLI JSON retains the complete native result. Reports may show system-wide entries visible to the D3 login, including historical metadata for other accounts; the test did not switch accounts or access MerryPak production.
 
 No job start/stop, scheduling, printer assignment, print submission, backup command, native mobile hardware, Safari or screen reader verification was performed. Full operations controls and structured presentation remain unfinished.
+
+
+## Partial-report qualification follow-up
+
+Application `f01ac7e` adds a shared agent instruction to explicitly qualify reports containing omitted-line or omitted-character markers. It forbids deriving complete totals, absence or exhaustive inventories from an excerpt; an explicit native total may be quoted with the qualification. A regression verifies an 80-line queue report retains its exact omission marker and visible ends in model feedback. All 28 compact/agent-loop tests pass locally and on production.
+
+A fresh real OpenRouter journey requested only the queue report, with no mention of truncation in the user prompt. The answer explicitly reported 56 omitted lines, declined to vouch for the missing middle entries and distinguished visible native totals from derived counts. Anonymous 401 and unflagged 403 remained correct. The response still extrapolated ownership from visible rows, so this is evidence of qualification behavior, not a whole-answer accuracy certification. Model summaries still require judgment.
+
+Eight response screenshots at four widths and both themes were inspected individually. These historical captures are retained in [partial-report-before-table-fix](partial-report-before-table-fix); they exposed split short labels in the mobile table and are not the final table presentation.
+
+Application `c73c889` gives the first table column a minimum text width, preserving short labels while descriptions wrap. This reuses existing rendering, colours and table structure; no new table interaction or data behavior. The first-column rule applies to shared chat tables. TypeScript server/browser checks and 71 focused IDE/compact/agent tests pass locally. Eight local representative table captures pass per-word line-box and page-containment assertions and were inspected individually in both themes. Production table verification passed at application `c73c889`: all 43 IDE tests passed on the server, service active, and eight final branded-domain representative table captures passed short-label line-box and page-containment assertions and were inspected individually. These captures are in [table-production](table-production); they use explicitly injected representative content in the real renderer, not fabricated live model output. The separate model check above used an actual OpenRouter response. All temporary authentication sessions, browsers and local previews were closed.
+
+Interaction rationale: preserve readable label-value grouping (Gestalt proximity); allow descriptions to wrap rather than splitting short labels (WCAG 1.4.10 reflow). Many-column and long-identifier tables still need broader mobile treatment.

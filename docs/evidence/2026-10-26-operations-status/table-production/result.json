@@ -1,0 +1,10 @@
+{
+  "application": "c73c889",
+  "fixture": "Representative two-column markdown report with native queue fields; no new model call",
+  "checks": [
+    "short-labels-single-line",
+    "four-widths-two-themes",
+    "no-page-overflow"
+  ],
+  "screens": 8
+}
