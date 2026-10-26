@@ -9,6 +9,7 @@ const startLabels: Record<string, string> = {
   d3_read_dict: "Reading D3 dictionary",
   d3_query_aql: "Running AQL",
   d3_compile_basic: "Compiling BASIC",
+  d3_run_basic: "Running BASIC",
   d3_catalog: "Cataloging BASIC",
   d3_locks: "Inspecting D3 locks",
   d3_call_subroutine: "Calling D3 subroutine",
@@ -28,6 +29,7 @@ const resultLabels: Record<string, string> = {
   d3_read_dict: "Read D3 dictionary",
   d3_query_aql: "Ran AQL",
   d3_compile_basic: "Compiled BASIC",
+  d3_run_basic: "Ran BASIC",
   d3_catalog: "Cataloged BASIC",
   d3_locks: "Inspected D3 locks",
   d3_call_subroutine: "Called D3 subroutine",
@@ -53,7 +55,7 @@ function compact(value: string, maxLength = 96): string {
 
 export function formatToolTarget(name: string, input: unknown): string {
   const record = asRecord(input)
-  if (name === "d3_read_item" || name === "d3_write_item" || name === "d3_create_item" || name === "d3_read_dict" || name === "d3_compile_basic" || name === "d3_catalog") {
+  if (name === "d3_read_item" || name === "d3_write_item" || name === "d3_create_item" || name === "d3_read_dict" || name === "d3_compile_basic" || name === "d3_run_basic" || name === "d3_catalog") {
     return compact([stringField(record, "file"), stringField(record, "item")].filter(Boolean).join(" "))
   }
   if (name === "d3_tcl") return compact(stringField(record, "command"))

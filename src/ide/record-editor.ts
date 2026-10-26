@@ -83,6 +83,17 @@ async function saveSelectedRecord(){
   }catch(error){if(editorRecord===record)recordStatus(error.message||String(error),true)}
   finally{record.saving=false;if(editorRecord===record){$('writeItem').disabled=record.readOnly;$('writeItem').textContent='Save'}}
 }
+async function runSelectedProgramAction(action,title){
+  const record=editorRecord;if(!record?.source||record.runningAction)return;
+  if(record.saving){recordStatus('Wait for the save to finish before running a program action.',true);return}
+  if($('itemBody').value!==$('itemBody').dataset.savedBody){recordStatus('Save your changes before running a program action.',true);return}
+  const trigger=document.activeElement;
+  record.runningAction=true;
+  const buttons=['compileBasic','catalogBasic','runBasic'].map($);
+  buttons.forEach(button=>button.disabled=true);
+  try{await runApprovedEditorAction('/api/basic/'+action,{file:record.target.file,item:record.target.item,profile:record.target.profile,connection:record.connection},title)}
+  finally{record.runningAction=false;buttons.forEach(button=>button.disabled=false);if(document.activeElement===document.body||(!$('d3ApprovalModal').classList.contains('open')&&$('d3ApprovalModal').contains(document.activeElement)))trigger?.focus()}
+}
 $('itemBody').addEventListener('input',()=>{if(editorRecord?.source)syncRecordDraft()});
 `
 }

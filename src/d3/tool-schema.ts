@@ -46,6 +46,7 @@ const parameters: Record<string, Record<string, unknown>> = {
   d3_write_dict: object({ file: d3Name("File name."), item: d3Name("Dictionary item id."), body: string("Full replacement dictionary item body; newlines are attribute marks."), baseline, confirmed: confirmation }, ["file", "item", "body", "baseline"]),
   d3_query_aql: object({ query: string("A single read-only LIST/SORT/SELECT/SSELECT/COUNT AQL statement.") }, ["query"]),
   d3_compile_basic: object({ file: d3Name("BASIC source file."), item: d3Name("Program item."), confirmed: confirmation }, ["file", "item"]),
+  d3_run_basic: object({ file: d3Name("BASIC source file."), item: d3Name("Compiled program item."), confirmed: confirmation }, ["file", "item"]),
   d3_catalog: object({ file: d3Name("Source file."), item: d3Name("Program item."), global: bool("Catalog globally with (G."), confirmed: confirmation }, ["file", "item"]),
   d3_build_basic_program: object(
     {

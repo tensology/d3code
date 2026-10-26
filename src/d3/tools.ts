@@ -233,6 +233,15 @@ export const d3Tools: ToolDefinition[] = [
     },
   },
   {
+    name: "d3_run_basic",
+    description: "Run a compiled, non-interactive BASIC program and capture its output. Runtime effects require operator approval.",
+    mutates: true,
+    execute: async (input: unknown, context) => {
+      const args = input as { file: string; item: string; confirmed?: boolean }
+      return runTcl(context, `RUN ${requireName(args.file, "file")} ${requireName(args.item, "item")} (AN`, args.confirmed)
+    },
+  },
+  {
     name: "d3_catalog",
     description: "Catalog a compiled BASIC program.",
     mutates: true,

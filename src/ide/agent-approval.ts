@@ -7,7 +7,7 @@ export function agentApprovalClientScript(): string {
 const busyApprovalIds=new Set(),reconcilingApprovalChats=new Set();
 let reviewingApprovalId=null;
 function chatAwaitingApproval(chatId){return Boolean(chatById(chatId)?.messages?.some(message=>message.kind==='approval'&&message.status==='pending'))}
-function approvalAction(name){return {d3_create_item:'Create item',d3_write_item:'Replace item',d3_write_dict:'Replace dictionary item',d3_build_basic_program:'Build program',d3_compile_basic:'Compile program',d3_catalog:'Catalog program',d3_create_file:'Create file',d3_login:'Switch account',d3_call_subroutine:'Call subroutine',d3_tcl:'Run command'}[name]||'Run D3 action'}
+function approvalAction(name){return {d3_create_item:'Create item',d3_write_item:'Replace item',d3_write_dict:'Replace dictionary item',d3_build_basic_program:'Build program',d3_compile_basic:'Compile program',d3_run_basic:'Run program',d3_catalog:'Catalog program',d3_create_file:'Create file',d3_login:'Switch account',d3_call_subroutine:'Call subroutine',d3_tcl:'Run command'}[name]||'Run D3 action'}
 function approvalLabel(status){return {pending:'Waiting for approval',approved:'Approved',declined:'Declined',expired:'Expired',cancelled:'Cancelled',invalidated:'Settings changed',unavailable:'No longer pending'}[status]||'No longer pending'}
 function renderApprovalNode(node,message){
   node.className='tool-event approval-event';node.dataset.approvalId=message.approvalId;

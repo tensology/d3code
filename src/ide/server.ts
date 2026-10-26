@@ -167,11 +167,11 @@ async function closeAllTerminalSessions(state: IdeRuntimeState): Promise<void> {
   await Promise.all(sessions.map((session) => session.close().catch(() => {})))
 }
 
-function assertTerminalConnection(config: D3CodeConfig, state: IdeRuntimeState, input: { profile?: string; connection?: string }, required: boolean): void {
+function assertSelectedConnection(config: D3CodeConfig, state: IdeRuntimeState, input: { profile?: string; connection?: string }, required: boolean): void {
   if (!required && input.profile === undefined && input.connection === undefined) return
   const profile = selectProfile(config, state.profile)
   if (!profile || input.profile !== profile.name || input.connection !== recordConnection(profile)) {
-    throw new EditorRecordError(409, "Connection settings changed. Use Connect to review the updated connection before sending commands.")
+    throw new EditorRecordError(409, "Connection settings changed. Reopen the item or reconnect before continuing.")
   }
 }
 
@@ -548,7 +548,7 @@ function html(storageScope = ""): string {
     "<div id=\"editorView\" class=\"layout\">",
     "<aside class=\"editor-sidebar\"><div class=\"column-resizer column-resizer-right\" data-resize=\"editor-sidebar\" title=\"Resize D3 browser\"></div><div class=\"dock\"><div class=\"dock-head sessions-head\"><div class=\"dock-title\">D3 Browser</div><div class=\"dock-head-actions\"><button type=\"button\" id=\"refreshBrowser\" class=\"icon-button\" title=\"Refresh account files\" aria-label=\"Refresh account files\">↻</button></div></div><div class=\"dock-body sessions-body\"><div id=\"d3Browser\" class=\"sessions-tree\"></div><div id=\"itemBrowser\" hidden><div class=\"item-browser-head\"><button id=\"backToFiles\" type=\"button\">Files</button><strong id=\"itemBrowserFile\"></strong><button id=\"refreshItems\" class=\"icon-button\" type=\"button\" aria-label=\"Refresh items\">↻</button></div><label class=\"item-browser-field\">Section<select id=\"itemSection\"><option value=\"data\">Data</option><option value=\"dict\">Dictionary</option></select></label><div class=\"item-browser-field\"><label for=\"itemFilter\">Find items</label><div class=\"item-browser-search\"><input id=\"itemFilter\" type=\"search\" placeholder=\"ID prefix\" /><button id=\"searchItems\" type=\"button\">Search</button></div></div><div id=\"itemBrowserStatus\" class=\"item-browser-status\" role=\"status\"></div><div id=\"itemList\" class=\"item-list\"></div></div></div></div></aside>",
     "<main class=\"editor-main\">",
-    "<div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Item</div><div class=\"dock-sub\"></div></div><div class=\"editor-fields\"><div class=\"editor-target\"><span id=\"editorSectionLabel\">Data</span><input id=\"file\" aria-label=\"D3 file\" placeholder=\"D3 file, e.g. CUSTOMERS or BP\" /></div><input id=\"item\" aria-label=\"D3 item or program\" placeholder=\"item-ID, record, program, or subroutine\" /><button id=\"readItem\">Read item</button></div><div id=\"editorEmpty\" class=\"editor-empty\" role=\"status\">Select a file and open an item to begin.</div><div id=\"recordFields\" class=\"record-fields\" hidden></div><div class=\"editor-wrap\"><div id=\"editorGutter\" class=\"gutter\" aria-hidden=\"true\">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15<br>16<br>17<br>18<br>19<br>20</div><textarea id=\"itemBody\" wrap=\"off\" class=\"editor\" aria-label=\"D3 item editor\" spellcheck=\"false\" placeholder=\"Pick a file from the browser or type a file and item ID, then read.\"></textarea></div><div id=\"editorRecordStatus\" class=\"record-status\" role=\"status\" aria-live=\"polite\"></div><div class=\"toolbar editor-toolbar-actions\"><div class=\"editor-action-group\" aria-label=\"Item actions\"><button id=\"writeItem\" class=\"primary\">Save</button><button id=\"readDict\">Read dictionary</button></div><div class=\"editor-action-group\" aria-label=\"Build actions\"><button id=\"compileBasic\">Compile</button><button id=\"catalogBasic\">Catalog</button></div><details class=\"editor-more\"><summary>Tools</summary><div class=\"editor-more-menu\"><button id=\"buildBasic\">Build BASIC</button><button id=\"writeDict\">Write dictionary</button><button id=\"createFile\">Create file</button><button id=\"ragSearchEditor\">Search manuals</button><button id=\"sbplusDiscover\">SB+ Discover</button><button id=\"sbplusPlan\">SB+ Plan</button></div></details></div></div>",
+    "<div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Item</div><div class=\"dock-sub\"></div></div><div class=\"editor-fields\"><div class=\"editor-target\"><span id=\"editorSectionLabel\">Data</span><input id=\"file\" aria-label=\"D3 file\" placeholder=\"D3 file, e.g. CUSTOMERS or BP\" /></div><input id=\"item\" aria-label=\"D3 item or program\" placeholder=\"item-ID, record, program, or subroutine\" /><button id=\"readItem\">Read item</button></div><div id=\"editorEmpty\" class=\"editor-empty\" role=\"status\">Select a file and open an item to begin.</div><div id=\"recordFields\" class=\"record-fields\" hidden></div><div class=\"editor-wrap\"><div id=\"editorGutter\" class=\"gutter\" aria-hidden=\"true\">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15<br>16<br>17<br>18<br>19<br>20</div><textarea id=\"itemBody\" wrap=\"off\" class=\"editor\" aria-label=\"D3 item editor\" spellcheck=\"false\" placeholder=\"Pick a file from the browser or type a file and item ID, then read.\"></textarea></div><div id=\"editorRecordStatus\" class=\"record-status\" role=\"status\" aria-live=\"polite\"></div><div class=\"toolbar editor-toolbar-actions\"><div class=\"editor-action-group\" aria-label=\"Item actions\"><button id=\"writeItem\" class=\"primary\">Save</button><button id=\"readDict\">Read dictionary</button></div><div class=\"editor-action-group\" aria-label=\"Build actions\"><button id=\"compileBasic\">Compile</button><button id=\"catalogBasic\">Catalog</button><button id=\"runBasic\">Run</button></div><details class=\"editor-more\"><summary>Tools</summary><div class=\"editor-more-menu\"><button id=\"buildBasic\">Build BASIC</button><button id=\"writeDict\">Write dictionary</button><button id=\"createFile\">Create file</button><button id=\"ragSearchEditor\">Search manuals</button><button id=\"sbplusDiscover\">SB+ Discover</button><button id=\"sbplusPlan\">SB+ Plan</button></div></details></div></div>",
     "</main>",
     rightWorkbench(sideChat("section", "right", "agentOutput", "agentPrompt", "agentSend", "agentActivity", "agentRunStatus")),
     "<section class=\"editor-screen\"><div class=\"dock\"><div class=\"dock-head\"><div class=\"dock-title\">Output</div><button id=\"closeEditorOutput\" class=\"terminal-tool\" type=\"button\" aria-label=\"Hide output\">Close</button></div><div class=\"dock-body\"><div id=\"editorScreen\" class=\"terminal\" tabindex=\"0\" role=\"log\" aria-label=\"Build and tool output\"></div></div></div></section>",
@@ -650,7 +650,7 @@ function html(storageScope = ""): string {
     "function copyIcon(){return '<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"></rect><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"></path></svg>'}",
     "function beginEditMessage(message){if(message.role!=='user'||!message.id)return;document.querySelectorAll('.user-edit').forEach(el=>renderActiveChat());const nodes=document.querySelectorAll(`[data-message-id=\"${message.id}\"]`);nodes.forEach(node=>{const body=node.querySelector('.message-body');if(!body)return;body.innerHTML='<textarea class=\"user-edit\" spellcheck=\"true\"></textarea>';const area=body.querySelector('textarea');area.value=message.text||'';area.focus();area.setSelectionRange(area.value.length,area.value.length);area.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();renderActiveChat();return}if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitEditedMessage(message.id,area.value)}}})}",
     "async function submitEditedMessage(id,text){const next=String(text||'').trim();if(!next){renderActiveChat();return}const chat=currentChat();const index=chat.messages.findIndex(m=>m.id===id);if(index<0){renderActiveChat();return}chat.messages=chat.messages.slice(0,index);chat.updatedAt=Date.now();const firstUser=chat.messages.find(m=>m.role==='user');chat.title=previewText((firstUser&&firstUser.text)||next).slice(0,44)||'Session';saveChats();renderChatList();renderActiveChat();try{await streamAgent(next)}catch(error){addBubble('assistant',error.message||String(error))}}",
-    "const toolTitles={d3_list_files:'Listed D3 files',d3_read_item:'Read D3 item',d3_write_item:'Wrote D3 item',d3_create_item:'Created D3 item',d3_create_file:'Created D3 file',d3_read_dict:'Read D3 dictionary',d3_write_dict:'Wrote D3 dictionary',d3_build_basic_program:'Built BASIC program',d3_compile_basic:'Compiled BASIC',d3_catalog:'Cataloged BASIC',d3_sbplus_plan:'Planned SB+ process',d3_sbplus_discover:'Discovered SB+ account shape',d3_builder_capabilities:'Listed D3/SB+ capabilities',d3_query_aql:'Ran AQL',d3_tcl:'Ran TCL',d3_login:'Switched account',d3_detect:'Checked D3',d3_locks:'Inspected locks',d3_index_account:'Indexed account',d3_search:'Searched account',d3_manual_search:'Searched manuals',d3_rag_search:'Searched RAG'};",
+    "const toolTitles={d3_list_files:'Listed D3 files',d3_read_item:'Read D3 item',d3_write_item:'Wrote D3 item',d3_create_item:'Created D3 item',d3_create_file:'Created D3 file',d3_read_dict:'Read D3 dictionary',d3_write_dict:'Wrote D3 dictionary',d3_build_basic_program:'Built BASIC program',d3_compile_basic:'Compiled BASIC',d3_run_basic:'Ran BASIC',d3_catalog:'Cataloged BASIC',d3_sbplus_plan:'Planned SB+ process',d3_sbplus_discover:'Discovered SB+ account shape',d3_builder_capabilities:'Listed D3/SB+ capabilities',d3_query_aql:'Ran AQL',d3_tcl:'Ran TCL',d3_login:'Switched account',d3_detect:'Checked D3',d3_locks:'Inspected locks',d3_index_account:'Indexed account',d3_search:'Searched account',d3_manual_search:'Searched manuals',d3_rag_search:'Searched RAG'};",
     "function toolTitle(name,status){const action=approvalAction(name);if(status&&status!=='done'&&action!=='Run D3 action')return action;return toolTitles[name]||('D3 tool '+String(name||'').replace(/^d3_/,''))}",
     "function toolPreviewLine(text){const line=String(text||'').split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean)[0]||'';if(!line)return 'Done';return line.length>96?line.slice(0,93)+'…':line}",
     "function toolExpandable(full){const body=String(full||'').trim();if(!body)return false;const lines=body.split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean);if(lines.length>1)return true;return lines[0].length>96}",
@@ -836,9 +836,9 @@ function html(storageScope = ""): string {
     "$('readItem').onclick=readSelectedItem;$('closeEditorOutput').onclick=()=>document.body.dataset.editorOutput='hidden';",
     "$('readDict').onclick=async()=>{const q=new URLSearchParams({file:$('file').value,item:$('item').value});show('editorScreen',await api('/api/dict?'+q));};",
     "$('writeItem').onclick=saveSelectedRecord;",
-    "$('compileBasic').onclick=()=>{if($('itemBody').value!==$('itemBody').dataset.savedBody){recordStatus('Save your changes before building.',true);return}return runApprovedEditorAction('/api/basic/compile',{file:$('file').value,item:$('item').value},'Compile program?');};",
-    "$('catalogBasic').onclick=()=>{if($('itemBody').value!==$('itemBody').dataset.savedBody){recordStatus('Save your changes before building.',true);return}return runApprovedEditorAction('/api/basic/catalog',{file:$('file').value,item:$('item').value},'Catalog program?');};",
-    "$('buildBasic').onclick=async()=>{if(await saveSelectedRecord())await runApprovedEditorAction('/api/basic/compile',{file:$('file').value,item:$('item').value},'Compile program?')};",
+    "$('compileBasic').onclick=()=>runSelectedProgramAction('compile','Compile program?');",
+    "$('catalogBasic').onclick=()=>runSelectedProgramAction('catalog','Catalog program?');",
+    "$('runBasic').onclick=()=>runSelectedProgramAction('run','Run program?');$('buildBasic').onclick=async()=>{if(await saveSelectedRecord())await runSelectedProgramAction('compile','Compile program?')};",
     "$('writeDict').onclick=saveSelectedRecord;",
     "$('createFile').onclick=async()=>{const file=prompt('D3 file name',$('file').value||'');if(!file)return;const dictModulo=Number(prompt('Dictionary modulo','3')||'3');const dataModulo=Number(prompt('Data modulo','11')||'11');show('editorScreen',await api('/api/file/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({file,dictModulo,dataModulo,confirmed:mutationConfirmed()})}))};",
     "$('ragSearchEditor').onclick=async()=>{const query=prompt('Search D3/SB+ references',$('itemBody').value.split(/\\n/).slice(0,3).join(' ')||$('file').value||'SB+ screen definition');if(!query)return;show('editorScreen',await api('/api/rag-search?query='+encodeURIComponent(query)+'&limit=6'))};",
@@ -1267,7 +1267,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   if (req.method === "POST" && url.pathname === "/api/terminal/send") {
     const body = await readJson(req) as { command?: string; confirmed?: boolean; profile?: string; connection?: string }
     if (!body.command) return sendJson(res, 400, { error: "command is required" })
-    assertTerminalConnection(config, state, body, userScoped)
+    assertSelectedConnection(config, state, body, userScoped)
     try {
       const terminal = await runTerminalCommand(config, state, body.command, body.confirmed)
       return sendJson(res, 200, {
@@ -1302,7 +1302,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   }
   if (req.method === "POST" && url.pathname === "/api/terminal/reset") {
     const body = await readJson(req) as { profile?: string; connection?: string }
-    assertTerminalConnection(config, state, body, userScoped)
+    assertSelectedConnection(config, state, body, userScoped)
     const profile = selectProfile(config, state.profile)
     const key = terminalKey(profile?.name)
     terminalTranscriptsFor(state).delete(key)
@@ -1408,14 +1408,12 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     const result = await runToolByName(config, { name: "d3_query_aql", input: { query: body.query }, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
-  if (req.method === "POST" && url.pathname === "/api/basic/compile") {
-    const body = await readJson(req) as { file?: string; item?: string; confirmed?: boolean }
-    const result = await runToolByName(config, { name: "d3_compile_basic", input: { file: body.file, item: body.item, confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
-    return sendJson(res, 200, toolResultPayload(result))
-  }
-  if (req.method === "POST" && url.pathname === "/api/basic/catalog") {
-    const body = await readJson(req) as { file?: string; item?: string; global?: boolean; confirmed?: boolean }
-    const result = await runToolByName(config, { name: "d3_catalog", input: { file: body.file, item: body.item, global: body.global, confirmed: body.confirmed }, safety: state.safety, profile: state.profile })
+  if (req.method === "POST" && ["/api/basic/compile", "/api/basic/catalog", "/api/basic/run"].includes(url.pathname)) {
+    const body = await readJson(req) as { file?: string; item?: string; global?: boolean; confirmed?: boolean; profile?: string; connection?: string }
+    assertSelectedConnection(config, state, body, userScoped)
+    const name = url.pathname === "/api/basic/catalog" ? "d3_catalog" : url.pathname === "/api/basic/run" ? "d3_run_basic" : "d3_compile_basic"
+    const input = { file: body.file, item: body.item, confirmed: body.confirmed, ...(name === "d3_catalog" ? { global: body.global } : {}) }
+    const result = await runToolByName(config, { name, input, safety: state.safety, profile: state.profile })
     return sendJson(res, 200, toolResultPayload(result))
   }
   if (req.method === "POST" && url.pathname === "/api/basic/build") {

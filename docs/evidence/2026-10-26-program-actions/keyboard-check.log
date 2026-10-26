@@ -1,0 +1,2 @@
+{ active: 'runBasic', disabled: false, tag: 'BUTTON' }
+PASS: Enter opens review, Cancel receives focus, Escape restores Run focus, Tab and Enter approve execution

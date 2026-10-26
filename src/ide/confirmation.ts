@@ -29,7 +29,8 @@ async function runApprovedEditorAction(path,payload,title){
   const invoke=confirmed=>api(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,confirmed})});
   let result=await invoke(false);
   if(result.error?.startsWith('Confirmation required')){
-    if(!await confirmD3Action(title,payload.file+' / '+payload.item,title.split(' ')[0]))return;
+    const detail=[payload.profile,payload.file,payload.item].filter(Boolean).join(' / ')+(path==='/api/basic/run'?'\n\nRuns compiled code without interactive input.':'');
+    if(!await confirmD3Action(title,detail,title.split(' ')[0]))return;
     result=await invoke(true);
   }
   show('editorScreen',result);
