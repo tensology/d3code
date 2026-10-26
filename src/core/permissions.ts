@@ -21,7 +21,7 @@ const compileVerbs = new Set(["BASIC", "COMPILE", "CATALOG", "COMPILE-CATALOG"])
 const readReports = new Set(["LIST", "SORT", "SELECT", "SSELECT", "COUNT"])
 const readDiagnostics = new Set([
   "WHO", "VERSION", "TIME", "DATE", "TERM", "STTY", "WHERE", "LIST-LOCKS",
-  "LIST-ITEM-LOCKS", "LIST-JOBS", "LIST-VERBS", "LIST-DEVICE", "T-STAT", "SP-STATUS",
+  "LIST-ITEM-LOCKS", "LIST-JOBS", "LIST-VERBS", "LIST-DEVICE", "T-STAT", "SP-STATUS", "LISTPEQS",
 ])
 
 type TransportProfile = Pick<ConnectionProfile, "type" | "entryCommand">

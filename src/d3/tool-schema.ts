@@ -61,6 +61,7 @@ const parameters: Record<string, Record<string, unknown>> = {
     },
     ["file", "item", "source", "baseline"],
   ),
+  d3_operations_status: object({ area: { type: "string", enum: ["jobs", "printers", "queue"], description: "Read background jobs, printer devices or print queue entries." } }, ["area"]),
   d3_locks: emptyObject,
   d3_call_subroutine: object({ name: d3Name("Cataloged subroutine name."), args: { type: "array", items: { type: "string" }, maxItems: 100, description: "Positional arguments." }, confirmed: confirmation }, ["name"]),
   d3_index_account: object({ saveAs: d3Name("Optional cache index name to save the account index under.") }),

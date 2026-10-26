@@ -22,6 +22,36 @@ function tool(name: string) {
   return found
 }
 
+test("operations inspection uses only fixed nonprinting commands and preserves native results", async () => {
+  const commands: string[] = [], context = fakeContext(commands), controller = new AbortController()
+  const output = { command: "", stdout: "Native report\n\nNo invented rows", stderr: "native warning", exitCode: 0, durationMs: 7 }
+  const seen: Array<[number | undefined, AbortSignal | undefined]> = []
+  context.signal = controller.signal
+  context.session!.run = async (command, timeout, options) => { commands.push(command);seen.push([timeout, options?.signal]);return { ...output, command } }
+  assert.equal(tool("d3_operations_status").mutates, false)
+  for (const safety of ["plan", "ask", "trust"] as const) {
+    for (const [area, command] of [["jobs", "LIST-JOBS (N"], ["printers", "SP-STATUS (N"], ["queue", "LISTPEQS (N"]]) {
+      assert.deepEqual(await tool("d3_operations_status").execute({ area }, { ...context, safety, commandTimeoutMs: 60_000 }), { ...output, command })
+    }
+  }
+  assert.equal(commands.length, 9)
+  assert.ok(seen.every(([timeout, signal]) => timeout === 15_000 && signal === controller.signal))
+  await tool("d3_operations_status").execute({ area: "jobs" }, { ...context, commandTimeoutMs: 500 })
+  assert.equal(seen.at(-1)?.[0], 500)
+  for (const commandTimeoutMs of [undefined, 0]) {
+    await tool("d3_operations_status").execute({ area: "printers" }, { ...context, commandTimeoutMs })
+    assert.equal(seen.at(-1)?.[0], 15_000)
+  }
+  commands.length = 0
+  for (const area of [undefined, "toString", "jobs\nZ TEST", "queue (P"]) await assert.rejects(tool("d3_operations_status").execute({ area }, context), /Operations area/)
+  const shell = { ...context, safety: "plan" as const, profile: { ...context.profile!, entryCommand: "sh" } }
+  await assert.rejects(tool("d3_operations_status").execute({ area: "jobs" }, shell), /Denied by/)
+  assert.deepEqual(commands, [])
+  const failure = new Error("Report timed out; do not treat it as an empty queue.")
+  context.session!.run = async () => { throw failure }
+  await assert.rejects(tool("d3_operations_status").execute({ area: "queue" }, context), error => error === failure)
+})
+
 test("create-only tool refuses unapproved, out-of-scope and invalid payloads before transport", async () => {
   const commands: string[] = []
   const context = fakeContext(commands)

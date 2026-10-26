@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { parseD3ToolInput, toolInputContracts } from "../src/d3/tool-input.js"
 import { d3Tools } from "../src/d3/tools.js"
+import { d3ToolSchemas } from "../src/d3/tool-schema.js"
 
 test("every D3 tool has a schema-first input contract", () => {
   for (const tool of d3Tools) assert.ok(toolInputContracts[tool.name], tool.name)
@@ -30,4 +31,13 @@ test("oversized invalid tool collections fail without accumulating per-element e
   })
   assert.throws(() => parseD3ToolInput("d3_call_subroutine", { name: "TEST", args: [null] }), /Invalid/)
   assert.deepEqual(parseD3ToolInput("d3_call_subroutine", { name: "TEST", args: Array(100).fill("value") }), { name: "TEST", args: Array(100).fill("value") })
+})
+
+test("operations schema accepts only an explicit known report area", () => {
+  for (const area of ["jobs", "printers", "queue"]) assert.deepEqual(parseD3ToolInput("d3_operations_status", { area }), { area })
+  for (const input of [{}, { area: "toString" }, { area: "queue (P" }, { area: "jobs", confirmed: true }, { area: "jobs", command: "Z TEST" }]) assert.throws(() => parseD3ToolInput("d3_operations_status", input), /Invalid/)
+  const schema = d3ToolSchemas.find(tool => tool.name === "d3_operations_status")!.parameters
+  assert.deepEqual(schema.required, ["area"])
+  assert.equal(schema.additionalProperties, false)
+  assert.deepEqual((schema.properties as Record<string, { enum: string[] }>).area!.enum, ["jobs", "printers", "queue"])
 })

@@ -64,6 +64,11 @@ test("printing queries never receive read permission", () => {
   }
 })
 
+test("print queue inspection permits only plain nonprinting diagnostic forms", () => {
+  for (const command of ["LISTPEQS", "LISTPEQS (N", "listpeqs (n)"]) assert.equal(evaluateD3Permission("plan", command), "allow")
+  for (const command of ["LISTPEQS (P", "LISTPEQS (NP", "LISTPEQS TO PRINTER", "LISTPEQS; SP-KILL 1", "LISTPEQS 1-10", "LISTPEQS 'other'"]) assert.notEqual(evaluateD3Permission("plan", command), "allow", command)
+})
+
 
 test("native AQL comparisons remain reads while actual shell transports require approval", () => {
   const query = 'LIST ORDERS WITH TOTAL > 100 AND TOTAL < 200'

@@ -18,7 +18,7 @@ export const d3Capabilities: D3Capability[] = [
     kind: "d3",
     label: "Account Estate Discovery",
     purpose: "Inspect the active account before changing code: WHO/VERSION, visible file pointers, likely data/program/screen files, locks, and searchable account cache.",
-    tools: ["d3_login", "d3_estate_report", "d3_list_files", "d3_locks", "d3_index_account", "d3_search"],
+    tools: ["d3_login", "d3_estate_report", "d3_list_files", "d3_locks", "d3_operations_status", "d3_index_account", "d3_search"],
     cli: ["login", "estate", "files", "locks", "index-account", "search-account"],
     ide: ["Sessions tree", "D3 Browser", "Terminal", "Agent tool events"],
     referenceGrounding: ["Rocket D3 account, master dictionary, file pointer, and TCL behavior"],

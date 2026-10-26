@@ -274,6 +274,18 @@ export const d3Tools: ToolDefinition[] = [
     },
   },
   {
+    name: "d3_operations_status",
+    description: "Read background job status, printer device status or the print queue. Does not start jobs, assign printers, print or cancel anything. Reports may include system-wide entries visible to the D3 login.",
+    mutates: false,
+    execute: async (input: unknown, context) => {
+      const commands = { jobs: "LIST-JOBS (N", printers: "SP-STATUS (N", queue: "LISTPEQS (N" } as const
+      const area = (input as { area?: unknown })?.area
+      if (typeof area !== "string" || !Object.hasOwn(commands, area)) throw new Error("Operations area must be jobs, printers or queue.")
+      const timeout = context.commandTimeoutMs
+      return runTcl({ ...context, commandTimeoutMs: timeout && timeout > 0 ? Math.min(timeout, 15_000) : 15_000 }, commands[area as keyof typeof commands])
+    },
+  },
+  {
     name: "d3_locks",
     description: "Inspect D3 locks.",
     mutates: false,

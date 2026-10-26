@@ -28,6 +28,12 @@ test("D3 scope classifier fails closed for unrelated work and asks for a D3 anch
   assert.match(renderD3ScopeDecision(decision), /Which D3 account, file, program, bundle, manual section, or migration artifact/)
 })
 
+test("native operations requests reach only modes that already permit runtime inspection", () => {
+  for (const text of ["Show background jobs", "Inspect the phantom status", "Check the spooler", "Show the print queue", "Check printer status"]) assert.equal(classifyD3Scope(text).allowed, true, text)
+  for (const mode of ["chat", "audit", "modernize", "migrate", "qa"]) assert.doesNotThrow(() => assertD3Scope({ mode, toolName: "d3_operations_status", input: { area: "jobs" } }))
+  for (const mode of ["plan", "gsd", "api"]) assert.throws(() => assertD3Scope({ mode, toolName: "d3_operations_status", input: { area: "jobs" } }), /blocked/)
+})
+
 test("D3 scope guard applies mode-specific tool boundaries", () => {
   assert.doesNotThrow(() => assertD3Scope({ mode: "audit", toolName: "d3_read_item", input: { file: "CUSTOMERS", item: "100" } }))
   assert.doesNotThrow(() => assertD3Scope({ mode: "chat", toolName: "d3_manual_search", input: { query: "D3 CREATE-FILE syntax" } }))
