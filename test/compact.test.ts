@@ -69,3 +69,12 @@ test("lossless read baselines survive compact tool feedback without truncation",
 test("replacement summaries omit encoded readback bytes", () => {
   for (const name of ["d3_write_item", "d3_create_item", "d3_write_dict", "d3_build_basic_program"]) assert.deepEqual(JSON.parse(compactToolOutput({ saved: true, original: "c2F2ZWQ=" },name)),{saved:true})
 })
+
+test("operations summaries identify each fixed report even when native output has no command echo", () => {
+  for (const command of ["LIST-JOBS (N", "SP-STATUS (N", "LISTPEQS (N"]) {
+    const compact = compactToolOutput({ command, stdout: "Native status report", stderr: "Native warning", exitCode: null, durationMs: 5 }, "d3_operations_status")
+    assert.ok(compact.startsWith("TCL: " + command + "\n"))
+    assert.match(compact, /Native status report/)
+    assert.match(compact, /Native warning/)
+  }
+})

@@ -31,7 +31,7 @@ test("operations inspection uses only fixed nonprinting commands and preserves n
   assert.equal(tool("d3_operations_status").mutates, false)
   for (const safety of ["plan", "ask", "trust"] as const) {
     for (const [area, command] of [["jobs", "LIST-JOBS (N"], ["printers", "SP-STATUS (N"], ["queue", "LISTPEQS (N"]]) {
-      assert.deepEqual(await tool("d3_operations_status").execute({ area }, { ...context, safety, commandTimeoutMs: 60_000 }), { ...output, command })
+      assert.deepEqual(await tool("d3_operations_status").execute({ area }, { ...context, safety, commandTimeoutMs: 60_000 }), { ...output, command, status: "warning" })
     }
   }
   assert.equal(commands.length, 9)
@@ -47,6 +47,12 @@ test("operations inspection uses only fixed nonprinting commands and preserves n
   const shell = { ...context, safety: "plan" as const, profile: { ...context.profile!, entryCommand: "sh" } }
   await assert.rejects(tool("d3_operations_status").execute({ area: "jobs" }, shell), /Denied by/)
   assert.deepEqual(commands, [])
+  for (const native of [{ stdout: "denied", stderr: "", exitCode: 1 }, { stdout: "[3] Verb not defined in MD", stderr: "", exitCode: null }]) {
+    context.session!.run = async command => ({ ...output, ...native, command })
+    assert.equal((await tool("d3_operations_status").execute({ area: "queue" }, context) as { status: string }).status, "warning")
+  }
+  context.session!.run = async command => ({ ...output, command, stderr: "" })
+  assert.equal((await tool("d3_operations_status").execute({ area: "queue" }, context) as { status: string }).status, "success")
   const failure = new Error("Report timed out; do not treat it as an empty queue.")
   context.session!.run = async () => { throw failure }
   await assert.rejects(tool("d3_operations_status").execute({ area: "queue" }, context), error => error === failure)

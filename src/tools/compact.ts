@@ -56,14 +56,14 @@ function summarizeListOutput(output: string): string | undefined {
 }
 
 function compactD3CommandResult(result: D3CommandResult, toolName?: string): string {
-  const body = result.stdout || result.stderr || ""
+  const body = toolName === "d3_operations_status" ? [result.stdout, result.stderr].filter(Boolean).join("\n") : result.stdout || result.stderr || ""
   const sanitized = sanitizeD3TerminalOutput(body)
   const listSummary = toolName === "d3_list_files"
     ? summarizeListOutput(body) ?? summarizeListOutput(sanitized)
     : undefined
   if (listSummary) return listSummary
 
-  const tcl = extractTclCommand(body) ?? extractTclCommand(sanitized)
+  const tcl = toolName === "d3_operations_status" ? result.command : extractTclCommand(body) ?? extractTclCommand(sanitized)
   const header = tcl
     ? `TCL: ${tcl}`
     : toolName === "d3_list_files"

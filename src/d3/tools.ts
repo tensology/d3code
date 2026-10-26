@@ -282,7 +282,10 @@ export const d3Tools: ToolDefinition[] = [
       const area = (input as { area?: unknown })?.area
       if (typeof area !== "string" || !Object.hasOwn(commands, area)) throw new Error("Operations area must be jobs, printers or queue.")
       const timeout = context.commandTimeoutMs
-      return runTcl({ ...context, commandTimeoutMs: timeout && timeout > 0 ? Math.min(timeout, 15_000) : 15_000 }, commands[area as keyof typeof commands])
+      const command = commands[area as keyof typeof commands]
+      const result = await runTcl({ ...context, commandTimeoutMs: timeout && timeout > 0 ? Math.min(timeout, 15_000) : 15_000 }, command)
+      const warning = (result.exitCode !== null && result.exitCode !== 0) || Boolean(result.stderr.trim()) || /^\s*\[\d+\][^\r\n]*(?:not defined|not found|not a verb)/im.test(result.stdout)
+      return { ...result, command, status: warning ? "warning" : "success" }
     },
   },
   {
