@@ -30,6 +30,7 @@ const parameters: Record<string, Record<string, unknown>> = {
   d3_list_files: emptyObject,
   d3_read_item: object({ file: d3Name("File (master dictionary entry) name."), item: d3Name("Item id to read."), lossless: bool("Return exact bytes and a baseline for replacement.") }, ["file", "item"]),
   d3_write_item: object({ file: d3Name("File name."), item: d3Name("Item id to write."), body: string("Full replacement item body; newlines are attribute marks."), baseline, confirmed: confirmation }, ["file", "item", "body", "baseline"]),
+  d3_create_item: object({ file: d3Name("File name."), item: d3Name("New item id."), body: string("Complete new item; newlines are attribute marks."), section: { type: "string", enum: ["data", "dict"] }, confirmed: confirmation }, ["file", "item", "body"]),
   d3_create_file: object(
     {
       file: d3Name("New file name."),

@@ -22,6 +22,18 @@ function tool(name: string) {
   return found
 }
 
+test("create-only tool refuses unapproved, out-of-scope and invalid payloads before transport", async () => {
+  const commands: string[] = []
+  const context = fakeContext(commands)
+  const input = { file: "D3CODE.RECORD.TEST", item: "NEW", body: "one\ntwo" }
+  await assert.rejects(tool("d3_create_item").execute(input, context), /Confirmation required/)
+  await assert.rejects(tool("d3_create_item").execute({ ...input, confirmed: true }, { ...context, safety: "plan" }), /blocked|Plan|plan/)
+  await assert.rejects(tool("d3_create_item").execute({ ...input, file: "CUSTOMERS", confirmed: true }, context), /outside the verified sandbox/)
+  await assert.rejects(tool("d3_create_item").execute({ ...input, item: "NEW\nWHO", confirmed: true }, context), /item must contain only/)
+  await assert.rejects(tool("d3_create_item").execute({ ...input, body: "\u0100", confirmed: true }, context), /byte|character|Latin/i)
+  assert.deepEqual(commands, [])
+})
+
 test("read tools reject newline and control-character command injection", async () => {
   const commands: string[] = []
   const context = fakeContext(commands)

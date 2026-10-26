@@ -93,7 +93,7 @@ export function compactToolOutput(output: unknown, toolName?: string): string {
     const { baseline: _baseline, ...visible } = output
     return compactText(JSON.stringify(visible, null, 2), { maxLines: 24, maxChars: 4000 })
   }
-  if (["d3_write_item", "d3_write_dict", "d3_build_basic_program"].includes(toolName ?? "") && output && typeof output === "object" && "saved" in output && "original" in output) {
+  if (["d3_write_item", "d3_create_item", "d3_write_dict", "d3_build_basic_program"].includes(toolName ?? "") && output && typeof output === "object" && "saved" in output && "original" in output) {
     const { original: _original, ...visible } = output
     return compactText(JSON.stringify(visible, null, 2), { maxLines: 24, maxChars: 4000 })
   }

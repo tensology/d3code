@@ -29,7 +29,7 @@ export const d3Capabilities: D3Capability[] = [
     kind: "d3",
     label: "BASIC Program Builder",
     purpose: "Create or update BASIC source, lint locally where possible, write through ED, compile with BASIC, and optionally catalog the module.",
-    tools: ["d3_write_item", "d3_build_basic_program", "d3_compile_basic", "d3_catalog", "d3_call_subroutine"],
+    tools: ["d3_write_item", "d3_create_item", "d3_build_basic_program", "d3_compile_basic", "d3_catalog", "d3_call_subroutine"],
     cli: ["write-item", "build-basic", "compile-basic", "catalog-basic", "call-subroutine"],
     ide: ["Item / BASIC Editor", "Compile", "Catalog", "Agent builder loop"],
     referenceGrounding: ["Rocket D3 BASIC source, ED editor filing, BASIC command, CATALOG command"],

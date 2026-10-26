@@ -6,7 +6,7 @@ import { d3Capabilities, renderD3Capabilities } from "./capabilities.js"
 import { detectLocalD3 } from "./detect.js"
 import { inspectD3Estate, listD3Files, dataFileListCommand } from "./estate.js"
 import { formatManualSearchResult, searchDefaultManuals } from "./manual-search.js"
-import { EditorRecordError, readEditorRecord, saveEditorRecord } from "./records.js"
+import { EditorRecordError, createEditorRecord, readEditorRecord, recordConnection, saveEditorRecord } from "./records.js"
 import { runRecordOperation } from "./record-session.js"
 import { analyzeD3Record } from "./shape.js"
 import { recordBytes } from "./record-protocol.js"
@@ -160,6 +160,22 @@ export const d3Tools: ToolDefinition[] = [
       const file = requireName(args.file, "file")
       const item = requireName(args.item, "item")
       return runReplaceWrite(context, { kind: "item", file, item, body: args.body ?? "", baseline: args.baseline, confirmed: args.confirmed })
+    },
+  },
+  {
+    name: "d3_create_item",
+    description: "Create a missing sandbox data or dictionary item. Refuses existing items, including empty records. Newlines represent attribute marks; creation requires approval.",
+    mutates: true,
+    execute: async (input: unknown, context) => {
+      const args = input as { file: string; item: string; body: string; section?: "data" | "dict"; confirmed?: boolean }
+      const profile = context.profile ?? context.session?.profile
+      if (!profile) throw new Error("Select a D3 profile before writing.")
+      const file = requireName(args.file, "file"), item = requireName(args.item, "item")
+      const replacement = Buffer.from(recordBytes(args.body.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n/g, "\xfe"))).toString("base64")
+      return createEditorRecord(profile, context.safety, {
+        profile: profile.name, connection: recordConnection(profile), file, item,
+        section: args.section ?? "data", replacement, confirmed: args.confirmed,
+      }, (profile, request) => runRecordOperation(profile, request, { signal: context.signal, timeoutMs: context.commandTimeoutMs }))
     },
   },
   {

@@ -1,0 +1,1 @@
+{"status":"PASS","file":"D3CODE.RECORD.TEST","item":"D3CODE.CREATE.TOOL.59F4C0FCD061212E","checks":["approval required","create-only acknowledged protocol","nested marks and trailing empty attribute preserved","duplicate refused","independent exact readback"],"retained":true}

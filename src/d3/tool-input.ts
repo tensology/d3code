@@ -15,6 +15,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
   d3_list_files: empty,
   d3_read_item: z.object({ file: name, item: name, lossless: z.boolean().optional() }).strict(),
   d3_write_item: z.object({ file: name, item: name, body: z.string(), baseline, ...optionalConfirmation }).strict(),
+  d3_create_item: z.object({ file: name, item: name, body: z.string(), section: z.enum(["data", "dict"]).optional(), ...optionalConfirmation }).strict(),
   d3_create_file: z.object({
     file: name,
     dictModulo: z.number().int().positive().optional(),
@@ -48,6 +49,7 @@ export const toolInputContracts: Record<string, string> = {
   d3_list_files: "{}",
   d3_read_item: "{file:name, item:name, lossless?:boolean}",
   d3_write_item: "{file:name, item:name, body:string, baseline:{profile,connection,original}}",
+  d3_create_item: "{file:name, item:name, body:string, section?:data|dict}",
   d3_create_file: "{file:name, dictModulo?:positive-int, dataModulo?:positive-int, dictionaryOnly?:boolean, dataOnlyDictionary?:name}",
   d3_read_dict: "{file:name, item:name, lossless?:boolean}",
   d3_write_dict: "{file:name, item:name, body:string, baseline:{profile,connection,original}}",

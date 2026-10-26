@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import {randomBytes} from "node:crypto";
+import {loadConfig} from "/Users/paul/development/WORK/CRYSTALLOGIC/D3Code/dist/src/config/config.js";
+import {runToolByName} from "/Users/paul/development/WORK/CRYSTALLOGIC/D3Code/dist/src/tools/runner.js";
+const config=await loadConfig(),profile=config.profiles.find(p=>p.name==="office");assert.equal(profile?.account,"dm");
+const run=async(name,input)=>(await runToolByName(config,{name,input,profile:profile.name,safety:"ask",mode:"migrate"})).raw;
+const item="D3CODE.CREATE.TOOL."+randomBytes(8).toString("hex").toUpperCase(),file="D3CODE.RECORD.TEST",body="Tool creation proof\nvalue\xfdsecond\xfcsub\n";
+await assert.rejects(run("d3_create_item",{file,item,body}),/Confirmation required/);
+const created=await run("d3_create_item",{file,item,body,confirmed:true});assert.equal(created.saved,true);
+const expected=Buffer.from(body.replaceAll("\n","\xfe"),"latin1").toString("base64");assert.equal(created.original,expected);
+const read=await run("d3_read_item",{file,item,lossless:true});assert.equal(read.baseline.original,expected);
+await assert.rejects(run("d3_create_item",{file,item,body:"must not replace",confirmed:true}),/already exists/);
+assert.equal((await run("d3_read_item",{file,item,lossless:true})).baseline.original,expected);
+console.log(JSON.stringify({status:"PASS",file,item,checks:["approval required","create-only acknowledged protocol","nested marks and trailing empty attribute preserved","duplicate refused","independent exact readback"],retained:true}));
