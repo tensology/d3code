@@ -6,7 +6,7 @@ import { runRecordOperation } from "./record-session.js"
 
 export class EditorRecordError extends Error {
   get statusCode(): number { return this.status }
-  constructor(readonly status: number, message: string, readonly bridgeUnavailable = false) { super(message) }
+  constructor(readonly status: number, message: string, readonly bridgeUnavailable = false, cause?: unknown) { super(message, { cause }) }
 }
 
 export const recordConnection = (profile: ConnectionProfile): string => createHash("sha256").update(JSON.stringify(profile)).digest("hex")
@@ -58,7 +58,7 @@ async function writeEditorRecord(profile: ConnectionProfile, safety: SafetyMode,
   const replacement = decodeBytes(input.replacement)
   if (!recordWriteAllowed(selected.file, selected.item, selected.section)) throw new EditorRecordError(403, "This item is outside the verified sandbox write scope.")
   try { assertD3Allowed(safety, `UPDATE ${selected.file}`, input.confirmed === true, profile.allowedAccounts, profile) }
-  catch (error) { throw new EditorRecordError(safety === "plan" ? 403 : 409, (error as Error).message) }
+  catch (error) { throw new EditorRecordError(safety === "plan" ? 403 : 409, (error as Error).message, false, error) }
   let response: RecordResponse
   try { response = await operation(profile, { operation: kind, ...selected, ...(expected === undefined ? {} : { expected }), replacement }) }
   catch { throw new EditorRecordError(503, kind === "CREATE_ONLY" ? "Record transport failed. The new item may have been created. Read it before retrying; your draft is kept." : "Record transport failed. A replacement may have been written. Read the item again before retrying; your draft is kept.") }

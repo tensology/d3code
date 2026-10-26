@@ -1,0 +1,17 @@
+✔ trusted approval pauses execution and cannot change the approved payload (7.484167ms)
+✔ declining approval stops the mutation batch and model continuation (2.131834ms)
+✔ approval requires the boolean true value (1.262625ms)
+✔ aborting a pending approval works even when the host callback never resolves (1.403167ms)
+✔ read-only calls and denied plan-mode writes never request approval (2.459875ms)
+✔ changed connection invalidates an approved action before execution (1.240375ms)
+✔ typed record permission errors reach trusted approval (1.473167ms)
+✔ a trusted callback does not bypass a read-only mode contract (1.027584ms)
+✔ an error message cannot impersonate the permission boundary (1.177125ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 106.782209

@@ -3,6 +3,13 @@ import type { ConnectionProfile, SafetyMode } from "../domain/types.js"
 export type PermissionAction = "allow" | "ask" | "deny" | "confirm"
 export type D3CommandRisk = "read" | "write" | "compile" | "destructive" | "shell"
 
+export class D3ConfirmationRequiredError extends Error {
+  constructor(mode: SafetyMode, command: string) {
+    super(`Confirmation required by ${mode} safety policy: ${command}`)
+    this.name = "D3ConfirmationRequiredError"
+  }
+}
+
 const riskOrder: D3CommandRisk[] = ["read", "write", "compile", "destructive", "shell"]
 const destructiveVerbs = new Set([
   "CLEAR-FILE", "DELETE-FILE", "DELETE-ACCOUNT", "ACCOUNT-RESTORE", "FILE-RESTORE",
@@ -67,6 +74,6 @@ export function assertD3Allowed(mode: SafetyMode, command: string, confirmed = f
   const action = evaluateD3Permission(mode, command, profile)
   if (action === "deny") throw new Error(`Denied by ${mode} safety policy: ${command}`)
   if ((action === "ask" || action === "confirm") && !confirmed) {
-    throw new Error(`Confirmation required by ${mode} safety policy: ${command}`)
+    throw new D3ConfirmationRequiredError(mode, command)
   }
 }

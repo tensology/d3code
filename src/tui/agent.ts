@@ -1,4 +1,6 @@
-import type { D3CodeConfig } from "../config/config.js"
+import { selectProfile, type D3CodeConfig } from "../config/config.js"
+import { D3ConfirmationRequiredError } from "../core/permissions.js"
+import { EditorRecordError, recordConnection } from "../d3/records.js"
 import type { SafetyMode } from "../domain/types.js"
 import { chat, type ChatMessage, type ChatRequest, type ChatResponse, type ChatUsage, type ToolCall } from "../llm/client.js"
 import type { ProjectContext } from "./project-context.js"
@@ -32,6 +34,18 @@ export interface D3AgentTurnRequest extends D3AgentState {
   onEvent?: (event: D3AgentTurnEvent) => void
   signal?: AbortSignal
   turnTimeoutMs?: number
+  /** Trusted host callback, never supplied by the model or chat history. */
+  approveTool?: (proposal: D3ToolApproval, signal: AbortSignal) => Promise<boolean>
+}
+
+export interface D3ToolApproval {
+  name: string
+  input: unknown
+  reason?: string
+  profile: string
+  account?: string
+  host?: string
+  connection: string
 }
 
 export interface D3AgentToolRequest {
@@ -94,9 +108,9 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
     "- Do not start general-purpose coding in unrelated languages or frameworks unless the user is building a D3-backed application slice from D3 evidence.",
     "- Ground D3 behavior in the active profile, captured D3 evidence, and repo-local Rocket D3 manuals/reference material. If manual-backed clarity is missing, ask for or run D3/manual/search evidence instead of guessing.",
     "- Use D3 tools when you need facts from the current account, dictionaries, BASIC, locks, indexes, terminal evidence, or generated D3 application artifacts.",
-    "- Prefer the most specific registered D3 tool over raw d3_tcl. Use d3_read_item/d3_read_dict/d3_query_aql/d3_list_files/d3_locks/d3_create_file/d3_write_dict/d3_build_basic_program/d3_compile_basic/d3_catalog/d3_call_subroutine when they fit, and reserve raw d3_tcl for commands without a typed wrapper or explicitly terminal-like operator work.",
+    "- Prefer the most specific registered D3 tool over raw d3_tcl. Use d3_read_item/d3_read_dict/d3_query_aql/d3_list_files/d3_locks/d3_create_item/d3_create_file/d3_write_dict/d3_build_basic_program/d3_compile_basic/d3_catalog/d3_call_subroutine when they fit, and reserve raw d3_tcl for commands without a typed wrapper or explicitly terminal-like operator work.",
     "- For D3/SB+ coding, call d3_rag_search or d3_manual_search before relying on memory for syntax, System Builder behavior, dictionary semantics, or screen/process rules.",
-    "- For BASIC program creation, use d3_build_basic_program so the write/compile/catalog evidence stays together.",
+    "- For missing BASIC source, use d3_create_item with operator approval, then d3_compile_basic. Never replace an existing item through creation. For existing source, obtain a lossless baseline and use d3_build_basic_program so replacement/compile/catalog evidence stays together.",
     "- For SB+ screen and process work, use d3_sbplus_discover and d3_sbplus_plan first. Do not invent SB+ definition record layouts; discover the local SB+ files/conventions or route through SB+ maintenance screens before writing.",
     "- For terminal, menu, login, System Builder, and legacy screen flows, prefer the persistent PTY/terminal route and screen-buffer evidence over one-shot TCL. Do not treat screen programs as plain command output.",
     "- D3PY/UOPY is optional and environment-dependent. Only choose it after tooling status or parity evidence says it is configured and suitable; otherwise say it is blocked/spike-only and fall back to typed TCL or persistent PTY.",
@@ -253,6 +267,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
   let iteration = 0
   const failedRequests = new Map<string, number>()
   const repeatedRequests = new Map<string, number>()
+  let approvalStopped: string | undefined
 
   while (true) {
     if (turnSignal.aborted) {
@@ -382,16 +397,52 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
     const executeOne = async (toolRequest: D3AgentToolRequest): Promise<{ request: D3AgentToolRequest; result: ToolRunResult; failures: number }> => {
       request.onEvent?.({ type: "tool_start", name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason })
       try {
-        const result = await runToolByName(config, {
+        turnSignal.throwIfAborted()
+        const input = structuredClone(toolRequest.input)
+        const profile = selectProfile(config, request.profile)
+        const connection = profile ? recordConnection(profile) : undefined
+        const invoke = (confirmed = false) => runToolByName(config, {
           name: toolRequest.name,
-          input: toolRequest.input,
+          input: confirmed ? { ...(input as Record<string, unknown>), confirmed: true } : input,
           profile: request.profile,
           safety: request.safety,
           signal: turnSignal,
           commandTimeoutMs: 120_000,
           mode: request.mode,
-          acceptInputConfirmation: false,
+          acceptInputConfirmation: confirmed,
         })
+        let result: ToolRunResult
+        try { result = await invoke() }
+        catch (error) {
+          const needsApproval = error instanceof D3ConfirmationRequiredError || (error instanceof EditorRecordError && error.cause instanceof D3ConfirmationRequiredError)
+          if (!needsApproval || !request.approveTool || !profile || !connection) throw error
+          const proposal = { name: toolRequest.name, input: { ...(input as Record<string, unknown>), confirmed: false }, reason: toolRequest.reason, profile: profile.name, account: profile.account, host: profile.host, connection }
+          approvalStopped = "Approval did not complete. No further actions were run."
+          let onAbort = () => {}
+          let approved: boolean
+          try {
+            approved = await Promise.race([
+              request.approveTool(structuredClone(proposal), turnSignal),
+              new Promise<boolean>((_resolve, reject) => {
+                onAbort = () => reject(turnSignal.reason)
+                turnSignal.addEventListener("abort", onAbort, { once: true })
+                if (turnSignal.aborted) onAbort()
+              }),
+            ])
+          } finally { turnSignal.removeEventListener("abort", onAbort) }
+          turnSignal.throwIfAborted()
+          if (approved !== true) {
+            approvalStopped = "Not run: operator declined the proposed D3 action."
+            throw new Error(approvalStopped)
+          }
+          const current = selectProfile(config, request.profile)
+          if (!current || current.name !== proposal.profile || recordConnection(current) !== connection) {
+            approvalStopped = "Connection settings changed while awaiting approval. This action was not run."
+            throw new Error(approvalStopped)
+          }
+          approvalStopped = undefined
+          result = await invoke(true)
+        }
         return { request: toolRequest, result, failures: 0 }
       } catch (error) {
         const result = failedToolResult(toolRequest, error)
@@ -409,6 +460,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
       outcomes = []
       for (const toolRequest of toolRequests) {
         outcomes.push(await executeOne(toolRequest))
+        if (approvalStopped || turnSignal.aborted) break
       }
     } else {
       outcomes = await Promise.all(toolRequests.map((toolRequest) => executeOne(toolRequest)))
@@ -421,6 +473,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
       messages.push(toolResultMessage(toolRequest, result))
     }
     iteration += 1
+    if (approvalStopped) return { output: approvalStopped, messages, toolEvents, usage }
 
     const fatal = outcomes.find((outcome) => outcome.failures >= 2)
     if (fatal) {
