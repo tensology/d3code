@@ -6,8 +6,8 @@ origin: D3Code verified against live Rocket D3 10.3.6 (pick0)
 
 # Practical D3 (verified rules)
 
-Every rule here was proven by hitting the failure and fixing it against a live D3
-10.3.6 account. Prefer these over guessing.
+These rules combine live D3 10.3.6 office observations with manual-backed safeguards.
+Match environment-specific observations to the active profile before applying them.
 
 ## Getting in
 
@@ -100,8 +100,8 @@ Every rule here was proven by hitting the failure and fixing it against a live D
 - Interactive prompts are not always newline-anchored (SB+ prints
   `PLEASE ENTER PASSWORD FOR <account>` with cursor positioning). Match at the buffer
   end, not only after `\n`.
-- `CT file item` with no options opens the interactive editor — read with
-  `CT file item (N`.
+- `CT file item` copies records to the terminal; it is not the ED editor. Use
+  `CT file item (N` to disable output paging.
 - JavaScript RegExp has **no `(?i)` inline flag**; prompt patterns using it are invalid.
 - Licence slots are finite: too many concurrent sessions give `Too many users`; fail
   fast with a clear message rather than hanging.
@@ -159,11 +159,14 @@ Read the local BP programs before writing new ones; the account has a consistent
 ## Known environment
 
 - The office demo box (`office.crystallogic.org:2266`, host `CL-RH-SRV`) runs D3 10.3.6
-  on `pick0`. Its `dm` account is the master dictionary and the only plain TCL account;
-  `MPSTORE` and `MULTISNACK` are also present and are **System Builder (SB+) applications**
-  — `TO MPSTORE` prompts for a password (SB+) and lands on the SB+ main menu, not TCL.
-- `MPSTORE` is the **production** MerryPak account. Treat it as read-only; get a separate
-  account that lands straight in TCL before doing any real work.
+  on `pick0`. The approved service profile starts in `dm` and allows only `dm`.
+  Accounts named `MPSTORE` and `MULTISNACK` have also been observed on that host.
+  A menu or account name does not establish the exact SB/SB+ framework, version,
+  or whether it is the separate live MerryPak server. Keep those accounts out of
+  scope until separately authorised and identified; do not use their credentials
+  or switch into them as a discovery shortcut.
+- `RUN DM SB.INITIATE` is an SB+ account installer, not a read-only version probe.
+  The SB+ Solutions guide says it overwrites the logon procedure and creates pointers.
 - Jackcat reaches the MerryPak production server over **ZeroTier** (jackcat
   `192.168.100.14` ↔ merrypak `192.168.100.13`); the office demo machine has **no ZeroTier**,
   and `merrypak.crystallogic.org` is not reachable directly.

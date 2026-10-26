@@ -49,11 +49,11 @@ export const d3Capabilities: D3Capability[] = [
   {
     id: "sbplus-builder",
     kind: "sbplus",
-    label: "SB+ Screen and Process Builder",
+    label: "SB+ Discovery and Planning",
     purpose: "Ground screen/process work in SB+ concepts before writing: systems, starting processes, input/output processes, screen definitions, menu definitions, drivers, validation, and F1/F3 help.",
     tools: ["d3_sbplus_discover", "d3_sbplus_plan"],
     cli: ["sbplus-discover", "sbplus-plan"],
-    ide: ["SB+ discovery panel", "Agent SB+ planning", "Reference/RAG panel"],
+    ide: ["Tools: SB+ Discover", "Tools: SB+ Plan", "Agent tool events"],
     referenceGrounding: ["SB+ Solutions legacy guide (edition unverified): screen definitions, process definitions, drivers, validation, help; match the connected installation before applying layouts"],
     safety: "plan-only",
   },

@@ -172,6 +172,7 @@ export async function defaultRagSources(referenceDir = defaultReferenceDir, eccR
     { id: "crystallogic-pick0", title: "Crystal Logic D3 pick0 service notes", path: join(referenceDir, "operations/crystallogic-d3-pick0-service.md"), kind: "operator" },
     { id: "operator-memory", title: "Hermes-style D3Code operator memory", path: memoryPath.replace(/\.md$/i, ".jsonl"), kind: "memory" },
     { id: "ecc-hermes-d3-harness", title: "D3Code adapted ECC/Hermes harness skill", path: "skills/ecc-hermes-d3-harness/SKILL.md", kind: "hermes" },
+    { id: "d3-practical", title: "Practical D3 operator lessons (match the active profile)", path: "skills/d3-practical/SKILL.md", kind: "operator" },
   ]
   for (const path of await markdownFiles(join(defaultRocketMvBasicDir, "docs"))) {
     const relativeTitle = path.replace(`${defaultRocketMvBasicDir}/docs/`, "")
