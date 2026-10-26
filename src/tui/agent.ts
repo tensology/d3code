@@ -66,7 +66,7 @@ export interface D3AgentToolEvent {
 export type D3AgentTurnEvent =
   | { type: "assistant_delta"; token: string; iteration: number }
   | { type: "tool_start"; name: string; input?: unknown; reason?: string }
-  | { type: "tool_result"; name: string; compact: string }
+  | { type: "tool_result"; name: string; compact: string; status?: ToolRunResult["status"] }
 
 export interface D3AgentTurnResult {
   output: string
@@ -468,7 +468,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
 
     for (const outcome of outcomes) {
       const { request: toolRequest, result } = outcome
-      request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: result.status === "error" ? result.compact : formatD3ToolResultForDisplay(result) })
+      request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: result.status === "error" ? result.compact : formatD3ToolResultForDisplay(result), status: result.status })
       toolEvents.push({ name: toolRequest.name, input: toolRequest.input, reason: toolRequest.reason, result })
       messages.push(toolResultMessage(toolRequest, result))
     }

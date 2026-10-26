@@ -4,12 +4,15 @@ export function confirmationHtml(): string {
 
 export function confirmationClientScript(): string {
   return String.raw`
+let d3ConfirmationActive=false;
 async function confirmD3Action(title,detail,label='Approve'){
+  if(d3ConfirmationActive)return false;
+  d3ConfirmationActive=true;
   const modal=$('d3ApprovalModal'),cancel=$('cancelD3Approval'),approve=$('approveD3Action'),previous=document.activeElement;
   $('d3ApprovalTitle').textContent=title;$('d3ApprovalDetail').textContent=detail;approve.textContent=label;
   modal.classList.add('open');cancel.focus();
   return new Promise(resolve=>{
-    const finish=value=>{modal.classList.remove('open');document.removeEventListener('keydown',onKey);previous?.focus();resolve(value)};
+    const finish=value=>{modal.classList.remove('open');d3ConfirmationActive=false;document.removeEventListener('keydown',onKey);previous?.focus();resolve(value)};
     const onKey=event=>{
       if(event.key==='Escape'){event.preventDefault();finish(false)}
       if(event.key==='Tab'){
