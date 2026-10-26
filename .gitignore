@@ -10,3 +10,6 @@ __pycache__/
 npm-debug.log*
 .codex/
 .impeccable/
+
+# Playwright MCP output
+.playwright-mcp/
