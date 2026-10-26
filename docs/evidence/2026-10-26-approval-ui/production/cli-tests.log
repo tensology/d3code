@@ -1,0 +1,46 @@
+✔ IDE command flags reach the actual server runtime instead of root defaults (249.774042ms)
+✔ CLI lists baked-in modes and skills (5716.072708ms)
+✔ CLI runs mock end-to-end acceptance (3814.360375ms)
+✔ CLI creates migration plan from JSON fixture (191.596292ms)
+✔ CLI generates OpenAPI from migration plan (188.19825ms)
+✔ CLI generates adapter skeleton from migration plan (188.496041ms)
+✔ CLI generates web app scaffold from migration plan (188.479334ms)
+✔ CLI writes adapter skeleton files (188.767875ms)
+✔ CLI renders baked workflow (186.424292ms)
+✔ CLI ide accepts public visibility and prints reachable access notes (384.284333ms)
+✔ CLI ide setup-auth saves IDE credentials (188.49325ms)
+✔ CLI renders baked runbooks and skill info (932.257333ms)
+✔ CLI renders baked recipes (372.459084ms)
+✔ CLI audits database samples (189.517667ms)
+✔ CLI generates bundle artifacts and bundle index (10170.429875ms)
+✔ CLI captures bundle through local shell profile (823.858084ms)
+✔ CLI indexes and searches a D3 account cache (1150.141292ms)
+✔ CLI exposes first-class D3 item, dictionary, lock, diff, and write commands (2160.871958ms)
+✔ CLI exposes first-class D3 AQL, compile, catalog, and call commands (2104.680667ms)
+✔ CLI discovers likely SB+ definition files from the active account (707.213083ms)
+✔ CLI runs a bounded D3 agent task with evidence (971.436917ms)
+✔ CLI runs a bounded D3 file audit agent task (772.849375ms)
+✔ CLI runs a bounded D3 migration slice agent task (706.571ms)
+✔ CLI login can switch only to allowed D3 accounts (942.42925ms)
+✔ CLI captures a terminal transcript and parsed screen artifacts (599.470667ms)
+✔ CLI capture and typed login enforce the same exact account allowlist (577.456291ms)
+✔ CLI profile doctor runs read-only D3 smoke checks (1664.2645ms)
+✔ CLI profile doctor honors the selected profile option (936.728583ms)
+✔ CLI profiles are isolated under D3CODE_HOME (404.201917ms)
+✔ CLI local profiles default to persistent TCL sessions (389.426125ms)
+✔ CLI local profile creation infers D3 defaults from the server command (201.556542ms)
+✔ CLI can remove a saved profile (779.826292ms)
+✔ CLI can release a profile by sending OFF (977.653542ms)
+✔ CLI setup supports noninteractive model/key configuration (601.72775ms)
+✔ CLI setup without a provider preserves the configured model provider (582.1995ms)
+✔ CLI setup can bootstrap a persistent D3 profile noninteractively (973.448708ms)
+✔ CLI executes compact tool output (396.84425ms)
+✔ CLI persists and advances goals (2161.377041ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 44556.998
