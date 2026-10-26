@@ -8,4 +8,4 @@ Local TypeScript compilation and 22 focused login/activity/tool-runner/permissio
 
 Interaction rationale: factual activity labels follow Nielsen visibility of system status; verification must describe the operation performed.
 
-Production verification pending. This component does not establish complete IDE readiness.
+Production f8607db compiled, all 22 checks passed and customer service restarted healthy. Real DeepSeek/OpenRouter d3_login with no account returned WHO 7 dm dm without VERSION or a switch. Corrected tool-card text asserted in the browser; completed responses captured at 390 and 1440. Six production captures individually inspected, readable and contained. Startup Retry remained functional, anonymous requests returned 401 and the unflagged other customer returned 403. Browsers and temporary Django sessions removed. No D3 data writes. This component does not establish complete IDE readiness.

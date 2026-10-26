@@ -6,6 +6,12 @@ Application revision: `0f7b49d` (guarded creation checkpoint; timer guidance upd
 
 Entry point: https://tickets.crystallogic.co.za/dashboard/d3code
 
+## Latest checkpoint, 26 October 2026
+
+Application f8607db supersedes the historical revisions below. Current evidence: [agent approval UI](evidence/2026-10-26-approval-ui/README.md), [native program actions](evidence/2026-10-26-program-actions/README.md), [startup recovery](evidence/2026-10-26-workspace-startup/README.md), and [accurate login diagnostic](evidence/2026-10-26-login-diagnostic/README.md). These prove bounded deployed workflows, not the full requested developer IDE. Earlier pending statements below describe their dated checkpoints.
+
+Latest capacity: 9.0 GB root space available (87% used), 1396 MiB available RAM, 4604 MiB swap used. No local model runtime was installed.
+
 ## Acceptance evidence
 
 | Requirement | Evidence at this checkpoint |
