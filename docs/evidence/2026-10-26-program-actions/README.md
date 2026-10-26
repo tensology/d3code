@@ -21,4 +21,17 @@ Interaction rationale:
 - Unsaved drafts cannot run, and active actions disable duplicate submissions: error prevention (Nielsen #5).
 - Cancellation restores keyboard focus after controls are enabled: user control and WCAG keyboard operation.
 
-Scoped local rubric: 87/100. States 16/20, CRUD safety 13/15, validation 8/10, hierarchy 13/15, tokens 10/10, accessibility 13/15, responsive 9/10, rationale 5/5. This score applies to the changed program actions, not the complete IDE. Deployment and live native verification remain outstanding at this checkpoint.
+Scoped local rubric: 87/100. States 16/20, CRUD safety 13/15, validation 8/10, hierarchy 13/15, tokens 10/10, accessibility 13/15, responsive 9/10, rationale 5/5. This score applies to the changed program actions, not the complete IDE or a full accessibility audit.
+
+Production verification:
+
+- Application code ba1b6c5 was deployed. The server passed 147 focused tests, including the actual CLI runtime-mode check, before the service restart.
+- The branded tickets site rejected anonymous and unflagged other-customer access. Each program-action endpoint refused missing and stale connection snapshots with 409.
+- Browsed the existing owned `bp / D3CODE.EDIT.UI.5D09BB011AAF4462F299B4E125219688` fixture. Its current source was read and compared before editing. Cancelled Save preserved the source; approved Save returned an exact independent native readback.
+- Unsaved Run sent no request. Native BASIC compilation succeeded. Cancelled Run reviews sent no confirmed execution request. One approved Run returned `D3CODE UI RUN BUTTON VERIFIED` from the compiled saved source in the editor output pane.
+- All 12 final production source/review/output screens at 390, 768, 1280 and 1440 were individually inspected. The toolbar, source, confirmation and output remain inside the embedded workspace without page overflow.
+- The original fixture source was restored using compare-and-replace, read back exactly, and recompiled. The browser and temporary Django login sessions were removed. No production customer records were used.
+
+Embedded API clients must send the selected `profile` and `connection` snapshot from `/api/status` with Compile, Catalog and Run. Standalone clients retain the legacy omission behavior; an explicitly supplied stale snapshot is always refused.
+
+Remaining: interactive runtime input, arguments, screen builders, jobs and the broader adaptive IDE are not implemented by this change. Source editing retains the verified sandbox and record-size limits. Whole-product contrast and accessibility review remain outstanding; this evidence establishes the bounded native program workflow.

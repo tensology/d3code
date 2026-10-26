@@ -1,0 +1,892 @@
+TAP version 13
+# Subtest: trusted approval pauses execution and cannot change the approved payload
+ok 1 - trusted approval pauses execution and cannot change the approved payload
+  ---
+  duration_ms: 69.306482
+  type: 'test'
+  ...
+# Subtest: declining approval stops the mutation batch and model continuation
+ok 2 - declining approval stops the mutation batch and model continuation
+  ---
+  duration_ms: 14.966342
+  type: 'test'
+  ...
+# Subtest: approval requires the boolean true value
+ok 3 - approval requires the boolean true value
+  ---
+  duration_ms: 15.863099
+  type: 'test'
+  ...
+# Subtest: aborting a pending approval works even when the host callback never resolves
+ok 4 - aborting a pending approval works even when the host callback never resolves
+  ---
+  duration_ms: 11.162241
+  type: 'test'
+  ...
+# Subtest: read-only calls and denied plan-mode writes never request approval
+ok 5 - read-only calls and denied plan-mode writes never request approval
+  ---
+  duration_ms: 19.073751
+  type: 'test'
+  ...
+# Subtest: changed connection invalidates an approved action before execution
+ok 6 - changed connection invalidates an approved action before execution
+  ---
+  duration_ms: 24.394889
+  type: 'test'
+  ...
+# Subtest: typed record permission errors reach trusted approval
+ok 7 - typed record permission errors reach trusted approval
+  ---
+  duration_ms: 22.493726
+  type: 'test'
+  ...
+# Subtest: a trusted callback does not bypass a read-only mode contract
+ok 8 - a trusted callback does not bypass a read-only mode contract
+  ---
+  duration_ms: 9.717259
+  type: 'test'
+  ...
+# Subtest: an error message cannot impersonate the permission boundary
+ok 9 - an error message cannot impersonate the permission boundary
+  ---
+  duration_ms: 11.74217
+  type: 'test'
+  ...
+# Subtest: agent loop runs a model-requested D3 tool and resumes with the result
+ok 10 - agent loop runs a model-requested D3 tool and resumes with the result
+  ---
+  duration_ms: 125.027748
+  type: 'test'
+  ...
+# Subtest: agent loop blocks non-D3 tool requests
+ok 11 - agent loop blocks non-D3 tool requests
+  ---
+  duration_ms: 2.765585
+  type: 'test'
+  ...
+# Subtest: agent loop blocks out-of-scope requests before calling the model
+ok 12 - agent loop blocks out-of-scope requests before calling the model
+  ---
+  duration_ms: 0.821529
+  type: 'test'
+  ...
+# Subtest: agent loop blocks registered D3 tools that are outside the active mode contract
+ok 13 - agent loop blocks registered D3 tools that are outside the active mode contract
+  ---
+  duration_ms: 21.886231
+  type: 'test'
+  ...
+# Subtest: agent loop forwards streaming tokens from the first model response
+ok 14 - agent loop forwards streaming tokens from the first model response
+  ---
+  duration_ms: 12.797538
+  type: 'test'
+  ...
+# Subtest: agent loop streams final assistant response after a tool result
+ok 15 - agent loop streams final assistant response after a tool result
+  ---
+  duration_ms: 47.338243
+  type: 'test'
+  ...
+# Subtest: agent loop aggregates token usage across model/tool iterations
+ok 16 - agent loop aggregates token usage across model/tool iterations
+  ---
+  duration_ms: 44.948396
+  type: 'test'
+  ...
+# Subtest: agent loop returns actionable output for an empty model response
+ok 17 - agent loop returns actionable output for an empty model response
+  ---
+  duration_ms: 8.138015
+  type: 'test'
+  ...
+# Subtest: agent loop refreshes the harness system context instead of reusing stale system history
+ok 18 - agent loop refreshes the harness system context instead of reusing stale system history
+  ---
+  duration_ms: 15.580121
+  type: 'test'
+  ...
+# Subtest: chat usage accumulator preserves cache token fields
+ok 19 - chat usage accumulator preserves cache token fields
+  ---
+  duration_ms: 1.561678
+  type: 'test'
+  ...
+# Subtest: agent system prompt is D3-only and names reference-manual grounding
+ok 20 - agent system prompt is D3-only and names reference-manual grounding
+  ---
+  duration_ms: 0.679477
+  type: 'test'
+  ...
+# Subtest: parser extracts one D3 tool request from assistant text
+ok 21 - parser extracts one D3 tool request from assistant text
+  ---
+  duration_ms: 0.289462
+  type: 'test'
+  ...
+# Subtest: parser accepts streamed tool_call blocks emitted by chat models
+ok 22 - parser accepts streamed tool_call blocks emitted by chat models
+  ---
+  duration_ms: 0.958784
+  type: 'test'
+  ...
+# Subtest: parser accepts tool_call blocks closed as d3_tool
+ok 23 - parser accepts tool_call blocks closed as d3_tool
+  ---
+  duration_ms: 0.445041
+  type: 'test'
+  ...
+# Subtest: parser accepts malformed d_value close emitted by chat models
+ok 24 - parser accepts malformed d_value close emitted by chat models
+  ---
+  duration_ms: 0.250522
+  type: 'test'
+  ...
+# Subtest: parser repairs lightly escaped D3 tool JSON from chat models
+ok 25 - parser repairs lightly escaped D3 tool JSON from chat models
+  ---
+  duration_ms: 0.500144
+  type: 'test'
+  ...
+# Subtest: parser reports malformed D3 tool JSON clearly
+ok 26 - parser reports malformed D3 tool JSON clearly
+  ---
+  duration_ms: 1.006442
+  type: 'test'
+  ...
+# Subtest: agent loop returns an actionable response for malformed tool protocol
+ok 27 - agent loop returns an actionable response for malformed tool protocol
+  ---
+  duration_ms: 50.621024
+  type: 'test'
+  ...
+# Subtest: agent loop bounds successful tool rounds and preserves evidence
+ok 28 - agent loop bounds successful tool rounds and preserves evidence
+  ---
+  duration_ms: 73.217491
+  type: 'test'
+  ...
+# Subtest: agent loop converts provider failures into a recoverable response
+ok 29 - agent loop converts provider failures into a recoverable response
+  ---
+  duration_ms: 39.964156
+  type: 'test'
+  ...
+# Subtest: agent loop compacts and retries once after a context limit error
+ok 30 - agent loop compacts and retries once after a context limit error
+  ---
+  duration_ms: 23.961462
+  type: 'test'
+  ...
+# Subtest: waiting state belongs only to chats with an unresolved approval
+ok 31 - waiting state belongs only to chats with an unresolved approval
+  ---
+  duration_ms: 11.88121
+  type: 'test'
+  ...
+# Subtest: record review shows readable before/after data and hides encoded baseline metadata
+ok 32 - record review shows readable before/after data and hides encoded baseline metadata
+  ---
+  duration_ms: 5.476959
+  type: 'test'
+  ...
+# Subtest: review makes hidden command controls visible and does not parse source as HTML
+ok 33 - review makes hidden command controls visible and does not parse source as HTML
+  ---
+  duration_ms: 4.249955
+  type: 'test'
+  ...
+# Subtest: replacement review refuses a missing or invalid baseline
+ok 34 - replacement review refuses a missing or invalid baseline
+  ---
+  duration_ms: 6.795687
+  type: 'test'
+  ...
+# Subtest: overlapping confirmation calls cannot replace the first action
+ok 35 - overlapping confirmation calls cannot replace the first action
+  ---
+  duration_ms: 2.941314
+  type: 'test'
+  ...
+# Subtest: IDE command flags reach the actual server runtime instead of root defaults
+ok 36 - IDE command flags reach the actual server runtime instead of root defaults
+  ---
+  duration_ms: 1951.675273
+  type: 'test'
+  ...
+# Subtest: CAS request carries exact binary lengths, IDs and record bytes in acknowledged hex frames
+ok 37 - CAS request carries exact binary lengths, IDs and record bytes in acknowledged hex frames
+  ---
+  duration_ms: 3.961986
+  type: 'test'
+  ...
+# Subtest: VERSION is an empty-target request and READ cannot carry write data
+ok 38 - VERSION is an empty-target request and READ cannot carry write data
+  ---
+  duration_ms: 3.236625
+  type: 'test'
+  ...
+# Subtest: sandbox BASIC source is writable without allowing compiled objects or existing programs
+ok 39 - sandbox BASIC source is writable without allowing compiled objects or existing programs
+  ---
+  duration_ms: 1.063129
+  type: 'test'
+  ...
+# Subtest: encoding rejects Unicode truncation, unsafe references, missing bytes and oversized records
+ok 40 - encoding rejects Unicode truncation, unsafe references, missing bytes and oversized records
+  ---
+  duration_ms: 1.712377
+  type: 'test'
+  ...
+# Subtest: response decoding preserves delimiters, empty attributes, trailing spaces and zero-byte records
+ok 41 - response decoding preserves delimiters, empty attributes, trailing spaces and zero-byte records
+  ---
+  duration_ms: 3.127617
+  type: 'test'
+  ...
+# Subtest: malformed, truncated, duplicated, wrong-nonce and wrong-build responses fail closed
+ok 42 - malformed, truncated, duplicated, wrong-nonce and wrong-build responses fail closed
+  ---
+  duration_ms: 1.798053
+  type: 'test'
+  ...
+# Subtest: READY and NEXT validate identity and exact acknowledgement sequence
+ok 43 - READY and NEXT validate identity and exact acknowledgement sequence
+  ---
+  duration_ms: 0.554015
+  type: 'test'
+  ...
+# Subtest: maximum-size requests and responses remain bounded with terminal-width frames
+ok 44 - maximum-size requests and responses remain bounded with terminal-width frames
+  ---
+  duration_ms: 4.263796
+  type: 'test'
+  ...
+# Subtest: immutable deployment identity hashes final source and includes lock-safe sandbox-only operations
+ok 45 - immutable deployment identity hashes final source and includes lock-safe sandbox-only operations
+  ---
+  duration_ms: 1.046495
+  type: 'test'
+  ...
+# Subtest: creation has a distinct operation and cannot replace an existing zero-byte record
+ok 46 - creation has a distinct operation and cannot replace an existing zero-byte record
+  ---
+  duration_ms: 1.776469
+  type: 'test'
+  ...
+# Subtest: record exchange uses raw prompt acknowledgements and closes its dedicated session
+ok 47 - record exchange uses raw prompt acknowledgements and closes its dedicated session
+  ---
+  duration_ms: 4.740305
+  type: 'test'
+  ...
+# Subtest: transport failures never send later frames and always close
+ok 48 - transport failures never send later frames and always close
+  ---
+  duration_ms: 3.420622
+  type: 'test'
+  ...
+# Subtest: wrong acknowledgement fails closed before the next frame
+ok 49 - wrong acknowledgement fails closed before the next frame
+  ---
+  duration_ms: 1.411956
+  type: 'test'
+  ...
+# Subtest: a helper returning to TCL without its identity never receives record frames
+ok 50 - a helper returning to TCL without its identity never receives record frames
+  ---
+  duration_ms: 0.995746
+  type: 'test'
+  ...
+# Subtest: non-native, invalid or cancelled requests never create a session
+ok 51 - non-native, invalid or cancelled requests never create a session
+  ---
+  duration_ms: 1.939749
+  type: 'test'
+  ...
+# Subtest: job approvals are user-owned, exact, single-use and protected against cross-origin decisions
+ok 52 - job approvals are user-owned, exact, single-use and protected against cross-origin decisions
+  ---
+  duration_ms: 442.240931
+  type: 'test'
+  ...
+# Subtest: cancelling a job clears its pending approval and prevents replay
+ok 53 - cancelling a job clears its pending approval and prevents replay
+  ---
+  duration_ms: 108.432113
+  type: 'test'
+  ...
+# Subtest: a completed approval cannot authorize the next action in the same job
+ok 54 - a completed approval cannot authorize the next action in the same job
+  ---
+  duration_ms: 142.854019
+  type: 'test'
+  ...
+# Subtest: expired approval is rejected without executing the action
+ok 55 - expired approval is rejected without executing the action
+  ---
+  duration_ms: 95.923473
+  type: 'test'
+  ...
+# Subtest: changing selected connection or choosing plan mode invalidates pending approval
+ok 56 - changing selected connection or choosing plan mode invalidates pending approval
+  ---
+  duration_ms: 197.589737
+  type: 'test'
+  ...
+# Subtest: record read returns exact bytes, connection identity and sandbox scope
+ok 57 - record read returns exact bytes, connection identity and sandbox scope
+  ---
+  duration_ms: 4.055586
+  type: 'test'
+  ...
+# Subtest: record save requires approval and unchanged target before the native operation
+ok 58 - record save requires approval and unchanged target before the native operation
+  ---
+  duration_ms: 9.41081
+  type: 'test'
+  ...
+# Subtest: conflict and lock responses preserve the client baseline and report recovery
+ok 59 - conflict and lock responses preserve the client baseline and report recovery
+  ---
+  duration_ms: 2.807338
+  type: 'test'
+  ...
+# Subtest: read errors distinguish unavailable bridge from missing or unsupported records
+ok 60 - read errors distinguish unavailable bridge from missing or unsupported records
+  ---
+  duration_ms: 3.674837
+  type: 'test'
+  ...
+# Subtest: IDE record API enforces the active connection, approval and native conflict response
+ok 61 - IDE record API enforces the active connection, approval and native conflict response
+  ---
+  duration_ms: 275.927729
+  type: 'test'
+  ...
+# Subtest: creation preparation distinguishes a missing item from an existing empty item or missing file
+ok 62 - creation preparation distinguishes a missing item from an existing empty item or missing file
+  ---
+  duration_ms: 8.133931
+  type: 'test'
+  ...
+# Subtest: creation requires unchanged connection, bounded bytes, sandbox scope and approval
+ok 63 - creation requires unchanged connection, bounded bytes, sandbox scope and approval
+  ---
+  duration_ms: 7.920523
+  type: 'test'
+  ...
+# Subtest: terminal displays the complete report instead of summarising account names away
+ok 64 - terminal displays the complete report instead of summarising account names away
+  ---
+  duration_ms: 137.735096
+  type: 'test'
+  ...
+# Subtest: IDE opens a light terminal with connection controls and an optional agent panel
+ok 65 - IDE opens a light terminal with connection controls and an optional agent panel
+  ---
+  duration_ms: 85.636127
+  type: 'test'
+  ...
+# Subtest: item read failures keep the editor unavailable and release the loading control
+ok 66 - item read failures keep the editor unavailable and release the loading control
+  ---
+  duration_ms: 52.573854
+  type: 'test'
+  ...
+# Subtest: editor chat context bounds the draft and excludes a different connection
+ok 67 - editor chat context bounds the draft and excludes a different connection
+  ---
+  duration_ms: 51.46852
+  type: 'test'
+  ...
+# Subtest: item browsing validates input and uses the active profile
+ok 68 - item browsing validates input and uses the active profile
+  ---
+  duration_ms: 252.124203
+  type: 'test'
+  ...
+# Subtest: IDE server serves browser shell and D3 profile APIs
+ok 69 - IDE server serves browser shell and D3 profile APIs
+  ---
+  duration_ms: 48.480781
+  type: 'test'
+  ...
+# Subtest: IDE exposes the same project memory and skill harness context as the terminal
+ok 70 - IDE exposes the same project memory and skill harness context as the terminal
+  ---
+  duration_ms: 33.719616
+  type: 'test'
+  ...
+# Subtest: IDE blocks cross-origin state changes
+ok 71 - IDE blocks cross-origin state changes
+  ---
+  duration_ms: 10.484807
+  type: 'test'
+  ...
+# Subtest: IDE can cancel a running agent job
+ok 72 - IDE can cancel a running agent job
+  ---
+  duration_ms: 60.74993
+  type: 'test'
+  ...
+# Subtest: IDE server exposes categorized D3 browser data
+ok 73 - IDE server exposes categorized D3 browser data
+  ---
+  duration_ms: 269.240101
+  type: 'test'
+  ...
+# Subtest: IDE server updates model and permission defaults from browser controls
+ok 74 - IDE server updates model and permission defaults from browser controls
+  ---
+  duration_ms: 47.31748
+  type: 'test'
+  ...
+# Subtest: IDE server requires basic auth when public
+ok 75 - IDE server requires basic auth when public
+  ---
+  duration_ms: 22.986567
+  type: 'test'
+  ...
+# Subtest: IDE refuses public binding with default implicit credentials
+ok 76 - IDE refuses public binding with default implicit credentials
+  ---
+  duration_ms: 2.933033
+  type: 'test'
+  ...
+# Subtest: IDE server normalizes browser-created D3 profiles for terminal emulation
+ok 77 - IDE server normalizes browser-created D3 profiles for terminal emulation
+  ---
+  duration_ms: 71.574603
+  type: 'test'
+  ...
+# Subtest: IDE server updates an existing profile instead of duplicating it
+ok 78 - IDE server updates an existing profile instead of duplicating it
+  ---
+  duration_ms: 15.886838
+  type: 'test'
+  ...
+# Subtest: IDE server exposes terminal send through guarded D3 tool layer
+ok 79 - IDE server exposes terminal send through guarded D3 tool layer
+  ---
+  duration_ms: 104.453693
+  type: 'test'
+  ...
+# Subtest: terminal execution requires explicit approval and cannot override plan or account restrictions
+ok 80 - terminal execution requires explicit approval and cannot override plan or account restrictions
+  ---
+  duration_ms: 41.45017
+  type: 'test'
+  ...
+# Subtest: IDE terminal keeps a profile-scoped transcript and persistent local session
+ok 81 - IDE terminal keeps a profile-scoped transcript and persistent local session
+  ---
+  duration_ms: 163.23086
+  type: 'test'
+  ...
+# Subtest: IDE closes the active terminal connection when switching profiles
+ok 82 - IDE closes the active terminal connection when switching profiles
+  ---
+  duration_ms: 7.875642
+  type: 'test'
+  ...
+# Subtest: IDE shutdown closes every retained terminal connection
+ok 83 - IDE shutdown closes every retained terminal connection
+  ---
+  duration_ms: 3.412621
+  type: 'test'
+  ...
+# Subtest: IDE server exposes tool-routing status so tools are not treated as TCL-only
+ok 84 - IDE server exposes tool-routing status so tools are not treated as TCL-only
+  ---
+  duration_ms: 8.740863
+  type: 'test'
+  ...
+# Subtest: IDE server exposes D3/SB+ builder capabilities and build endpoints
+ok 85 - IDE server exposes D3/SB+ builder capabilities and build endpoints
+  ---
+  duration_ms: 1013.621508
+  type: 'test'
+  ...
+# Subtest: legacy replacement APIs require a baseline and preserve its connection guard
+ok 86 - legacy replacement APIs require a baseline and preserve its connection guard
+  ---
+  duration_ms: 48.891697
+  type: 'test'
+  ...
+# Subtest: IDE server exposes linked Python FastAPI runtime status
+ok 87 - IDE server exposes linked Python FastAPI runtime status
+  ---
+  duration_ms: 12.932899
+  type: 'test'
+  ...
+# Subtest: IDE server can switch profile and LOGTO through the guarded D3 layer
+ok 88 - IDE server can switch profile and LOGTO through the guarded D3 layer
+  ---
+  duration_ms: 111.204205
+  type: 'test'
+  ...
+# Subtest: IDE server exposes database, BASIC, dictionary, and subroutine workbench APIs
+ok 89 - IDE server exposes database, BASIC, dictionary, and subroutine workbench APIs
+  ---
+  duration_ms: 906.543197
+  type: 'test'
+  ...
+# Subtest: IDE server exposes sessionless manual search without a D3 profile
+ok 90 - IDE server exposes sessionless manual search without a D3 profile
+  ---
+  duration_ms: 8221.899586
+  type: 'test'
+  ...
+# Subtest: IDE server exposes auditable RAG/manual-search status
+ok 91 - IDE server exposes auditable RAG/manual-search status
+  ---
+  duration_ms: 452.023558
+  type: 'test'
+  ...
+# Subtest: IDE server exposes sessionless routed RAG search without a D3 profile
+ok 92 - IDE server exposes sessionless routed RAG search without a D3 profile
+  ---
+  duration_ms: 477.765943
+  type: 'test'
+  ...
+# Subtest: IDE server agent panel runs the guarded D3 agent loop
+ok 93 - IDE server agent panel runs the guarded D3 agent loop
+  ---
+  duration_ms: 179.682602
+  type: 'test'
+  ...
+# Subtest: IDE agent keeps workspace instructions authoritative over supplied history
+ok 94 - IDE agent keeps workspace instructions authoritative over supplied history
+  ---
+  duration_ms: 106.792052
+  type: 'test'
+  ...
+# Subtest: IDE server keeps agent histories isolated per chat thread
+ok 95 - IDE server keeps agent histories isolated per chat thread
+  ---
+  duration_ms: 150.034021
+  type: 'test'
+  ...
+# Subtest: embedded workspace isolates runtime state by authenticated proxy user
+ok 96 - embedded workspace isolates runtime state by authenticated proxy user
+  ---
+  duration_ms: 378.074067
+  type: 'test'
+  ...
+# Subtest: embedded users share the customer job limit but cannot cancel each other
+ok 97 - embedded users share the customer job limit but cannot cancel each other
+  ---
+  duration_ms: 235.016089
+  type: 'test'
+  ...
+# Subtest: shared profile changes invalidate every affected user's jobs and terminal state
+ok 98 - shared profile changes invalidate every affected user's jobs and terminal state
+  ---
+  duration_ms: 590.531937
+  type: 'test'
+  ...
+# Subtest: editing a standalone profile closes its existing persistent session
+ok 99 - editing a standalone profile closes its existing persistent session
+  ---
+  duration_ms: 20.304559
+  type: 'test'
+  ...
+# Subtest: IDE server streams browser agent tokens and D3 tool events
+ok 100 - IDE server streams browser agent tokens and D3 tool events
+  ---
+  duration_ms: 170.768857
+  type: 'test'
+  ...
+# Subtest: IDE server reports profile online status from WHO probes
+ok 101 - IDE server reports profile online status from WHO probes
+  ---
+  duration_ms: 362.317695
+  type: 'test'
+  ...
+# Subtest: IDE server agent job survives client disconnect and can be polled
+ok 102 - IDE server agent job survives client disconnect and can be polled
+  ---
+  duration_ms: 320.694768
+  type: 'test'
+  ...
+# Subtest: slash /ide starts the IDE server and returns a browser URL
+ok 103 - slash /ide starts the IDE server and returns a browser URL
+  ---
+  duration_ms: 14.233835
+  type: 'test'
+  ...
+# Subtest: slash /ide explains public network binding when requested
+ok 104 - slash /ide explains public network binding when requested
+  ---
+  duration_ms: 12.51002
+  type: 'test'
+  ...
+# Subtest: slash /ide stop stops running IDE servers
+ok 105 - slash /ide stop stops running IDE servers
+  ---
+  duration_ms: 8.895456
+  type: 'test'
+  ...
+# Subtest: slash /id is an IDE alias
+ok 106 - slash /id is an IDE alias
+  ---
+  duration_ms: 6.797537
+  type: 'test'
+  ...
+# Subtest: classifies read-only AQL as read
+ok 107 - classifies read-only AQL as read
+  ---
+  duration_ms: 3.848082
+  type: 'test'
+  ...
+# Subtest: plan mode denies compile and write operations
+ok 108 - plan mode denies compile and write operations
+  ---
+  duration_ms: 1.666997
+  type: 'test'
+  ...
+# Subtest: trust mode still confirms destructive and shell commands
+ok 109 - trust mode still confirms destructive and shell commands
+  ---
+  duration_ms: 3.008476
+  type: 'test'
+  ...
+# Subtest: account switch aliases require approval and respect the profile allowlist
+ok 110 - account switch aliases require approval and respect the profile allowlist
+  ---
+  duration_ms: 2.729417
+  type: 'test'
+  ...
+# Subtest: only known diagnostic forms and nonprinting reads run without approval
+ok 111 - only known diagnostic forms and nonprinting reads run without approval
+  ---
+  duration_ms: 1.564502
+  type: 'test'
+  ...
+# Subtest: stacked commands take the highest risk and cannot hide shell execution
+ok 112 - stacked commands take the highest risk and cannot hide shell execution
+  ---
+  duration_ms: 0.829305
+  type: 'test'
+  ...
+# Subtest: printing queries never receive read permission
+ok 113 - printing queries never receive read permission
+  ---
+  duration_ms: 0.60552
+  type: 'test'
+  ...
+# Subtest: native AQL comparisons remain reads while actual shell transports require approval
+ok 114 - native AQL comparisons remain reads while actual shell transports require approval
+  ---
+  duration_ms: 1.048982
+  type: 'test'
+  ...
+# Subtest: typed BASIC execution validates identifiers and requires runtime approval
+ok 115 - typed BASIC execution validates identifiers and requires runtime approval
+  ---
+  duration_ms: 10.320391
+  type: 'test'
+  ...
+# Subtest: program actions use the opened target, refuse drafts and prevent duplicate execution
+ok 116 - program actions use the opened target, refuse drafts and prevent duplicate execution
+  ---
+  duration_ms: 3.503158
+  type: 'test'
+  ...
+# Subtest: embedded program actions reject missing and stale connections before executing
+ok 117 - embedded program actions reject missing and stale connections before executing
+  ---
+  duration_ms: 276.547665
+  type: 'test'
+  ...
+# Subtest: D3 scope classifier accepts runtime, code, reference, and D3Code operations
+ok 118 - D3 scope classifier accepts runtime, code, reference, and D3Code operations
+  ---
+  duration_ms: 5.078902
+  type: 'test'
+  ...
+# Subtest: D3 scope classifier fails closed for unrelated work and asks for a D3 anchor
+ok 119 - D3 scope classifier fails closed for unrelated work and asks for a D3 anchor
+  ---
+  duration_ms: 2.461816
+  type: 'test'
+  ...
+# Subtest: D3 scope guard applies mode-specific tool boundaries
+ok 120 - D3 scope guard applies mode-specific tool boundaries
+  ---
+  duration_ms: 3.526173
+  type: 'test'
+  ...
+# Subtest: CLI scope-check emits machine-readable D3 scope decisions
+ok 121 - CLI scope-check emits machine-readable D3 scope decisions
+  ---
+  duration_ms: 3015.227103
+  type: 'test'
+  ...
+# Subtest: tool activity renders D3 tool starts as human terminal work
+ok 122 - tool activity renders D3 tool starts as human terminal work
+  ---
+  duration_ms: 3.052875
+  type: 'test'
+  ...
+# Subtest: tool result titles stay compact and human after D3 work completes
+ok 123 - tool result titles stay compact and human after D3 work completes
+  ---
+  duration_ms: 0.273823
+  type: 'test'
+  ...
+# Subtest: create-only tool refuses unapproved, out-of-scope and invalid payloads before transport
+ok 124 - create-only tool refuses unapproved, out-of-scope and invalid payloads before transport
+  ---
+  duration_ms: 12.038458
+  type: 'test'
+  ...
+# Subtest: read tools reject newline and control-character command injection
+ok 125 - read tools reject newline and control-character command injection
+  ---
+  duration_ms: 1.36282
+  type: 'test'
+  ...
+# Subtest: AQL tool accepts only one read-only AQL statement
+ok 126 - AQL tool accepts only one read-only AQL statement
+  ---
+  duration_ms: 1.758477
+  type: 'test'
+  ...
+# Subtest: read-only AQL refuses printing and shell chaining in every safety mode
+ok 127 - read-only AQL refuses printing and shell chaining in every safety mode
+  ---
+  duration_ms: 5.664416
+  type: 'test'
+  ...
+# Subtest: unapproved run and operation commands never reach a session
+ok 128 - unapproved run and operation commands never reach a session
+  ---
+  duration_ms: 2.572864
+  type: 'test'
+  ...
+# Subtest: item reads quote complete item IDs without admitting TCL injection
+ok 129 - item reads quote complete item IDs without admitting TCL injection
+  ---
+  duration_ms: 2.014468
+  type: 'test'
+  ...
+# Subtest: compile, catalog, and call tools validate command identifiers
+ok 130 - compile, catalog, and call tools validate command identifiers
+  ---
+  duration_ms: 1.019277
+  type: 'test'
+  ...
+# Subtest: AQL comparisons execute only through native transport and never self-confirm shell fallback
+ok 131 - AQL comparisons execute only through native transport and never self-confirm shell fallback
+  ---
+  duration_ms: 1.143496
+  type: 'test'
+  ...
+# Subtest: structured writes without a baseline never execute line-editor commands
+ok 132 - structured writes without a baseline never execute line-editor commands
+  ---
+  duration_ms: 1.09469
+  type: 'test'
+  ...
+# Subtest: all replacement tools reject missing or stale baselines before running D3 commands
+ok 133 - all replacement tools reject missing or stale baselines before running D3 commands
+  ---
+  duration_ms: 4.23469
+  type: 'test'
+  ...
+# Subtest: lossless shape evidence counts trailing empty attributes
+ok 134 - lossless shape evidence counts trailing empty attributes
+  ---
+  duration_ms: 0.560735
+  type: 'test'
+  ...
+# Subtest: every D3 tool has a schema-first input contract
+ok 135 - every D3 tool has a schema-first input contract
+  ---
+  duration_ms: 2.855787
+  type: 'test'
+  ...
+# Subtest: tool schemas reject unknown fields and malformed identifiers
+ok 136 - tool schemas reject unknown fields and malformed identifiers
+  ---
+  duration_ms: 5.81218
+  type: 'test'
+  ...
+# Subtest: create-only tool requires explicit content and a supported section
+ok 137 - create-only tool requires explicit content and a supported section
+  ---
+  duration_ms: 2.300699
+  type: 'test'
+  ...
+# Subtest: compactText truncates noisy output by line count
+ok 138 - compactText truncates noisy output by line count
+  ---
+  duration_ms: 2.360189
+  type: 'test'
+  ...
+# Subtest: tool runner executes local TCL through shell-backed profile
+ok 139 - tool runner executes local TCL through shell-backed profile
+  ---
+  duration_ms: 47.355836
+  type: 'test'
+  ...
+# Subtest: tool runner enforces D3 scope when a mode contract is supplied
+ok 140 - tool runner enforces D3 scope when a mode contract is supplied
+  ---
+  duration_ms: 3.102905
+  type: 'test'
+  ...
+# Subtest: tool runner keeps raw TCL writes behind ask confirmation in chat mode
+ok 141 - tool runner keeps raw TCL writes behind ask confirmation in chat mode
+  ---
+  duration_ms: 3.708454
+  type: 'test'
+  ...
+# Subtest: tool runner ignores confirmation supplied by model-originated input
+ok 142 - tool runner ignores confirmation supplied by model-originated input
+  ---
+  duration_ms: 1.007541
+  type: 'test'
+  ...
+# Subtest: model-originated creation cannot approve itself or bypass read-only mode
+ok 143 - model-originated creation cannot approve itself or bypass read-only mode
+  ---
+  duration_ms: 5.11122
+  type: 'test'
+  ...
+# Subtest: model self-confirmation cannot launch unknown commands or operations
+ok 144 - model self-confirmation cannot launch unknown commands or operations
+  ---
+  duration_ms: 6.044417
+  type: 'test'
+  ...
+# Subtest: D3 session timeout 0 leaves the command running until completion
+ok 145 - D3 session timeout 0 leaves the command running until completion
+  ---
+  duration_ms: 93.73351
+  type: 'test'
+  ...
+# Subtest: D3 session timeout 0 can still be interrupted by AbortSignal
+ok 146 - D3 session timeout 0 can still be interrupted by AbortSignal
+  ---
+  duration_ms: 39.569887
+  type: 'test'
+  ...
+# Subtest: D3 stacked input logs in, runs the command, and releases the account
+ok 147 - D3 stacked input logs in, runs the command, and releases the account
+  ---
+  duration_ms: 1.522074
+  type: 'test'
+  ...
+1..147
+# tests 147
+# suites 0
+# pass 147
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27276.61076

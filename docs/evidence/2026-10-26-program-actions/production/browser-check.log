@@ -1,0 +1,6 @@
+PASS anonymous and unflagged other-customer access denial
+PASS all program actions reject missing or stale connection snapshots
+PASS source browse, dirty Run refusal, cancelled save and exact approved save
+PASS native compile and approved Run button execute the saved source in the editor output pane
+Owned fixture source restored and its original program recompiled
+Browser closed and temporary login sessions removed
