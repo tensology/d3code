@@ -104,12 +104,14 @@ test("unapproved run and operation commands never reach a session", async () => 
   const commands: string[] = []
   for (const safety of ["plan", "ask"] as const) {
     const context = { ...fakeContext(commands), safety }
-    for (const command of ["RUN BP TEST", "Z B.DAYEND", "FILE-SAVE (b", "set-device /backup/d3/sunday", "SP-KILL 1", "WHO\n! echo TEST"]) {
+    for (const command of ["RUN BP TEST", "RUN DM SB.INITIATE", "SB.INITIATE", "Z B.DAYEND", "FILE-SAVE (b", "set-device /backup/d3/sunday", "SP-KILL 1", "WHO\n! echo TEST"]) {
       await assert.rejects(tool("d3_tcl").execute({ command }, context), /Denied by|Confirmation required/)
     }
   }
   const context = { ...fakeContext(commands), safety: "trust" as const }
   await assert.rejects(tool("d3_tcl").execute({ command: "FILE-SAVE (b" }, context), /Confirmation required/)
+  await assert.rejects(tool("d3_tcl").execute({ command: "RUN DM SB.INITIATE" }, context), /Confirmation required/)
+  await assert.rejects(tool("d3_run_basic").execute({ file: "DM", item: "SB.INITIATE" }, context), /Confirmation required/)
   assert.deepEqual(commands, [])
 })
 

@@ -54,7 +54,7 @@ export const d3Capabilities: D3Capability[] = [
     tools: ["d3_sbplus_discover", "d3_sbplus_plan"],
     cli: ["sbplus-discover", "sbplus-plan"],
     ide: ["SB+ discovery panel", "Agent SB+ planning", "Reference/RAG panel"],
-    referenceGrounding: ["SB/XA SB+ Solutions Developer Guide: screen definitions, process definitions, drivers, validation, help"],
+    referenceGrounding: ["SB+ Solutions legacy guide (edition unverified): screen definitions, process definitions, drivers, validation, help; match the connected installation before applying layouts"],
     safety: "plan-only",
   },
   {

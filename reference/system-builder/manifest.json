@@ -1,8 +1,7 @@
 {
   "manuals": [
     {
-      "title": "SB/XA SB+ Solutions Developer Guide",
-      "version": "6.5.6",
+      "title": "SB+ Solutions (legacy guide, edition unverified)",
       "localPath": "../SBXA_SBPlusSolutionsDeveloperGuide_V656.pdf",
       "gitTracked": true,
       "ingestionStatus": "indexed",
@@ -19,6 +18,8 @@
     }
   ],
   "notes": [
+    "The PDF cover says SB+ Solutions and copyright 1996-2010. Its legacy filename is not evidence that this is an SB/XA 6.5.6 developer manual.",
+    "Verify the connected account's framework and version before applying record layouts from this guide. SB.INITIATE installs into an account and can overwrite its logon procedure; it is not a discovery probe.",
     "Index this PDF before any System Builder-specific coding, explanation, or migration task.",
     "Keep private or licensed manuals out of Git unless this repository is allowed to contain them."
   ]

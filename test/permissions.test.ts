@@ -22,6 +22,18 @@ test("trust mode still confirms destructive and shell commands", () => {
   assert.equal(evaluateD3Permission("trust", "! rm -rf /tmp/x"), "confirm")
 })
 
+test("documented SB+ installation requires approval even in trust mode", () => {
+  for (const command of ["RUN DM SB.INITIATE", "run DM sb.initiate", "RUN SB+.DEFN,DM, SB.INITIATE", 'RUN "DM" "SB.INITIATE"', "RUN 'DM' 'SB.INITIATE'", "SB.INITIATE", "WHO\nRUN DM SB.INITIATE"]) {
+    assert.equal(classifyD3Command(command), "destructive", command)
+    assert.equal(evaluateD3Permission("plan", command), "deny")
+    assert.equal(evaluateD3Permission("ask", command), "ask")
+    assert.equal(evaluateD3Permission("trust", command), "confirm")
+    assert.throws(() => assertD3Allowed("trust", command), /Confirmation required/)
+  }
+  assert.equal(classifyD3Command("CT DM SB.INITIATE (N"), "read")
+  assert.equal(classifyD3Command("RUN bp D3CODE.SB.INITIATE"), "write")
+})
+
 test("account switch aliases require approval and respect the profile allowlist", () => {
   for (const command of ["TO MPSTORE", "LOGTO MPSTORE", "WHO\nto MPSTORE"]) {
     assert.equal(evaluateD3Permission("ask", command), "ask")

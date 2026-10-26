@@ -16,6 +16,7 @@ const destructiveVerbs = new Set([
   "LOCK-BREAK", "PHANTOM-RESET", "TRANSACTION", "SP-KILL", "SHUTDOWN",
   // Saves may overwrite media and clear dirty bits before a usable backup exists.
   "FILE-SAVE", "ACCOUNT-SAVE", "T-WEOF",
+  "SB.INITIATE",
 ])
 const compileVerbs = new Set(["BASIC", "COMPILE", "CATALOG", "COMPILE-CATALOG"])
 const readReports = new Set(["LIST", "SORT", "SELECT", "SSELECT", "COUNT"])
@@ -39,6 +40,8 @@ function classifyLine(line: string): D3CommandRisk {
   if (/^(?:!|SH\b|UNIX\b)/i.test(command) || /[;|&]/.test(unquoted) || /`|\$\(/.test(command)) return "shell"
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(command) || /["']/.test(unquoted)) return "write"
   const verb = command.split(/\s+/)[0].toUpperCase()
+  // The documented SB+ installer overwrites an existing account's logon procedure.
+  if (/^RUN\s+(?:"[^"]+"|'[^']+'|\S+)\s+(?:"SB\.INITIATE"|'SB\.INITIATE'|SB\.INITIATE)(?:\s|$)/i.test(command)) return "destructive"
   if (destructiveVerbs.has(verb) || /^DELETE\b.*\bALL\b/i.test(unquoted) || /^ED\s+(?:DICT\s+)?MD(?:\s|$)/i.test(command)) return "destructive"
   if (compileVerbs.has(verb)) return "compile"
   // Printer destinations and P options are side effects, even on LIST/CT.
