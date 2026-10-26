@@ -1,5 +1,5 @@
 export function agentApprovalStyles(): string {
-  return `.approval-event{padding:12px;display:grid;gap:8px;min-width:0}.approval-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.approval-heading strong{font-size:13px}.approval-state{font-size:11px;color:var(--muted)}.approval-target{margin:0;font-size:12px;line-height:1.5;color:var(--soft);overflow-wrap:anywhere}.approval-actions{display:flex;justify-content:flex-end;gap:8px}.approval-error{font-size:12px;color:var(--warn);overflow-wrap:anywhere}.approval-actions button{min-height:32px}@media(max-width:760px){.approval-actions button{min-height:44px}}`
+  return `#d3ApprovalModal .settings-form-actions{gap:8px}.approval-event{padding:12px;display:grid;gap:8px;min-width:0}.approval-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.approval-heading strong{font-size:13px}.approval-state{font-size:11px;color:var(--muted)}.approval-target{margin:0;font-size:12px;line-height:1.5;color:var(--soft);overflow-wrap:anywhere}.approval-actions{display:flex;justify-content:flex-end;gap:8px}.approval-error{font-size:12px;color:var(--warn);overflow-wrap:anywhere}.approval-actions button{min-height:32px}@media(max-width:760px){.approval-actions button{min-height:44px}}`
 }
 
 export function agentApprovalClientScript(): string {

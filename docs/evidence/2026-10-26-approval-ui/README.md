@@ -7,10 +7,10 @@ Acceptance: a model-requested mutation pauses at an owned approval card. Review 
 Checks completed:
 
 - TypeScript compilation passed.
-- 83 tests passed across approval-ui, ide-approval, agent-approval, agent-loop and ide-server.
+- 113 tests passed across approval-ui, ide-approval, agent-approval, agent-loop, ide-server, permissions, ide-records, d3-record-protocol and d3-record-session.
 - Headless Chrome fixture journey passed at 390, 768, 1280 and 1440 in light and dark themes: review, cancel, reload, single execution, literal source rendering and no horizontal page overflow.
 - Separate fixture paths passed decline, replacement preview, replacement success and conflict without a write.
-- Individually inspected approved and reloaded screens at all eight viewport/theme combinations, plus mobile decline, conflict, replacement review and replacement success. Pending/review screens were inspected in the preceding checkpoint. Final rerendered pending/review screens still require repeat inspection before deployment acceptance.
+- Individually inspected approved and reloaded screens at all eight viewport/theme combinations, plus mobile decline, conflict, replacement review and replacement success. Pending/review screens were inspected in the preceding checkpoint. Final pending/review screens were individually reinspected; wider modal button spacing was corrected and all eight affected modal views rendered and reinspected.
 
 Interaction rationale:
 
@@ -19,4 +19,4 @@ Interaction rationale:
 - Pending and execution outcomes have separate labels: approval does not imply a successful write (Nielsen #1).
 - Source is text, with invisible controls escaped: makes the actual action reviewable without executing markup (Nielsen #5).
 
-Remaining: final pending/review visual reinspection, additional expiry/background-thread recovery checks, editing-mode configuration, deployment and a real OpenRouter-to-office-DM approval/write/readback journey. Production remains on the previously deployed version. The fixture performs no D3 writes and is not evidence of live record integrity.
+Remaining: additional expiry/background-thread recovery checks, editing-mode configuration, deployment and a real OpenRouter-to-office-DM approval/write/readback journey. Production remains on the previously deployed version. The fixture performs no D3 writes and is not evidence of live record integrity.
