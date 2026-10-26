@@ -1,10 +1,36 @@
 export function recordEditorStyles(): string {
-  return `.record-fields{flex:1;min-height:0;overflow:auto;padding:12px 16px}.record-fields[hidden],.editor-wrap[hidden]{display:none!important}.record-attribute{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.record-attribute-number{color:var(--muted);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding-top:12px}.record-values{display:grid;gap:8px;min-width:0}.record-value{display:grid;gap:4px;min-width:0}.record-value label{font-size:11px;color:var(--muted)}.record-value textarea{font-family:inherit;font-size:13px;line-height:1.5;min-height:40px;max-height:160px;field-sizing:content;resize:vertical;white-space:pre-wrap;width:100%;box-sizing:border-box}.record-status{flex:none;padding:8px 12px;min-height:30px;font-size:12px;line-height:1.4;color:var(--muted);border-top:1px solid var(--line);overflow-wrap:anywhere}.record-status:empty{display:none}.record-status[data-error=true]{color:var(--warn)}body:not([data-editor-state=loaded]) .record-fields,body:not([data-editor-state=loaded]) .record-status{display:none}@media(max-width:760px){.record-fields{padding:4px 10px}.record-attribute{grid-template-columns:32px minmax(0,1fr);gap:8px}.record-value textarea{font-size:16px;min-height:44px}}`
+  return `.record-fields{flex:1;min-height:0;overflow:auto;padding:12px 16px}.record-fields[hidden],.editor-wrap[hidden]{display:none!important}.record-attribute{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.record-attribute-number{color:var(--muted);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding-top:12px}.record-values{display:grid;gap:8px;min-width:0}.record-field-name{font-size:12px;color:var(--soft);overflow-wrap:anywhere}.record-field-name[hidden],#recordDictionaryStatus[hidden]{display:none}.record-value{display:grid;gap:4px;min-width:0}.record-value label{font-size:11px;color:var(--muted)}.record-value textarea{font-family:inherit;font-size:13px;line-height:1.5;min-height:40px;max-height:160px;field-sizing:content;resize:vertical;white-space:pre-wrap;width:100%;box-sizing:border-box}.record-status{flex:none;padding:8px 12px;min-height:30px;font-size:12px;line-height:1.4;color:var(--muted);border-top:1px solid var(--line);overflow-wrap:anywhere}#recordDictionaryStatus{display:flex;align-items:center;gap:8px}.record-status button{min-height:44px;flex-shrink:0}.record-status:empty{display:none}.record-status[data-error=true]{color:var(--warn)}body:not([data-editor-state=loaded]) .record-fields,body:not([data-editor-state=loaded]) .record-status{display:none}@media(max-width:760px){.record-fields{padding:4px 10px}.record-attribute{grid-template-columns:32px minmax(0,1fr);gap:8px}.record-value textarea{font-size:16px;min-height:44px}}`
 }
 
 export function recordEditorClientScript(): string {
   return String.raw`
-let editorRecord=null,editorReadSequence=0;
+let editorRecord=null,editorReadSequence=0,dictionaryFields=null,dictionaryFieldsRequest=0;
+async function loadDictionaryFields(file,profile){
+  const request=++dictionaryFieldsRequest;
+  dictionaryFields={file,profile,fields:[],pending:true};updateDictionaryLabels();
+  try{
+    const result=await api('/api/dictionary-fields?'+new URLSearchParams({file,profile}));
+    if(result.error)throw new Error(result.error);
+    if(request!==dictionaryFieldsRequest||selectedProfile!==profile||selectedD3File!==file)return;
+    dictionaryFields={file,profile,...result};
+  }catch(error){if(request!==dictionaryFieldsRequest)return;dictionaryFields={file,profile,fields:[],error:true}}
+  updateDictionaryLabels();
+}
+function updateDictionaryLabels(){
+  const record=editorRecord,metadata=dictionaryFields;
+  const matching=record?.structured&&record.target.section==='data'&&metadata?.file===record.target.file&&metadata.profile===record.target.profile;
+  const status=$('recordDictionaryStatus');status.hidden=!matching;
+  if(!matching)return;
+  const fields=new Map(metadata.fields.map(field=>[field.attribute,field]));
+  $('recordFields').querySelectorAll('[data-record-attribute]').forEach(row=>{
+    const attribute=Number(row.dataset.recordAttribute),field=fields.get(attribute),heading=row.querySelector('.record-field-name');
+    heading.textContent=field?.label||'';heading.hidden=!field;heading.title=field?'DICT '+metadata.file+' / '+field.ids.join(', '):'';
+    row.querySelectorAll('textarea').forEach(input=>input.setAttribute('aria-label',(field?field.label+', ':'')+input.dataset.attributeLabel));
+  });
+  status.textContent=metadata.pending?'Loading dictionary field names...':metadata.error?'Dictionary field names unavailable. Attribute numbers are shown.':metadata.partial?'Field names use up to 32 dictionary definitions. Other attributes keep their numbers.':'';
+  if(metadata.error){const retry=document.createElement('button');retry.type='button';retry.textContent='Retry';retry.onclick=()=>loadDictionaryFields(metadata.file,metadata.profile);const message=document.createElement('span');message.textContent=status.textContent;status.replaceChildren(message,retry)}
+  status.hidden=!status.textContent;
+}
 function recordStatus(message,error=false){$('editorRecordStatus').textContent=message;$('editorRecordStatus').dataset.error=String(error)}
 function recordAttributes(raw){return raw.split('\xfe').map(attribute=>attribute.split('\xfd').map(value=>value.split('\xfc')))}
 function recordText(attributes){return attributes.map(attribute=>attribute.map(value=>value.join('\xfc')).join('\xfd')).join('\xfe')}
@@ -16,9 +42,10 @@ function syncRecordDraft(){
 function renderRecordFields(record){
   const fields=$('recordFields');fields.replaceChildren();
   record.attributes.forEach((attribute,a)=>{
-    const row=document.createElement('div');row.className='record-attribute';
+    const row=document.createElement('div');row.className='record-attribute';row.dataset.recordAttribute=String(a+1);
     const number=document.createElement('div');number.className='record-attribute-number';number.textContent='A'+(a+1);row.append(number);
     const values=document.createElement('div');values.className='record-values';row.append(values);
+    const heading=document.createElement('div');heading.className='record-field-name';heading.hidden=true;values.append(heading);
     attribute.forEach((value,v)=>value.forEach((scalar,s)=>{
       const cell=document.createElement('div');cell.className='record-value';
       const id='record-'+a+'-'+v+'-'+s;
@@ -26,12 +53,13 @@ function renderRecordFields(record){
       label.textContent='Value '+(v+1)+(value.length>1?', subvalue '+(s+1):'');
       if(attribute.length>1||value.length>1)cell.append(label);
       const input=document.createElement('textarea');input.id=id;input.rows=Math.min(5,Math.max(1,scalar.split('\n').length));input.value=scalar;input.readOnly=record.readOnly;
-      input.setAttribute('aria-label','Attribute '+(a+1)+', value '+(v+1)+', subvalue '+(s+1));
+      input.dataset.attributeLabel='Attribute '+(a+1)+', value '+(v+1)+', subvalue '+(s+1);input.setAttribute('aria-label',input.dataset.attributeLabel);
       input.oninput=()=>{record.attributes[a][v][s]=input.value;input.setCustomValidity(/[\xfc-\xfe]/.test(input.value)?'Use separate value fields for D3 delimiters.':'');syncRecordDraft()};
       cell.append(input);values.append(cell);
     }));
     fields.append(row);
   });
+  updateDictionaryLabels();
 }
 async function readSelectedItem(){
   if(!await confirmEditorDiscard())return;

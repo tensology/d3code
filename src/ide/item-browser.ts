@@ -22,6 +22,7 @@ function resetEditorSelection(){
   document.body.dataset.editorOutput='hidden';
   $('itemBody').value='';$('itemBody').dataset.savedBody='';
   $('recordFields').hidden=true;$('editorRecordStatus').textContent='';$('writeItem').textContent='Save';
+  $('recordDictionaryStatus').hidden=true;
   $('file').readOnly=false;$('item').readOnly=false;
   $('editorEmpty').textContent='Select an item to open it.';
 }
@@ -80,6 +81,8 @@ async function openD3File(file,kind){
   $('itemSection').value='data';$('itemFilter').value='';
   $('itemBrowserFile').textContent=file;$('itemBrowserFile').title=file;
   $('d3Browser').hidden=true;$('itemBrowser').hidden=false;
+  dictionaryFields=null;++dictionaryFieldsRequest;
+  if(kind!=='program')void loadDictionaryFields(file,selectedProfile);
   await loadFileItems();
 }
 $('backToFiles').onclick=()=>{$('itemBrowser').hidden=true;$('d3Browser').hidden=false;++itemBrowserRequest};

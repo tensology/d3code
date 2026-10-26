@@ -80,6 +80,7 @@ test("IDE record API enforces the active connection, approval and native conflic
     assert.equal((await put(input)).status, 200);assert.equal(writes, 1)
     const conflict = await put(input);assert.equal(conflict.status, 409);assert.match((await conflict.json() as { error: string }).error, /draft is kept/)
     query.set("profile", "other");assert.equal((await fetch(handle.url + "/api/record?" + query)).status, 409)
+    assert.equal((await fetch(handle.url + "/api/dictionary-fields?" + query)).status, 409)
     assert.equal((await put([])).status, 400)
     query.set("profile", "office");stored=undefined
     const prepared=await fetch(handle.url+"/api/record/new?"+query)
