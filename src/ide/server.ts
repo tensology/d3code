@@ -325,6 +325,7 @@ function startAgentJob(
   chatId: string,
   input: string,
   clientHistory?: ChatMessage[],
+  runtimes: Iterable<IdeRuntimeState> = [state],
 ): AgentJob {
   const jobs = agentJobsFor(state)
   const cutoff = Date.now() - 15 * 60_000
@@ -333,7 +334,7 @@ function startAgentJob(
   }
   const existing = jobs.get(chatId)
   if (existing?.status === "running" || existing?.status === "pending") return existing
-  const activeJobs = [...jobs.values()].filter((job) => job.status === "running" || job.status === "pending").length
+  const activeJobs = [...runtimes].flatMap(runtime => [...agentJobsFor(runtime).values()]).filter((job) => job.status === "running" || job.status === "pending").length
   if (activeJobs >= 4) throw Object.assign(new Error("Agent concurrency limit reached. Wait for an active run to finish or stop one."), { statusCode: 429 })
   const job: AgentJob = {
     id: `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -888,7 +889,8 @@ function normalizeManagedSshProfile(
   }
 }
 
-async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeConfig, state: IdeRuntimeState, options: IdeServerOptions): Promise<void> {
+async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeConfig, state: IdeRuntimeState, options: IdeServerOptions, userStates?: Map<string, IdeRuntimeState>): Promise<void> {
+  const userScoped = Boolean(userStates)
   const url = new URL(req.url ?? "/", "http://127.0.0.1")
   if (req.method === "GET" && url.pathname === "/") {
     const workspace = process.env.D3CODE_STORAGE_NAMESPACE
@@ -958,10 +960,12 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     const body = await readJson(req) as { safety?: SafetyMode }
     if (body.safety !== "ask" && body.safety !== "plan" && body.safety !== "trust") return sendJson(res, 400, { error: "safety must be ask, plan, or trust" })
     state.safety = body.safety
-    config.defaultSafety = body.safety
     const profile = selectProfile(config, state.profile)
-    if (profile) profile.safetyDefault = body.safety
-    await (options.saveConfigFn ?? saveConfig)(config)
+    if (!userScoped) {
+      config.defaultSafety = body.safety
+      if (profile) profile.safetyDefault = body.safety
+      await (options.saveConfigFn ?? saveConfig)(config)
+    }
     return sendJson(res, 200, { ...state, profile: profile?.name, account: profile?.account })
   }
   if (req.method === "POST" && url.pathname === "/api/config/model") {
@@ -970,8 +974,10 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     const providerID = body.model.split("/")[0]
     if (!providers.some((provider) => provider.id === providerID)) return sendJson(res, 400, { error: `unknown provider: ${providerID}` })
     state.model = body.model
-    config.defaultModel = body.model
-    await (options.saveConfigFn ?? saveConfig)(config)
+    if (!userScoped) {
+      config.defaultModel = body.model
+      await (options.saveConfigFn ?? saveConfig)(config)
+    }
     const profile = selectProfile(config, state.profile)
     return sendJson(res, 200, { ...state, profile: profile?.name, account: profile?.account })
   }
@@ -991,8 +997,10 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     if (state.profile && state.profile !== profile.name) await closeTerminalSession(state, state.profile)
     state.profile = profile.name
     state.safety = profile.safetyDefault ?? config.defaultSafety ?? state.safety
-    config.defaultProfile = profile.name
-    await (options.saveConfigFn ?? saveConfig)(config)
+    if (!userScoped) {
+      config.defaultProfile = profile.name
+      await (options.saveConfigFn ?? saveConfig)(config)
+    }
     return sendJson(res, 200, { ...state, profile: profile.name, account: profile.account })
   }
   if (req.method === "PUT" && url.pathname === "/api/profile/manage") {
@@ -1146,7 +1154,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
       }
       return sendJson(res, 409, { error: "agent already running for this chat" })
     }
-    const job = startAgentJob(config, state, options, chatId, body.input, clientHistory)
+    const job = startAgentJob(config, state, options, chatId, body.input, clientHistory, userStates?.values())
     if (wantsStream) {
       startSse(res)
       try {
@@ -1364,6 +1372,10 @@ export async function startIdeServer(config: D3CodeConfig, state: IdeRuntimeStat
   const requireAuth = options.requireAuth ?? (process.env.D3CODE_REQUIRE_AUTH === "1" || isPublicIdeHost(host))
   if (requireAuth && !config.ideAuth) throw new Error("Public IDE access requires configured credentials. Run `d3code ide setup-auth` first.")
   const credentials = resolveIdeAuth(config)
+  const embedded = Boolean(process.env.D3CODE_STORAGE_NAMESPACE)
+  if (embedded && !requireAuth) throw new Error("Embedded IDE user isolation requires authenticated proxy access.")
+  const userStates = new Map<string, IdeRuntimeState>()
+  const initialState = { model: state.model, safety: state.safety, mode: state.mode, profile: state.profile, project: state.project }
   const server = createServer((req, res) => {
     if (requireAuth && !isBasicAuthValid(req.headers.authorization, credentials)) {
       sendAuthRequired(res)
@@ -1377,7 +1389,14 @@ export async function startIdeServer(config: D3CodeConfig, state: IdeRuntimeStat
         return sendJson(res, 403, { error: "Invalid request origin." })
       }
     }
-    route(req, res, config, state, options).catch((error) => sendJson(res, Number((error as { statusCode?: number }).statusCode) || 500, { error: (error as Error).message }))
+    let requestState = state
+    if (embedded) {
+      const actor = req.headers["x-d3code-user"]
+      if (typeof actor !== "string" || !/^[1-9]\d{0,18}$/.test(actor)) return sendJson(res, 403, { error: "Trusted workspace user identity is required." })
+      requestState = userStates.get(actor) ?? { ...initialState }
+      userStates.set(actor, requestState)
+    }
+    route(req, res, config, requestState, options, embedded ? userStates : undefined).catch((error) => sendJson(res, Number((error as { statusCode?: number }).statusCode) || 500, { error: (error as Error).message }))
   })
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
@@ -1391,7 +1410,10 @@ export async function startIdeServer(config: D3CodeConfig, state: IdeRuntimeStat
   const close = async () => {
     if (closed) return
     closed = true
-    await closeAllTerminalSessions(state)
+    for (const runtime of [state, ...userStates.values()]) {
+      resetAgentHistory(runtime)
+      await closeAllTerminalSessions(runtime)
+    }
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   }
   const handle = { host, port: address.port, url: `http://${host}:${address.port}`, server, close }

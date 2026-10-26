@@ -909,6 +909,85 @@ test("IDE server keeps agent histories isolated per chat thread", async () => {
   assert.equal(seen.some((entry) => entry.lastUser.includes("beta") && entry.history.includes("alpha remembered")), false)
 })
 
+test("embedded workspace isolates runtime state by authenticated proxy user", async () => {
+  const previousNamespace = process.env.D3CODE_STORAGE_NAMESPACE
+  process.env.D3CODE_STORAGE_NAMESPACE = "customer-test"
+  const scopedConfig = { ...config, defaultProfile: "fake", defaultSafety: "ask" as const, ideAuth: { username: "proxy", password: "test-password" }, profiles: config.profiles.map(profile => ({ ...profile })) }
+  let saves = 0
+  try {
+    await assert.rejects(startTestIdeServer(scopedConfig, { model: config.defaultModel, safety: "ask", mode: "chat" }, { port: 0, requireAuth: false }), /requires authenticated proxy/)
+    const server = await startIdeServer(scopedConfig, { model: config.defaultModel, safety: "ask", profile: "fake", mode: "chat" }, {
+      port: 0, requireAuth: true, saveConfigFn: async () => { saves++ },
+      agentChatFn: async (_config, _secrets, request) => ({ provider: "test", model: "fake", content: request.messages.map(message => message.content).join("\n").includes("alpha-private") ? "alpha remembered" : "clean" }),
+    })
+    const json = (response: Awaited<ReturnType<typeof fetch>>) => response.json() as Promise<{ transcript: string; output: string; status: string; safety: string; model: string; profile: string }>
+    const authorization = basicAuthHeader(scopedConfig.ideAuth)
+    const call = async (actor: string | undefined, path: string, body?: unknown) => fetch(`${server.url}${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { authorization, "content-type": "application/json", ...(actor === undefined ? {} : { "x-d3code-user": actor }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+    for (const actor of [undefined, "", "0", "1,2", "actor-one"]) assert.equal((await call(actor, "/api/status")).status, 403)
+    assert.equal((await fetch(`${server.url}/api/status`, { headers: { "x-d3code-user": "1" } })).status, 401)
+    await call("1", "/api/terminal/send", { command: "WHO" }).then(json)
+    assert.match((await call("1", "/api/terminal/state").then(json)).transcript, /DM/)
+    assert.equal((await call("2", "/api/terminal/state").then(json)).transcript, "")
+    await call("2", "/api/terminal/reset", {}).then(json)
+    assert.match((await call("1", "/api/terminal/state").then(json)).transcript, /DM/)
+    const chat = async (actor: string, input: string) => call(actor, "/api/agent", { chat_id: "same-id", input }).then(json)
+    assert.equal((await chat("1", "D3 alpha-private account review")).output, "alpha remembered")
+    assert.equal((await chat("2", "D3 account review")).output, "clean")
+    assert.equal((await chat("1", "Continue D3 account review")).output, "alpha remembered")
+    assert.equal((await call("3", "/api/agent/job?chat_id=same-id").then(json)).status, "missing")
+    await call("1", "/api/config/safety", { safety: "plan" }).then(json)
+    await call("1", "/api/config/model", { model: "openai/gpt-4.1" }).then(json)
+    await call("1", "/api/profile", { profile: "alt" }).then(json)
+    const other = await call("2", "/api/status").then(json)
+    assert.equal(other.safety, "ask")
+    assert.equal(other.model, config.defaultModel)
+    assert.equal(other.profile, "fake")
+    assert.equal(scopedConfig.defaultSafety, "ask")
+    assert.equal(scopedConfig.defaultModel, config.defaultModel)
+    assert.equal(scopedConfig.defaultProfile, "fake")
+    assert.equal(saves, 0)
+  } finally {
+    if (previousNamespace === undefined) delete process.env.D3CODE_STORAGE_NAMESPACE
+    else process.env.D3CODE_STORAGE_NAMESPACE = previousNamespace
+  }
+})
+
+test("embedded users share the customer job limit but cannot cancel each other", async () => {
+  const previousNamespace = process.env.D3CODE_STORAGE_NAMESPACE
+  process.env.D3CODE_STORAGE_NAMESPACE = "customer-limit-test"
+  const scopedConfig = { ...config, ideAuth: { username: "proxy", password: "test-password" } }
+  const streams: Array<Awaited<ReturnType<typeof fetch>>> = []
+  try {
+    const server = await startTestIdeServer(scopedConfig, { model: config.defaultModel, safety: "ask", profile: "fake", mode: "chat" }, {
+      port: 0, requireAuth: true,
+      agentChatFn: async (_config, _secrets, request) => new Promise((_resolve, reject) => {
+        request.onToken?.("Working")
+        request.signal?.addEventListener("abort", () => reject(new Error("Stopped by test")), { once: true })
+      }),
+    })
+    const call = (actor: string, path: string, stream = false) => fetch(`${server.url}${path}`, {
+      method: "POST", headers: { authorization: basicAuthHeader(scopedConfig.ideAuth), "x-d3code-user": actor, "content-type": "application/json", ...(stream ? { accept: "text/event-stream" } : {}) },
+      body: JSON.stringify({ chat_id: "same-id", input: "Review D3 account" }),
+    })
+    for (const actor of ["1", "2", "3", "4"]) {
+      const response = await call(actor, "/api/agent", true)
+      assert.equal(response.status, 200)
+      streams.push(response)
+    }
+    assert.equal((await call("5", "/api/agent", true)).status, 429)
+    assert.equal(await call("5", "/api/agent/cancel").then(async response => (await response.json() as {cancelled:boolean}).cancelled), false)
+    for (const actor of ["1", "2", "3", "4"]) assert.equal(await call(actor, "/api/agent/cancel").then(async response => (await response.json() as {cancelled:boolean}).cancelled), true)
+    await Promise.all(streams.map(response => response.text()))
+  } finally {
+    if (previousNamespace === undefined) delete process.env.D3CODE_STORAGE_NAMESPACE
+    else process.env.D3CODE_STORAGE_NAMESPACE = previousNamespace
+  }
+})
+
 test("IDE server streams browser agent tokens and D3 tool events", async () => {
   let calls = 0
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, {
