@@ -988,6 +988,72 @@ test("embedded users share the customer job limit but cannot cancel each other",
   }
 })
 
+test("shared profile changes invalidate every affected user's jobs and terminal state", async () => {
+  const previousNamespace = process.env.D3CODE_STORAGE_NAMESPACE
+  process.env.D3CODE_STORAGE_NAMESPACE = "customer-profile-test"
+  const scopedConfig = { ...config, defaultProfile: "fake", ideAuth: { username: "proxy", password: "test-password" }, profiles: config.profiles.map(profile => ({ ...profile })) }
+  let aborted = 0
+  try {
+    const server = await startTestIdeServer(scopedConfig, { model: config.defaultModel, safety: "ask", profile: "fake", mode: "chat" }, {
+      port: 0, requireAuth: true,
+      agentChatFn: async (_config, _secrets, request) => new Promise((_resolve, reject) => {
+        request.onToken?.("Working")
+        request.signal?.addEventListener("abort", () => { aborted++; reject(new Error("Connection changed")) }, { once: true })
+      }),
+    })
+    const call = (actor: string, path: string, body?: unknown, method = "POST", stream = false) => fetch(`${server.url}${path}`, {
+      method: body === undefined ? "GET" : method,
+      headers: { authorization: basicAuthHeader(scopedConfig.ideAuth), "x-d3code-user": actor, "content-type": "application/json", ...(stream ? { accept: "text/event-stream" } : {}) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+    const json = (response: Awaited<ReturnType<typeof fetch>>) => response.json() as Promise<{ profile?: string; transcript: string; status: string }>
+    await call("9", "/api/profile", { profile: "alt" }).then(json)
+    await call("9", "/api/terminal/send", { command: "WHO" }).then(json)
+    const streams = []
+    for (const actor of ["1", "2"]) {
+      await call(actor, "/api/terminal/send", { command: "WHO" }).then(json)
+      streams.push(await call(actor, "/api/agent", { chat_id: "same-id", input: "Review D3 account" }, "POST", true))
+    }
+    const profile = { ...scopedConfig.profiles[0], name: "renamed", type: "ssh", host: "example.invalid", username: "dm" }
+    assert.equal((await call("1", "/api/profile/manage", { previousName: "fake", profile }, "PUT")).status, 409)
+    assert.equal(aborted, 0)
+    assert.equal((await call("1", "/api/profile/manage", { previousName: "fake", profile, confirmed: true }, "PUT")).status, 200)
+    await Promise.all(streams.map(response => response.text()))
+    assert.equal(aborted, 2)
+    assert.equal((await call("9", "/api/status").then(json)).profile, "alt")
+    assert.match((await call("9", "/api/terminal/state").then(json)).transcript, /SALES/)
+    for (const actor of ["1", "2", "3"]) {
+      assert.equal((await call(actor, "/api/status").then(json)).profile, "renamed")
+      assert.equal((await call(actor, "/api/terminal/state").then(json)).transcript, "")
+      assert.equal((await call(actor, "/api/agent/job?chat_id=same-id").then(json)).status, "missing")
+    }
+    assert.equal((await call("1", "/api/profile/manage", { profile: "renamed", confirmed: true }, "DELETE")).status, 200)
+    for (const actor of ["1", "2", "3", "4"]) assert.equal((await call(actor, "/api/status").then(json)).profile, "alt")
+  } finally {
+    if (previousNamespace === undefined) delete process.env.D3CODE_STORAGE_NAMESPACE
+    else process.env.D3CODE_STORAGE_NAMESPACE = previousNamespace
+  }
+})
+
+test("editing a standalone profile closes its existing persistent session", async () => {
+  let closed = 0
+  const profile = { name: "office", type: "ssh" as const, host: "example.invalid", username: "dm", account: "dm" }
+  const session: D3Session = { profile, run: async command => ({ command, stdout: "old", stderr: "", exitCode: 0, durationMs: 0 }), close: async () => { closed++ } }
+  const state: IdeRuntimeState = {
+    model: config.defaultModel, safety: "ask", mode: "chat", profile: "office",
+    terminalSessions: new Map([["office", session]]), terminalTranscripts: new Map([["office", "old account transcript"]]),
+  }
+  const server = await startTestIdeServer({ ...config, profiles: [profile], defaultProfile: "office" }, state, { port: 0 })
+  const response = await fetch(`${server.url}/api/profile/manage`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ previousName: "office", profile: { ...profile, host: "changed.invalid" }, confirmed: true }),
+  })
+  assert.equal(response.status, 200)
+  assert.equal(closed, 1)
+  assert.equal(state.terminalSessions?.size, 0)
+  assert.equal(state.terminalTranscripts?.size, 0)
+})
+
 test("IDE server streams browser agent tokens and D3 tool events", async () => {
   let calls = 0
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, {

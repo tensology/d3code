@@ -159,6 +159,21 @@ async function closeAllTerminalSessions(state: IdeRuntimeState): Promise<void> {
   await Promise.all(sessions.map((session) => session.close().catch(() => {})))
 }
 
+async function invalidateProfileRuntimes(runtimes: Iterable<IdeRuntimeState>, names: string[], replacement?: string): Promise<void> {
+  const affected = [...runtimes]
+  for (const runtime of affected) {
+    if (runtime.profile && names.includes(runtime.profile)) {
+      resetAgentHistory(runtime)
+      runtime.profile = replacement
+    }
+    for (const name of names) {
+      terminalTranscriptsFor(runtime).delete(terminalKey(name))
+      terminalDisplayTranscriptsFor(runtime).delete(terminalKey(name))
+    }
+  }
+  await Promise.all(affected.flatMap(runtime => names.map(name => closeTerminalSession(runtime, name))))
+}
+
 async function runTerminalCommand(config: D3CodeConfig, state: IdeRuntimeState, command: string, confirmed?: boolean): Promise<{ result: D3CommandResult; transcript: string; displayTranscript: string; clean: string; label: string; mechanism: string }> {
   const profile = selectProfile(config, state.profile)
   if (!profile) throw new Error("No D3 profile selected. Add and select a D3 profile first.")
@@ -1038,7 +1053,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     ]
     if (config.defaultProfile === previousName) config.defaultProfile = nextProfile.name
     config.defaultProfile ??= nextProfile.name
-    if (state.profile === previousName) state.profile = nextProfile.name
+    await invalidateProfileRuntimes(userStates?.values() ?? [state], [previousName, nextProfile.name], nextProfile.name)
     await (options.saveConfigFn ?? saveConfig)(config)
     return sendJson(res, 200, { profile: nextProfile.name, saved: true, previousName })
   }
@@ -1050,7 +1065,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     config.profiles = config.profiles.filter((profile) => profile.name !== body.profile)
     if (before === config.profiles.length) return sendJson(res, 404, { error: `unknown profile: ${body.profile}` })
     if (config.defaultProfile === body.profile) config.defaultProfile = config.profiles[0]?.name
-    if (state.profile === body.profile) state.profile = config.defaultProfile
+    await invalidateProfileRuntimes(userStates?.values() ?? [state], [body.profile], config.defaultProfile)
     await (options.saveConfigFn ?? saveConfig)(config)
     return sendJson(res, 200, { profile: body.profile, removed: true, defaultProfile: config.defaultProfile })
   }
@@ -1393,7 +1408,10 @@ export async function startIdeServer(config: D3CodeConfig, state: IdeRuntimeStat
     if (embedded) {
       const actor = req.headers["x-d3code-user"]
       if (typeof actor !== "string" || !/^[1-9]\d{0,18}$/.test(actor)) return sendJson(res, 403, { error: "Trusted workspace user identity is required." })
-      requestState = userStates.get(actor) ?? { ...initialState }
+      requestState = userStates.get(actor) ?? {
+        ...initialState,
+        profile: config.profiles.some(profile => profile.name === initialState.profile) ? initialState.profile : config.defaultProfile,
+      }
       userStates.set(actor, requestState)
     }
     route(req, res, config, requestState, options, embedded ? userStates : undefined).catch((error) => sendJson(res, Number((error as { statusCode?: number }).statusCode) || 500, { error: (error as Error).message }))
