@@ -75,6 +75,18 @@ test("tool runner ignores confirmation supplied by model-originated input", asyn
   )
 })
 
+test("model-originated creation cannot approve itself or bypass read-only mode", async () => {
+  const input = { file: "D3CODE.RECORD.TEST", item: "NEW", body: "proof", confirmed: true }
+  for (const mode of ["chat", "audit"]) {
+    await assert.rejects(runToolByName(config, {
+      name: "d3_create_item", input, safety: "ask", mode, acceptInputConfirmation: false,
+    }), /blocked in .* mode/)
+  }
+  await assert.rejects(runToolByName(config, {
+    name: "d3_create_item", input, safety: "ask", mode: "migrate", acceptInputConfirmation: false,
+  }), /Confirmation required/)
+})
+
 test("model self-confirmation cannot launch unknown commands or operations", async () => {
   const tool = getTool("d3_tcl")!
   const execute = tool.execute
