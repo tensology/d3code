@@ -562,7 +562,7 @@ program.command("profile-release").argument("[name]").description("Send OFF thro
   console.log(`Released profile ${profile.name}`)
 })
 
-program.command("login").description("Verify or switch into the selected D3 account with WHO and VERSION proof.").option("--profile <name>").option("--account <account>", "LOGTO this account before proof").option("--safety <mode>").option("--confirm", "approve this account switch").action(async (options: { profile?: string; account?: string; safety?: string; confirm?: boolean }) => {
+program.command("login").description("Verify or switch into the selected D3 account with WHO proof.").option("--profile <name>").option("--account <account>", "LOGTO this account before proof").option("--safety <mode>").option("--confirm", "approve this account switch").action(async (options: { profile?: string; account?: string; safety?: string; confirm?: boolean }) => {
   const config = await loadConfig()
   const profileName = options.profile ?? optionValue("--profile")
   const profile = selectProfile(config, profileName)

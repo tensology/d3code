@@ -1,7 +1,7 @@
 const startLabels: Record<string, string> = {
   d3_detect: "Checking D3 availability",
   d3_tcl: "Running D3 TCL",
-  d3_login: "Switching D3 account",
+  d3_login: "Checking D3 account",
   d3_list_files: "Listing D3 files",
   d3_read_item: "Reading D3 item",
   d3_write_item: "Writing D3 item",
@@ -21,7 +21,7 @@ const startLabels: Record<string, string> = {
 const resultLabels: Record<string, string> = {
   d3_detect: "Checked D3 availability",
   d3_tcl: "Ran D3 TCL",
-  d3_login: "Switched D3 account",
+  d3_login: "Checked D3 account",
   d3_list_files: "Listed D3 files",
   d3_read_item: "Read D3 item",
   d3_write_item: "Wrote D3 item",

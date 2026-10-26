@@ -120,15 +120,15 @@ export const d3Tools: ToolDefinition[] = [
   },
   {
     name: "d3_login",
-    description: "Verify or switch into a D3 account, then run read-only WHO and VERSION proof.",
+    description: "Verify or switch into a D3 account, then run read-only WHO proof.",
     mutates: true,
     execute: async (input: unknown, context) => {
       const args = input as { account?: string; confirmed?: boolean }
       if (args.account) {
         assertAllowedAccount(context, args.account)
-        return runTcl(context, `LOGTO ${args.account}\nWHO\nVERSION`, args.confirmed)
+        return runTcl(context, `LOGTO ${args.account}\nWHO`, args.confirmed)
       }
-      return runTcl(context, "WHO\nVERSION")
+      return runTcl(context, "WHO")
     },
   },
   {
