@@ -1,10 +1,12 @@
-import type { D3CommandResult, D3Session } from "../domain/types.js"
-import { parseFileListing, type D3EstateFile } from "./estate.js"
+import type { D3Session } from "../domain/types.js"
+import { listD3Files, type D3EstateFile } from "./estate.js"
 
 export interface SbplusDiscovery {
   profile: string
   account?: string
   detected: boolean
+  verification: "unverified"
+  limited: boolean
   files: D3EstateFile[]
   systems: string[]
   processFiles: D3EstateFile[]
@@ -13,10 +15,6 @@ export interface SbplusDiscovery {
   driverFiles: D3EstateFile[]
   nextSteps: string[]
   compact: string
-}
-
-function outputOf(result: D3CommandResult): string {
-  return (result.stdout || result.stderr || "").replace(/\0/g, "").trim()
 }
 
 function unique(values: string[]): string[] {
@@ -38,30 +36,33 @@ function likelySystems(files: D3EstateFile[]): string[] {
   return unique(prefixes)
 }
 
-export function createSbplusDiscovery(profile: string, account: string | undefined, files: D3EstateFile[]): SbplusDiscovery {
+export function createSbplusDiscovery(profile: string, account: string | undefined, files: D3EstateFile[], limited = false): SbplusDiscovery {
   const processFiles = files.filter((file) => hasAny(detailOf(file), [/\bprocess\b/, /\bproc\b/, /\bpd\b/, /\binput\b/, /\boutput\b/]) || /(^|[._-])(PROC|PROCESS|PD)([._-]|$)/i.test(file.name))
   const screenFiles = files.filter((file) => hasAny(detailOf(file), [/\bscreen\b/, /\bfield\b/, /\bprompt\b/, /\bdefinition\b/]) || /(^|[._-])(SCR|SCREEN|SD|FIELD|PROMPT)([._-]|$)/i.test(file.name))
   const menuFiles = files.filter((file) => hasAny(detailOf(file), [/\bmenu\b/]) || /(^|[._-])(MENU|MNU)([._-]|$)/i.test(file.name))
   const driverFiles = files.filter((file) => hasAny(detailOf(file), [/\bdriver\b/]) || /(^|[._-])(DRV|DRIVER)([._-]|$)/i.test(file.name))
-  const detected = processFiles.length + screenFiles.length + menuFiles.length + driverFiles.length > 0
+  // File naming is a search hint, never installation evidence.
+  const detected = false
+  const verification = "unverified" as const
   const systems = likelySystems([...processFiles, ...screenFiles, ...menuFiles, ...driverFiles])
   const nextSteps = [
-    "Confirm the SB+ system and naming convention with the operator or account owner.",
+    "File names alone do not prove SB+ is installed. Confirm installation, system and naming convention with the account owner.",
     "Read the likely screen/process/menu definition items before writing any SB+ records.",
-    "Use d3_sbplus_plan for an input/output/menu process plan, then execute through SB+ maintenance screens or account-specific write tools.",
-    "Run the process once after changes so SB+ can build or refresh drivers, then capture terminal/screen proof.",
+    "After installation is verified, use d3_sbplus_plan before making changes through the appropriate maintenance tools.",
+    "After approved changes, verify the process through its installed runtime and capture terminal/screen proof.",
   ]
-  const compact = renderSbplusDiscovery({ profile, account, detected, files, systems, processFiles, screenFiles, menuFiles, driverFiles, nextSteps })
-  return { profile, account, detected, files, systems, processFiles, screenFiles, menuFiles, driverFiles, nextSteps, compact }
+  const compact = renderSbplusDiscovery({ profile, account, detected, verification, limited, files, systems, processFiles, screenFiles, menuFiles, driverFiles, nextSteps })
+  return { profile, account, detected, verification, limited, files, systems, processFiles, screenFiles, menuFiles, driverFiles, nextSteps, compact }
 }
 
 export function renderSbplusDiscovery(discovery: Omit<SbplusDiscovery, "compact">): string {
   const lines = [
     `SB+ Discovery: ${discovery.profile}${discovery.account ? ` / ${discovery.account}` : ""}`,
-    `Detected: ${discovery.detected ? "yes" : "not yet"}`,
-    discovery.systems.length ? `Likely systems: ${discovery.systems.join(", ")}` : "Likely systems: none inferred",
+    "SB+ installation: unverified",
+    discovery.limited ? "File scan limited; more files may exist." : "Only visible file pointers were inspected; no runtime probe was performed.",
+    discovery.systems.length ? `Candidate naming prefixes: ${discovery.systems.join(", ")}` : "Candidate naming prefixes: none inferred",
     "",
-    "Likely definition files:",
+    "Candidate definition files (may belong to native D3 or another framework):",
     ...[
       ["process", discovery.processFiles],
       ["screen", discovery.screenFiles],
@@ -78,8 +79,6 @@ export function renderSbplusDiscovery(discovery: Omit<SbplusDiscovery, "compact"
 }
 
 export async function discoverSbplus(session: D3Session, options: { limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<SbplusDiscovery> {
-  const timeoutMs = options.timeoutMs ?? 0
-  const filesResult = await session.run("LIST MD A0 A1 A2 (N", timeoutMs, { signal: options.signal })
-  const files = parseFileListing(outputOf(filesResult), options.limit ?? 300)
-  return createSbplusDiscovery(session.profile.name, session.profile.account, files)
+  const listing = await listD3Files(session, { ...options, limit: options.limit ?? 300 })
+  return createSbplusDiscovery(session.profile.name, session.profile.account, listing.files, listing.mayHaveMore)
 }

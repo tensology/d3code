@@ -827,7 +827,7 @@ test("CLI discovers likely SB+ definition files from the active account", async 
     "#!/bin/sh",
     "input=$(cat)",
     "case \"$input\" in",
-    "  *'LIST MD'*) printf 'SALES.PROC D Process definitions\\nSALES.SCREEN D Screen definitions\\nSALES.MENU D Menu definitions\\nSALES.DRIVER D Driver definitions\\nCUSTOMERS D Customer file\\n' ;;",
+    "  *'LIST MD'*) printf '53414C45532E50524F43 D\\n53414C45532E53435245454E D\\n53414C45532E4D454E55 D\\n53414C45532E445249564552 D\\n435553544F4D455253 D\\n[4052] 5 items listed.\\n' ;;",
     "  *) printf 'UNKNOWN\\n' ;;",
     "esac",
     "",
@@ -837,7 +837,7 @@ test("CLI discovers likely SB+ definition files from the active account", async 
 
   const discovered = await execFileAsync("node", ["dist/src/cli.js", "sbplus-discover", "--profile", "fake"], { cwd: process.cwd(), env })
   assert.match(discovered.stdout, /SB\+ Discovery: fake \/ SALES/)
-  assert.match(discovered.stdout, /Detected: yes/)
+  assert.match(discovered.stdout, /SB\+ installation: unverified/)
   assert.match(discovered.stdout, /SALES\.PROC/)
   assert.match(discovered.stdout, /SALES\.SCREEN/)
 })

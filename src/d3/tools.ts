@@ -375,7 +375,7 @@ export const d3Tools: ToolDefinition[] = [
   },
   {
     name: "d3_sbplus_discover",
-    description: "Discover likely SB+ systems, process, screen, menu, and driver definition files in the active account.",
+    description: "Find candidate SB+ definition files in the active account. File names do not verify an SB+ installation.",
     mutates: false,
     execute: async (input: unknown, context) => {
       const args = input as { limit?: number }
