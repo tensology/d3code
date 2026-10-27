@@ -69,8 +69,10 @@ export function evaluateD3Permission(mode: SafetyMode, command: string, profile?
 }
 
 export function assertD3Allowed(mode: SafetyMode, command: string, confirmed = false, allowedAccounts?: string[], profile?: TransportProfile): void {
+  const allowed = (allowedAccounts ?? []).map((account) => account.trim().toLowerCase()).filter(Boolean)
   for (const match of command.matchAll(/^\s*(?:TO|LOGTO)\s+(\S+)/gim)) {
-    if (allowedAccounts?.length && !allowedAccounts.includes(match[1])) {
+    // D3 account names are case-insensitive; the profile list may be lowercased.
+    if (allowed.length && !allowed.includes(match[1].trim().toLowerCase())) {
       throw new Error(`Account ${match[1]} is outside the allowed accounts for this profile.`)
     }
   }
