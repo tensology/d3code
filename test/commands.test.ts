@@ -531,6 +531,7 @@ test("slash command runs local TCL command", async () => {
 
 test("slash commands expose D3 account, file, index, compile, catalog, and call workflows", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-slash-d3-tools-"))
+  const trace = join(home, "commands.log")
   const previous = process.env.D3CODE_HOME
   process.env.D3CODE_HOME = home
   try {
@@ -538,6 +539,7 @@ test("slash commands expose D3 account, file, index, compile, catalog, and call 
     await writeFile(script, [
       "#!/bin/sh",
       "input=$(cat)",
+      `printf '%s\\n' "$input" >> '${trace.replace(/'/g, "'\\''")}'`,
       "case \"$input\" in",
       "  *'LOGTO SALES'*) printf 'LOGTO SALES\\nSALES\\nD3 10.3 MOCK\\n' ;;",
       "  *WHO*) printf 'SALES\\n' ;;",
@@ -594,13 +596,17 @@ test("slash commands expose D3 account, file, index, compile, catalog, and call 
     assert.match(diff.output, /-OLD.NAME/)
     assert.match(diff.output, /\+NEW.NAME/)
 
+    const beforeWrite = await readFile(trace, "utf8")
     await assert.rejects(
       handleSlashCommand("/write CUSTOMERS 100 001 CUSTOMER\\nNEW.NAME", toolConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }),
       /Confirmation required/,
     )
 
-    const write = await handleSlashCommand("/write CUSTOMERS 100 001 CUSTOMER\\nNEW.NAME", toolConfig, { model: "openai/gpt-5", safety: "trust", profile: "fake", mode: "chat" })
-    assert.match(write.output, /ITEM SAVED/)
+    await assert.rejects(
+      handleSlashCommand("/write CUSTOMERS 100 001 CUSTOMER\\nNEW.NAME", toolConfig, { model: "openai/gpt-5", safety: "trust", profile: "fake", mode: "chat" }),
+      /Read this item with lossless:true and supply its baseline/,
+    )
+    assert.equal(await readFile(trace, "utf8"), beforeWrite, "rejected writes must not reach D3")
 
     const index = await handleSlashCommand("/index", toolConfig, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" })
     assert.match(index.output, /profile-fake/)

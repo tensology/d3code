@@ -108,7 +108,6 @@ const genericEngineeringTerms = [
 ]
 
 const d3OperatorIntentPatterns: Array<[RegExp, string]> = [
-  [/^(?:are (?:you|we)|am i|is it) (?:still )?connected(?: to (?:the )?server)?[?.!]*$/, "connection status"],
   [/\btry\s+(?:to\s+)?connect\b/, "try connect"],
   [/\bcan\s+you\s+connect\b/, "can you connect"],
   [/\bcheck\s+(?:the\s+)?connection\b/, "check connection"],
@@ -120,6 +119,20 @@ const d3OperatorIntentPatterns: Array<[RegExp, string]> = [
 
 function normalized(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
+}
+
+export function isD3ConnectionQuestion(text: string): boolean {
+  const value = normalized(text).replace(/^(?:hi|hello|hey)[,!]?\s+/, "").replace(/^(?:please|can you|could you|would you)\s+/, "").replace(/(?:,?\s+please)?[?.!]*$/, "")
+  const target = "(?:(?:the|my|our|current|configured) )?(?:d3|database|server|connection|d3 server|d3 database)"
+  return [
+    `^(?:are (?:you|we)|am i|is it) (?:still |currently |actually )?(?:connected|online)(?: to ${target})?$`,
+    `^is ${target} (?:back )?(?:up|down|online|offline|running|reachable|available|connected)$`,
+    `^(?:check|test|verify) (?:${target}|(?:the )?connection status)$`,
+    `^(?:check|test|verify) (?:if|whether) (?:you are|we are|i am|it is) (?:still )?connected$`,
+    `^(?:connect|reconnect)(?: to ${target})?$`,
+    `^(?:still )?connected$`,
+    `^(?:what(?:'s| is) (?:the )?)?(?:connection status|d3 connection status)$`,
+  ].some(pattern => new RegExp(pattern).test(value))
 }
 
 function matches(text: string, terms: string[]): string[] {
@@ -150,6 +163,7 @@ export function classifyD3Scope(text: string): D3ScopeDecision {
     .map(([, reason]) => reason)
   const generic = matches(value, genericEngineeringTerms)
 
+  if (isD3ConnectionQuestion(value)) return { scope: "d3code-ops", allowed: true, confidence: "high", reasons: ["D3 connection check"] }
   if (ops.length > 0) return { scope: "d3code-ops", allowed: true, confidence: "high", reasons: ops.map((term) => `D3Code operation term: ${term}`) }
   if (operatorIntent.length > 0) return { scope: "d3code-ops", allowed: true, confidence: "medium", reasons: operatorIntent.map((term) => `D3Code operator intent: ${term}`) }
   if (reference.length > 0) return { scope: "d3-reference", allowed: true, confidence: "high", reasons: reference.map((term) => `D3 reference term: ${term}`) }

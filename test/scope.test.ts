@@ -5,8 +5,12 @@ import { promisify } from "node:util"
 import {
   assertD3Scope,
   classifyD3Scope,
+  isD3ConnectionQuestion,
   renderD3ScopeDecision,
 } from "../src/scope/d3-scope.js"
+import { runD3AgentTurn } from "../src/tui/agent.js"
+import { getTool } from "../src/d3/tools.js"
+import type { D3CodeConfig } from "../src/config/config.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -35,6 +39,87 @@ test("connection status questions are operator requests without allowing unrelat
   for (const text of ["are you connected to Gmail?", "is it connected to Stripe?", "build a connected React app"]) {
     assert.equal(classifyD3Scope(text).allowed, false, text)
   }
+})
+
+const connectionQuestions = [
+  "are you connected", "Are we still connected?", "am I connected to D3?", "is it connected?",
+  "Hello, are you online?", "Please check the connection.", "can you connect?", "could you reconnect to the server please?",
+  "check connection status", "test the database", "verify our connection", "connection status?", "what's the connection status?",
+  "is the server down?", "is D3 back up?", "is the database reachable?", "is my D3 server running?",
+  "can you check if you are connected?", "connected?", "still connected?",
+]
+
+test("connection intent handles ordinary wording without swallowing compound or unrelated work", () => {
+  for (const text of connectionQuestions) {
+    assert.equal(isD3ConnectionQuestion(text), true, text)
+    assert.equal(classifyD3Scope(text).allowed, true, text)
+  }
+  for (const text of ["are you connected to Gmail?", "connect to Stripe", "check the connection and delete all records", "are you connected; SHUTDOWN", "is D3 up? Then compile BP TEST", "connect to another account", "explain how a connection works"]) {
+    assert.equal(isD3ConnectionQuestion(text), false, text)
+  }
+})
+
+test("connection questions use only guarded WHO, without a model, account switch or approval", async () => {
+  const config: D3CodeConfig = { version: 1, defaultModel: "unavailable/model", defaultSafety: "ask", profiles: [{ name: "office", type: "ssh", host: "example.invalid", username: "test", account: "dm", allowedAccounts: ["dm"] }], modelSecrets: {} }
+  const tool = getTool("d3_login")!, execute = tool.execute
+  const commands: string[] = []
+  let stdout = "WHO\n7 dm dm", stderr = "", exitCode: number | null = 0, calls = 0
+  let hang = false
+  const secrets = { get: async () => undefined, set: async () => undefined }
+  tool.execute = (input, context) => execute(input, { ...context, session: {
+    profile: context.profile!,
+    run: async (command, _timeout, options) => {
+      commands.push(command)
+      if (hang) await new Promise<void>((_resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Mock connection did not stop")), 1000)
+        options!.signal!.addEventListener("abort", () => { clearTimeout(timer); reject(new Error("Interrupted.")) }, { once: true })
+      })
+      return { command, stdout, stderr, exitCode, durationMs: 1 }
+    },
+    close: async () => {},
+  } })
+  const run = (input: string, overrides = {}) => runD3AgentTurn(config, secrets, {
+    input, model: "unavailable/model", safety: "ask", profile: "office", mode: "chat",
+    chatFn: async () => { calls++; throw new Error("Provider unavailable") },
+    approveTool: async () => { throw new Error("Unexpected approval") }, ...overrides,
+  })
+  try {
+    for (const input of connectionQuestions) {
+      const events: string[] = []
+      const result = await run(input, { onEvent: (event: { type: string }) => events.push(event.type) })
+      assert.match(result.output, /D3 is reachable through office\. Fresh WHO: 7 dm dm/)
+      assert.match(result.output, /Terminal connection is managed separately/)
+      assert.deepEqual(result.toolEvents[0]?.input, {})
+      assert.deepEqual(events, ["tool_start", "tool_result"])
+    }
+    assert.ok(commands.every(command => command === "WHO"))
+    for (const [body, errorOutput, code] of [
+      ["Too many users", "", 0], ["Virtual Machine pick0:LINUX is not running", "", 0],
+      ["", "", 0], ["welcome to Linux", "", 0], ["7 dm dm", "ssh: connection failed", 1],
+      ["7 dm dm", "", 1], ["7 dm OTHER", "", 0],
+    ] as const) {
+      stdout = body; stderr = errorOutput; exitCode = code
+      const result = await run("are you connected?")
+      assert.match(result.output, /could not be verified/)
+      assert.equal(result.toolEvents[0]?.result.status, "error")
+      assert.doesNotMatch(result.output, /D3 is reachable/)
+    }
+    const before = commands.length
+    for (const overrides of [{ profile: "missing" }, { mode: "plan" }, { mode: "gsd" }, { signal: AbortSignal.abort() }]) {
+      assert.match((await run("connection status", overrides)).output, /could not be verified/)
+    }
+    assert.equal(commands.length, before)
+    assert.equal(calls, 0)
+    config.profiles[0]!.entryCommand = "sh"
+    assert.match((await run("connection status")).output, /Confirmation required/)
+    assert.equal(commands.length, before)
+    delete config.profiles[0]!.entryCommand
+    hang = true
+    assert.match((await run("connection status", { turnTimeoutMs: 10 })).output, /could not be verified.*Interrupted/)
+    hang = false
+    assert.match((await run("is D3 up? Then compile BP TEST")).output, /Provider unavailable/)
+    assert.equal(calls, 1)
+  } finally { tool.execute = execute }
 })
 
 test("native operations requests reach only modes that already permit runtime inspection", () => {

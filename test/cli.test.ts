@@ -817,7 +817,8 @@ test("CLI exposes first-class D3 AQL, compile, catalog, and call commands", asyn
 
   const capabilities = await execFileAsync("node", ["dist/src/cli.js", "capabilities"], { cwd: process.cwd(), env })
   assert.match(capabilities.stdout, /BASIC Program Builder/)
-  assert.match(capabilities.stdout, /SB\+ Screen and Process Builder/)
+  assert.match(capabilities.stdout, /SB\+ Discovery and Planning/)
+  assert.match(capabilities.stdout, /Safety: plan-only/)
 })
 
 test("CLI discovers likely SB+ definition files from the active account", async () => {

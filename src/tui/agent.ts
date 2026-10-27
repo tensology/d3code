@@ -5,11 +5,12 @@ import type { SafetyMode } from "../domain/types.js"
 import { chat, type ChatMessage, type ChatRequest, type ChatResponse, type ChatUsage, type ToolCall } from "../llm/client.js"
 import type { ProjectContext } from "./project-context.js"
 import type { SecretStore } from "../security/secrets.js"
-import { formatD3ToolResultForDisplay, formatD3ToolResultForModel } from "../d3/connection-message.js"
+import { formatD3ToolResultForDisplay, formatD3ToolResultForModel, humanD3SessionError, humanizeD3ConnectError, isD3CommandResult } from "../d3/connection-message.js"
 import { d3Tools, getTool } from "../d3/tools.js"
 import { runToolByName, type ToolRunResult } from "../tools/runner.js"
 import { createChatSystemPrompt } from "./context.js"
-import { assertD3Scope, classifyD3Scope, renderD3ScopeDecision } from "../scope/d3-scope.js"
+import { assertD3Scope, classifyD3Scope, isD3ConnectionQuestion, renderD3ScopeDecision } from "../scope/d3-scope.js"
+import { sanitizeD3TerminalOutput } from "../tools/compact.js"
 import { buildHarnessTurnContext } from "../operator/harness-context.js"
 import { toolInputContracts } from "../d3/tool-input.js"
 import { compactAgentHistory } from "./history.js"
@@ -108,6 +109,7 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
     "- Do not start general-purpose coding in unrelated languages or frameworks unless the user is building a D3-backed application slice from D3 evidence.",
     "- Ground D3 behavior in the active profile, captured D3 evidence, and repo-local Rocket D3 manuals/reference material. If manual-backed clarity is missing, ask for or run D3/manual/search evidence instead of guessing.",
     "- Use D3 tools when you need facts from the current account, dictionaries, BASIC, locks, indexes, terminal evidence, or generated D3 application artifacts.",
+    "- For connection evidence use d3_login with {} to run WHO in the selected profile. Supplying account requests LOGTO and requires approval. d3_detect checks only the local executable and cannot establish whether a remote D3 server is reachable.",
     "- Prefer the most specific registered D3 tool over raw d3_tcl. Use d3_read_item/d3_read_dict/d3_query_aql/d3_list_files/d3_locks/d3_operations_status/d3_create_item/d3_create_file/d3_write_dict/d3_build_basic_program/d3_compile_basic/d3_run_basic/d3_catalog/d3_call_subroutine when they fit, and reserve raw d3_tcl for commands without a typed wrapper or explicitly terminal-like operator work.",
     "- For D3/SB+ coding, call d3_rag_search or d3_manual_search before relying on memory for syntax, System Builder behavior, dictionary semantics, or screen/process rules.",
     "- For missing BASIC source, use d3_create_item with operator approval, then d3_compile_basic. Never replace an existing item through creation. For existing source, obtain a lossless baseline and use d3_build_basic_program so replacement/compile/catalog evidence stays together.",
@@ -248,6 +250,34 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
     return { output: blockedScopeMessage(renderD3ScopeDecision(initialScope)), messages: [], toolEvents: [] }
   }
   const chatFn = request.chatFn ?? chat
+  if (isD3ConnectionQuestion(request.input)) {
+    const toolRequest = { name: "d3_login", input: {} }
+    const profile = selectProfile(config, request.profile)
+    const signal = request.signal
+      ? AbortSignal.any([request.signal, AbortSignal.timeout(request.turnTimeoutMs ?? 8000)])
+      : AbortSignal.timeout(request.turnTimeoutMs ?? 8000)
+    let result: ToolRunResult
+    let output: string
+    request.onEvent?.({ type: "tool_start", ...toolRequest })
+    try {
+      signal.throwIfAborted()
+      result = await runToolByName(config, { ...toolRequest, profile: request.profile, safety: request.safety, mode: request.mode, signal, commandTimeoutMs: 8000, acceptInputConfirmation: false })
+      signal.throwIfAborted()
+      const raw = result.raw
+      if (!isD3CommandResult(raw)) throw new Error("D3 did not return WHO evidence.")
+      const issue = humanD3SessionError(raw.stdout, raw.stderr)
+      if (issue) throw new Error(issue.split("\n\n")[0])
+      const who = sanitizeD3TerminalOutput(raw.stdout).match(/^\s*(\d+)\s+(\S+)\s+(\S+)\s*$/m)
+      if ((raw.exitCode !== null && raw.exitCode !== 0) || raw.stderr.trim() || !who) throw new Error("D3 did not return a successful WHO response. Check the selected profile and login settings.")
+      if ((profile?.account && who[3] !== profile.account) || (profile?.allowedAccounts?.length && !profile.allowedAccounts.includes(who[3]!))) throw new Error("WHO returned a different account from the selected profile. Review the connection settings before continuing.")
+      output = `D3 is reachable through ${profile?.name}. Fresh WHO: ${who[1]} ${who[2]} ${who[3]}. This checks a new connection; the Terminal connection is managed separately.`
+    } catch (error) {
+      result = failedToolResult(toolRequest, error)
+      output = `D3 connection could not be verified. ${humanizeD3ConnectError(result.compact, profile)}`
+    }
+    request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: formatD3ToolResultForDisplay(result), status: result.status })
+    return { output, messages: [{ role: "user", content: request.input }, { role: "assistant", content: output }], toolEvents: [{ ...toolRequest, result }] }
+  }
   const harnessContext = await buildHarnessTurnContext({
     ...request,
     eccRoot: config.hermes?.eccRoot ?? process.env.D3CODE_ECC_REPO,
