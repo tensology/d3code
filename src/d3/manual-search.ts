@@ -146,10 +146,17 @@ export async function manualSearchStatus(extraPaths: string[] = []): Promise<Man
 }
 
 export function formatManualSearchResult(result: ManualSearchResult): string {
-  const rows = [`Manual search: ${result.query}`, `Searched: ${result.searched.map((path) => basename(path)).join(", ") || "none"}`]
-  for (const hit of result.hits) {
-    rows.push(`- ${hit.path}:${hit.line} score=${hit.score} ${hit.snippet}`)
+  const where = result.searched.map((path) => basename(path)).join(", ") || "none"
+  const lines = [`Manual search — "${result.query}"`, `Searched: ${where}`, ""]
+  if (result.hits.length === 0) {
+    lines.push("No manual hits.")
+    return lines.join("\n").trimEnd()
   }
-  if (result.hits.length === 0) rows.push("- no manual hits")
-  return rows.join("\n")
+  result.hits.forEach((hit, index) => {
+    const snippet = (hit.snippet || "").replace(/\s+/g, " ").trim()
+    lines.push(`${index + 1}. ${snippet || "(no text)"}`)
+    lines.push(`   source: ${basename(hit.path)}:${hit.line}  ·  score ${hit.score}`)
+    if (index < result.hits.length - 1) lines.push("")
+  })
+  return lines.join("\n")
 }

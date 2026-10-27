@@ -319,16 +319,21 @@ export function searchRagIndex(index: RagIndex, query: string, options: { limit?
 }
 
 export function formatRagSearchResult(result: RagSearchResult): string {
-  const rows = [
-    `RAG query: ${result.query}`,
+  const lines = [
+    `RAG query — "${result.query}"`,
     `Route: ${result.route.primary} (${result.route.rationale})`,
+    "",
   ]
-  for (const hit of result.hits) {
-    rows.push(`- ${hit.sourceTitle} [${hit.sourceKind}] ${basename(hit.sourcePath)}:${hit.startLine}-${hit.endLine} score=${hit.score}`)
-    rows.push(`  ${hit.text.replace(/\s+/g, " ").slice(0, 300)}`)
+  if (result.hits.length === 0) {
+    lines.push("No RAG hits.")
+    return lines.join("\n").trimEnd()
   }
-  if (result.hits.length === 0) rows.push("- no RAG hits")
-  return rows.join("\n")
+  result.hits.forEach((hit, index) => {
+    lines.push(`${index + 1}. ${hit.text.replace(/\s+/g, " ").trim().slice(0, 400)}`)
+    lines.push(`   source: ${hit.sourceTitle} (${hit.sourceKind})  ·  ${basename(hit.sourcePath)}:${hit.startLine}-${hit.endLine}  ·  score ${hit.score}`)
+    if (index < result.hits.length - 1) lines.push("")
+  })
+  return lines.join("\n")
 }
 
 export function formatRagIndexStatus(status: RagIndexStatus): string {
