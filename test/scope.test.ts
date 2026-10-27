@@ -28,6 +28,15 @@ test("D3 scope classifier fails closed for unrelated work and asks for a D3 anch
   assert.match(renderD3ScopeDecision(decision), /Which D3 account, file, program, bundle, manual section, or migration artifact/)
 })
 
+test("connection status questions are operator requests without allowing unrelated connections", () => {
+  for (const text of ["are you connected", "Are you connected?", "are we still connected?", "am I connected?", "is it connected?", "are you connected to the server?"]) {
+    assert.equal(classifyD3Scope(text).scope, "d3code-ops", text)
+  }
+  for (const text of ["are you connected to Gmail?", "is it connected to Stripe?", "build a connected React app"]) {
+    assert.equal(classifyD3Scope(text).allowed, false, text)
+  }
+})
+
 test("native operations requests reach only modes that already permit runtime inspection", () => {
   for (const text of ["Show background jobs", "Inspect the phantom status", "Check the spooler", "Show the print queue", "Check printer status"]) assert.equal(classifyD3Scope(text).allowed, true, text)
   for (const mode of ["chat", "audit", "modernize", "migrate", "qa"]) assert.doesNotThrow(() => assertD3Scope({ mode, toolName: "d3_operations_status", input: { area: "jobs" } }))

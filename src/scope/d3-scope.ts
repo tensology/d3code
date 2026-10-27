@@ -108,6 +108,7 @@ const genericEngineeringTerms = [
 ]
 
 const d3OperatorIntentPatterns: Array<[RegExp, string]> = [
+  [/^(?:are (?:you|we)|am i|is it) (?:still )?connected(?: to (?:the )?server)?[?.!]*$/, "connection status"],
   [/\btry\s+(?:to\s+)?connect\b/, "try connect"],
   [/\bcan\s+you\s+connect\b/, "can you connect"],
   [/\bcheck\s+(?:the\s+)?connection\b/, "check connection"],
