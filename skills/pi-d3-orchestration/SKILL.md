@@ -5,7 +5,7 @@ description: Orchestrate D3Code (Rocket D3) from Pi. Use for any D3 / Pick BASIC
 
 # D3Code orchestration (Pi → D3Code)
 
-Pi is the **top-level orchestrator** on this box. D3Code (`/usr/bin/d3code`) is the local
+Pi is the **top-level orchestrator** on this box. D3Code (the `d3code` CLI, wrapper at `/usr/local/bin/d3code`) is the local
 **Rocket D3 execution authority**. Everything is local — Pi calls the `d3code` CLI directly.
 There is no remote bridge, and **Hermes / DecisionsAI is not part of this path**.
 
