@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "npm run build:sidecar && npm run build:ide && tsc -p tsconfig.json && tsc -p tsconfig.ide.json",
+    "build:app": "npm run build:ide && tsc -p tsconfig.json && tsc -p tsconfig.ide.json",
     "build:sidecar": "cargo build --manifest-path sidecar/Cargo.toml --release",
     "sidecar:check": "cargo check --manifest-path sidecar/Cargo.toml",
     "dev": "node --loader ts-node/esm src/cli.ts",
