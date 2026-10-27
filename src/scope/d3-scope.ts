@@ -43,6 +43,10 @@ const d3RuntimeTerms = [
   "vme",
   "fsi",
   "osfi",
+  "system file",
+  "sort only system",
+  "mpstore",
+  "multisnack",
 ]
 
 const d3CodeTerms = [
@@ -115,6 +119,11 @@ const d3OperatorIntentPatterns: Array<[RegExp, string]> = [
   [/\bserver\s+(?:(?:back\s+)?up|online|reachable|available)\b/, "server reachable"],
   [/\bvm\s+(?:back|up|online|running)\b/, "vm reachable"],
   [/\b(?:login|session)\s+(?:check|proof|test)\b/, "session proof"],
+  // Account toggles, e.g. ": to mpstore" or "logto MULTISNACK".
+  [/(?:^|[\n:]\s*)(?:to|logto)\s+[a-z][a-z0-9_-]{1,}\b/i, "D3 account toggle"],
+  [/\bsort\s+only\s+system\b/i, "system file listing"],
+  [/\bsystem\s+file\b/i, "system file"],
+  [/\bwhich\s+accounts?\b|\bwhat\s+accounts?\b|\bcan\s+you\s+access\b/i, "account access question"],
 ]
 
 function normalized(value: string): string {
