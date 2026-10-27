@@ -146,6 +146,11 @@ export class PersistentLocalD3Session implements D3Session {
       this.closedError = /too many users/i.test(output)
         ? new Error("D3 refused the SSH session because all licensed user slots are occupied. Close an unused D3 session, then reconnect.")
         : new Error(`Persistent D3 session exited before the prompt was seen: code=${code ?? "null"} signal=${signal ?? "null"}`)
+      // Drop the dead session and its buffers so the next command reconnects
+      // cleanly instead of reusing a closed child.
+      this.child = undefined
+      this.stdout = ""
+      this.stderr = ""
     })
     this.sendStartupInput(this.child)
   }

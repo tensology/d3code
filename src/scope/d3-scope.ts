@@ -178,7 +178,13 @@ export function classifyD3Scope(text: string): D3ScopeDecision {
   if (reference.length > 0) return { scope: "d3-reference", allowed: true, confidence: "high", reasons: reference.map((term) => `D3 reference term: ${term}`) }
   if (code.length > 0) return { scope: "d3-code", allowed: true, confidence: "high", reasons: code.map((term) => `D3 coding term: ${term}`) }
   if (runtime.length > 0) return { scope: "d3-runtime", allowed: true, confidence: "high", reasons: runtime.map((term) => `D3 runtime term: ${term}`) }
-  if (/^(hi|hello|hey|thanks|thank you)\b/.test(value)) {
+  // Short operator replies ("WHAT", "yes", "continue", "and?") carry no
+  // anchor but must never be blocked mid-conversation.
+  const wordCount = value.split(" ").filter(Boolean).length
+  if (
+    /^(hi|hello|hey|thanks|thank you|ok|okay|yep|yes|no|nope|what|why|how|huh|continue|go on|go|stop|wait|help|please|and|so|then)\b/.test(value)
+    || (wordCount > 0 && wordCount <= 2 && generic.length === 0)
+  ) {
     return { scope: "d3code-ops", allowed: true, confidence: "low", reasons: ["neutral operator chat"] }
   }
   return {
