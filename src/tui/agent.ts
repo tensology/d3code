@@ -67,6 +67,7 @@ export interface D3AgentToolEvent {
 export type D3AgentTurnEvent =
   | { type: "assistant_delta"; token: string; iteration: number }
   | { type: "tool_start"; name: string; input?: unknown; reason?: string }
+  | { type: "tool_output"; name: string; chunk: string }
   | { type: "tool_result"; name: string; compact: string; status?: ToolRunResult["status"] }
 
 export interface D3AgentTurnResult {
@@ -237,31 +238,26 @@ function blockedToolMessage(request: D3AgentToolRequest): string {
   ].join("\n")
 }
 
-function blockedScopeMessage(message: string): string {
-  return [
-    "Blocked non-D3 tool request: out-of-scope",
-    message,
-  ].join("\n")
-}
-
 export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore, request: D3AgentTurnRequest): Promise<D3AgentTurnResult> {
   const initialScope = classifyD3Scope(request.input)
-  if (!initialScope.allowed) {
-    return { output: blockedScopeMessage(renderD3ScopeDecision(initialScope)), messages: [], toolEvents: [] }
-  }
+  // Never hard-block the operator. When the message is not clearly D3-anchored,
+  // hand it to the agent with a note to ask a clarifying question instead.
+  const scopeHint = initialScope.allowed
+    ? ""
+    : `\n\n[scope note: ${renderD3ScopeDecision(initialScope)} Do not refuse the operator. Ask ONE short clarifying question naming the likely D3 anchor (account: dm / mpstore / multisnack; a file or dictionary; a BASIC program; or a manual section), and offer a sensible default so work can continue. If a D3 tool can answer, use it.]`
   const chatFn = request.chatFn ?? chat
   if (isD3ConnectionQuestion(request.input)) {
     const toolRequest = { name: "d3_login", input: {} }
     const profile = selectProfile(config, request.profile)
     const signal = request.signal
-      ? AbortSignal.any([request.signal, AbortSignal.timeout(request.turnTimeoutMs ?? 8000)])
-      : AbortSignal.timeout(request.turnTimeoutMs ?? 8000)
+      ? AbortSignal.any([request.signal, AbortSignal.timeout(request.turnTimeoutMs ?? 60_000)])
+      : AbortSignal.timeout(request.turnTimeoutMs ?? 60_000)
     let result: ToolRunResult
     let output: string
     request.onEvent?.({ type: "tool_start", ...toolRequest })
     try {
       signal.throwIfAborted()
-      result = await runToolByName(config, { ...toolRequest, profile: request.profile, safety: request.safety, mode: request.mode, signal, commandTimeoutMs: 8000, acceptInputConfirmation: false })
+      result = await runToolByName(config, { ...toolRequest, profile: request.profile, safety: request.safety, mode: request.mode, signal, commandTimeoutMs: 60_000, acceptInputConfirmation: false })
       signal.throwIfAborted()
       const raw = result.raw
       if (!isD3CommandResult(raw)) throw new Error("D3 did not return WHO evidence.")
@@ -288,7 +284,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
     { role: "system", content: createD3AgentSystemPrompt(config, { ...request, harnessContext: harnessContext.text }) },
     ...compactAgentHistory(request.history ?? []),
   ]
-  messages.push({ role: "user", content: request.input })
+  messages.push({ role: "user", content: request.input + scopeHint })
 
   const toolEvents: D3AgentToolEvent[] = []
   const maxToolIterations = request.maxToolIterations ?? 12
@@ -439,9 +435,11 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
           profile: request.profile,
           safety: request.safety,
           signal: turnSignal,
-          commandTimeoutMs: 120_000,
+          commandTimeoutMs: 180_000,
           mode: request.mode,
           acceptInputConfirmation: confirmed,
+          onStdout: (chunk: string) => request.onEvent?.({ type: "tool_output", name: toolRequest.name, chunk }),
+          onStderr: (chunk: string) => request.onEvent?.({ type: "tool_output", name: toolRequest.name, chunk }),
         })
         let result: ToolRunResult
         try { result = await invoke() }

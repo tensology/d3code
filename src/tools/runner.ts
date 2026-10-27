@@ -17,6 +17,9 @@ export interface ToolRunRequest {
   mode?: string
   /** False for model-originated input. Prevents a model from self-confirming mutations. */
   acceptInputConfirmation?: boolean
+  /** Live partial stdout/stderr so long D3 commands show progress. */
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
 }
 
 export interface ToolRunResult {
@@ -57,7 +60,7 @@ export async function runToolByName(config: D3CodeConfig, request: ToolRunReques
     ? { ...rawInput as Record<string, unknown>, confirmed: false }
     : rawInput
   try {
-    const raw = await tool.execute(input, { safety: request.safety, profile, session, signal: request.signal, commandTimeoutMs: request.commandTimeoutMs })
+    const raw = await tool.execute(input, { safety: request.safety, profile, session, signal: request.signal, commandTimeoutMs: request.commandTimeoutMs, onStdout: request.onStdout, onStderr: request.onStderr })
     const compact = request.compact === false ? JSON.stringify(raw, null, 2) : compactToolOutput(raw, request.name)
     const status = observationStatus(raw)
     return {

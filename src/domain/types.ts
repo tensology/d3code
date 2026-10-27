@@ -46,6 +46,8 @@ export interface ToolContext {
   profile?: ConnectionProfile
   signal?: AbortSignal
   commandTimeoutMs?: number
+  onStdout?: (chunk: string) => void
+  onStderr?: (chunk: string) => void
 }
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {

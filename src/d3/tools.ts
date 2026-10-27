@@ -19,7 +19,7 @@ function requireSession(context: ToolContext) {
 
 async function runTcl(context: ToolContext, command: string, confirmed = false): Promise<D3CommandResult> {
   assertD3Allowed(context.safety, command, confirmed, (context.profile ?? context.session?.profile)?.allowedAccounts, context.profile ?? context.session?.profile)
-  return requireSession(context).run(command, context.commandTimeoutMs, { signal: context.signal })
+  return requireSession(context).run(command, context.commandTimeoutMs, { signal: context.signal, onStdout: context.onStdout, onStderr: context.onStderr })
 }
 
 interface RecordBaseline { profile: string; connection: string; original: string }

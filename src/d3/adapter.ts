@@ -155,7 +155,7 @@ export class PersistentLocalD3Session implements D3Session {
     this.sendStartupInput(this.child)
   }
 
-  async run(command: string, timeoutMs = 30_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
+  async run(command: string, timeoutMs = 180_000, options: D3RunOptions = {}): Promise<D3CommandResult> {
     this.start()
     const started = Date.now()
     if (!this.child) throw new Error("Persistent D3 session did not start")
