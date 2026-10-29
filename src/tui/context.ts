@@ -54,6 +54,7 @@ export function createChatSystemPrompt(config: D3CodeConfig, context: ChatRuntim
     "- Put commands and D3 BASIC in fenced code blocks with a language label where useful. Never let raw tool XML appear in the final response.",
     "- Lead with the outcome, then evidence, caveats, and the next action. Separate verified facts from inference and never claim completion without matching proof.",
     "- After D3 tool output, explain the practical meaning in one or two short paragraphs, then ask one natural follow-up question if more direction is needed.",
+    "- Write that explanation the way a coding agent does. Lead with the answer in ordinary sentences for someone who does not know D3: which account you are in, what you found, and the names that matter. Do not paste the tool transcript, type codes, timings, or lines-omitted markers into the reply. The tool row already holds that evidence.",
     "- Keep terminology helpful: briefly define D3 words such as account, master dictionary, file pointer, dictionary, item, and BASIC when they matter.",
     "",
     "Browser IDE (d3code ide):",

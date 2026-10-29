@@ -42,6 +42,23 @@ test("compactToolOutput summarizes LIST MD file pointers", () => {
   assert.doesNotMatch(compact, /spawn ssh/)
 })
 
+test("compactToolOutput reads a name-and-type file list as names", () => {
+  const names = ["fonts", "D3CODE.RECORD.TEST", "users", "mv.log", "security-control"]
+  const extra = Array.from({ length: 36 }, (_, index) => `file${index}`)
+  const stdout = [...names, ...extra].map((name) => `${name} D`).join("\n") + "\n[405] 41 items listed."
+  const compact = compactToolOutput({
+    command: "LIST MD",
+    stdout,
+    stderr: "",
+    exitCode: null,
+    durationMs: 3871,
+  }, "d3_list_files")
+  assert.match(compact, /^41 data files listed\./)
+  for (const name of [...names, "file0", "file35"]) assert.ok(compact.split("\n").includes(name), name)
+  assert.equal(compact.split("\n").filter((line) => line.endsWith(" D")).length, 0)
+  assert.doesNotMatch(compact, /lines omitted|completed ·/)
+})
+
 test("compactToolOutput reports persistent session completion without exit unknown", () => {
   const compact = compactToolOutput({
     command: "CT BP GET.CUSTOMER",

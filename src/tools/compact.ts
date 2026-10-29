@@ -38,21 +38,28 @@ function extractTclCommand(output: string): string | undefined {
   return list?.[0]?.trim()
 }
 
-function summarizeListOutput(output: string): string | undefined {
-  if (!/\bitems?\s+listed\b/i.test(output) && !/\bLIST\s+MD\b/i.test(output)) return undefined
-  const ids = output.replace(/\0/g, "").split(/\r?\n/).flatMap((line) => {
-    const match = line.trim().match(/^([A-Za-z0-9_.:$-]+)\s+\S+\s+D\s+\d+/i)
-    return match?.[1] ? [match[1]] : []
-  })
-  if (ids.length === 0) return undefined
-  const listed = output.match(/(\d+)\s+items?\s+listed(?:\s+out of\s+(\d+)\s+items?)?/i)
-  const preview = ids.slice(0, 10).join(", ")
-  const more = ids.length > 10 ? ` (+${ids.length - 10} more)` : ""
-  if (listed) {
-    const total = listed[2] ? ` out of ${listed[2]} MD entries` : ""
-    return `${listed[1]} data files listed${total}: ${preview}${more}`
+function filePointerNames(output: string): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const line of output.replace(/\0/g, "").split(/\r?\n/)) {
+    const match = line.trim().match(/^([A-Za-z0-9_.:$-]+)\s+D$/i)
+      ?? line.trim().match(/^([A-Za-z0-9_.:$-]+)\s+\S+\s+D\s+\d+/i)
+    const name = match?.[1]
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    names.push(name)
   }
-  return `${ids.length} files: ${preview}${more}`
+  return names
+}
+
+function summarizeListOutput(output: string): string | undefined {
+  const names = filePointerNames(output)
+  if (names.length === 0) return undefined
+  const listed = output.match(/(\d+)\s+items?\s+listed(?:\s+out of\s+(\d+)\s+items?)?/i)
+  const count = listed?.[1] ?? String(names.length)
+  const total = listed?.[2] ? ` out of ${listed[2]} master dictionary entries` : ""
+  const limited = /more may exist/i.test(output) ? " Listing stopped at the sample limit, so there may be more." : ""
+  return [`${count} data files listed${total}.${limited}`, ...names].join("\n")
 }
 
 function compactD3CommandResult(result: D3CommandResult, toolName?: string): string {

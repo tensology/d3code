@@ -261,6 +261,7 @@ test("agent system prompt is D3-only and names reference-manual grounding", () =
   assert.match(prompt, /ECC harness discipline/)
   assert.match(prompt, /GitHub-flavored Markdown/)
   assert.match(prompt, /Lead with the outcome/)
+  assert.match(prompt, /Tool rows are collapsed evidence/)
   assert.match(prompt, /<d3_tool>/)
 })
 

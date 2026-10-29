@@ -53,6 +53,18 @@ test("terminal displays the complete report instead of summarising account names
   assert.doesNotMatch(result.displayTranscript, /lines omitted/)
 })
 
+test("chat tool rows stay collapsed unless the result is blocked or an error", async () => {
+  const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
+  const html = await fetch(server.url).then(response => response.text())
+  assert.match(html, /expanded:t\.expanded===true\|\|\(\(t\.expanded!==false\)&&\(t\.status==='blocked'\|\|t\.status==='error'\)\)/)
+  assert.match(html, /const expanded=expandable&&message\.expanded===true/)
+  assert.match(html, /\.tool-name\{font-size:15px;color:var\(--text\);font-weight:600/)
+  assert.match(html, /\.tool-event,\.chat-thread-main \.tool-event,\.agent-thread\.chat-column \.tool-event\{[^}]*background:transparent;border:0/)
+  assert.match(html, /class="tool-event-head"'\+\(expandable\?' aria-expanded="'\+\(expanded\?'true':'false'\)\+'"':''\)/)
+  assert.doesNotMatch(html, /tool-event-head"'[^;]{0,160}disabled/)
+  assert.doesNotMatch(html, /\.tool-name\{font-family:ui-monospace/)
+})
+
 test("IDE opens a light terminal with connection controls and an optional agent panel", async () => {
   const server = await startTestIdeServer(config, { model: "openai/gpt-5", safety: "ask", profile: "fake", mode: "chat" }, { port: 0 })
   const html = await fetch(server.url).then(response => response.text())
