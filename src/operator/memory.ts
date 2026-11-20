@@ -18,7 +18,7 @@ export interface OperatorMemoryEntry extends OperatorMemoryInput {
 }
 
 const privatePathPattern = /(?:^|\s)(?:\/Users\/|\/home\/[^/\s]+\/|~\/)/i
-const secretPattern = /\b(Bearer\s+[A-Za-z0-9._-]+|sk-[A-Za-z0-9_-]+|password\s*[:=]|token\s*[:=])\b/i
+const secretPattern = /\b(?:Bearer\s+[A-Za-z0-9._-]+|sk-[A-Za-z0-9_-]+|(?:password|passwd|token|api[_ -]?key|client[_ -]?secret|private[_ -]?key)\s*[:=])/i
 
 function stableID(input: OperatorMemoryInput, createdAt: string): string {
   const basis = `${createdAt}:${input.project}:${input.kind}:${input.summary}`
@@ -60,6 +60,7 @@ function validMemoryEntry(value: unknown): value is OperatorMemoryEntry {
   if (!value || typeof value !== "object") return false
   const entry = value as Partial<OperatorMemoryEntry>
   if (typeof entry.id !== "string" || typeof entry.createdAt !== "string") return false
+  if (typeof entry.project !== "string" || typeof entry.summary !== "string" || typeof entry.evidence !== "string") return false
   if (!(["lesson", "workflow", "reference", "fix"] as unknown[]).includes(entry.kind)) return false
   if (entry.status && entry.status !== "active" && entry.status !== "superseded") return false
   try {

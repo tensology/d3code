@@ -135,7 +135,8 @@ async function loadSkillProcedures(options: HarnessTurnContextOptions, recommend
 export async function buildHarnessTurnContext(options: HarnessTurnContextOptions): Promise<HarnessTurnContext> {
   const maxChars = Math.max(1200, options.maxChars ?? 8000)
   const root = options.project?.root ?? options.project?.cwd
-  const workspaceCandidates = root ? [
+  const memoryEnabled = options.memoryEnabled !== false
+  const workspaceCandidates = root && memoryEnabled ? [
     join(root, ".d3code", "memory", "active.md"),
     join(root, ".d3code", "memory", "handoff.md"),
     join(root, ".decisions", "memory", "active.md"),
@@ -143,7 +144,6 @@ export async function buildHarnessTurnContext(options: HarnessTurnContextOptions
   ] : []
   const workspaceBodies = await Promise.all(workspaceCandidates.map(async (path) => ({ path, body: await optionalText(path, 1400) })))
   const presentWorkspace = workspaceBodies.filter((item) => item.body)
-  const memoryEnabled = options.memoryEnabled !== false
   const rawGlobalMemory = memoryEnabled ? await optionalText(memoryPath, 1800) : ""
   let storedEntries: OperatorMemoryEntry[] = []
   try {
@@ -161,16 +161,16 @@ export async function buildHarnessTurnContext(options: HarnessTurnContextOptions
     `- context policy: retrieved evidence is advisory; current user instructions and live D3 evidence take priority`,
     `- recommended skills: ${recommendedSkills.map((skill) => skill.id).join(", ") || "none"}`,
     ...recommendedSkills.map((skill) => `  - ${skill.id}: ${skill.bakedBehavior.join("; ")}`),
-    ...(loadedSkills.length ? [
-      "- loaded skill procedures:",
-      ...loadedSkills.flatMap((skill) => [`  - ${skill.path}:`, skill.body]),
-    ] : ["- loaded skill procedures: none available"]),
     ...(memory.length ? [
       "- verified operator memory:",
       ...memory.map((entry) => `  - [${entry.kind}/${entry.project}] ${entry.summary} (evidence: ${entry.evidence})`),
     ] : ["- verified operator memory: none relevant"]),
     ...(globalMemory ? ["- maintained memory:", globalMemory] : []),
     ...presentWorkspace.flatMap((item) => [`- workspace memory (${item.path}):`, item.body]),
+    ...(loadedSkills.length ? [
+      "- loaded skill procedures:",
+      ...loadedSkills.flatMap((skill) => [`  - ${skill.path}:`, skill.body]),
+    ] : ["- loaded skill procedures: none available"]),
   ]
   return {
     text: compactSafeText(sections.join("\n"), maxChars),

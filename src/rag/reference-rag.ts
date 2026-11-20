@@ -1,8 +1,10 @@
-import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
 import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path"
-import { cacheDir, defaultD3ReferenceManual, defaultD3UserGuide, defaultReferenceDir, defaultRocketMvBasicDir, memoryPath } from "../config/paths.js"
+import { fileURLToPath } from "node:url"
+import { cacheDir, configHome, defaultD3ReferenceManual, defaultD3UserGuide, defaultReferenceDir, memoryPath } from "../config/paths.js"
 import { readManualText } from "../d3/manual.js"
-import type { OperatorMemoryEntry } from "../operator/memory.js"
+import { readOperatorMemory } from "../operator/memory.js"
 import { eccHermesImports } from "../operator/ecc-hermes.js"
 import { classifyReferenceSkill } from "../skills/reference-scout.js"
 
@@ -30,6 +32,8 @@ export interface RagChunk {
 }
 
 export interface RagIndex {
+  version?: number
+  discovery?: { referenceDir: string; eccRoot?: string }
   builtAt: string
   sources: RagSource[]
   chunks: RagChunk[]
@@ -80,6 +84,8 @@ export function shouldIndexImportedReferenceSkill(path: string, text: string): b
 }
 
 const stopwords = new Set(["the", "and", "for", "with", "from", "that", "this", "into", "does", "what", "when", "where", "then", "than", "have", "will", "file"])
+const indexVersion = 2
+const bundledRoot = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../../" : "../../../", import.meta.url))
 
 export async function loadSystemBuilderManifest(path = join(defaultReferenceDir, "system-builder/manifest.json")): Promise<SystemBuilderManifest> {
   const raw = await readFile(path, "utf8")
@@ -95,8 +101,10 @@ export async function loadSystemBuilderManifest(path = join(defaultReferenceDir,
 }
 
 function tokenize(value: string): string[] {
-  const normalized = value.toLowerCase().replace(/sb\/xa|sb\+/g, "systembuilder")
-  const terms = normalized.split(/[^a-z0-9_.-]+/).filter((term) => term.length > 2 && !stopwords.has(term))
+  const normalized = value.toLowerCase().replace(/\b(?:sb\s+builder|system\s+builder|sb\/xa|sb\+)/g, "systembuilder")
+  const terms = normalized.split(/[^a-z0-9_.-]+/)
+    .map((term) => term.replace(/^[._-]+|[._-]+$/g, ""))
+    .filter((term) => (term.length > 2 || /^(?:d3|md|bp|f[1-9])$/.test(term)) && !stopwords.has(term))
   return [...new Set(terms)]
 }
 
@@ -116,7 +124,7 @@ function splitChunks(source: RagSource, text: string, chunkLines: number): RagCh
       startLine: start + 1,
       endLine: start + selected.length,
       text: chunkText,
-      terms: tokenize(`${source.title} ${source.topics?.join(" ") ?? ""} ${chunkText}`),
+      terms: tokenize(chunkText),
     })
   }
   return chunks
@@ -148,35 +156,38 @@ async function markdownFiles(root: string): Promise<string[]> {
 
 async function readSourceText(source: RagSource): Promise<string> {
   if (source.kind !== "memory") return readManualText(source.path)
-  const raw = await readFile(source.path, "utf8")
-  return raw.split(/\r?\n/).filter(Boolean).map((line) => {
-    try {
-      const entry = JSON.parse(line) as OperatorMemoryEntry
-      return [
-        `Project: ${entry.project}`,
-        `Kind: ${entry.kind}`,
-        `Summary: ${entry.summary}`,
-        `Evidence: ${entry.evidence}`,
-        `Created: ${entry.createdAt}`,
-      ].join("\n")
-    } catch {
-      return line
-    }
-  }).join("\n\n")
+  const entries = await readOperatorMemory(source.path)
+  return entries.map((entry) => [
+    `Project: ${entry.project}`,
+    `Kind: ${entry.kind}`,
+    `Summary: ${entry.summary}`,
+    `Evidence: ${entry.evidence}`,
+  ].join("\n")).join("\n\n")
 }
 
 export async function defaultRagSources(referenceDir = defaultReferenceDir, eccRoot = process.env.D3CODE_ECC_REPO): Promise<RagSource[]> {
+  const mvBasicDir = join(referenceDir, "rocket-mvbasic", "docs")
+  const examplesDir = join(referenceDir, "examples")
+  const notesDir = join(configHome, "reference-notes")
   const candidates: RagSource[] = [
-    { id: "d3-reference", title: "Rocket D3 Reference Manual", path: defaultD3ReferenceManual, kind: "d3", version: "10.3.4" },
-    { id: "d3-user-guide", title: "Rocket D3 User Guide", path: defaultD3UserGuide, kind: "d3", version: "10.3.4" },
+    { id: "d3-reference", title: "Rocket D3 Reference Manual", path: join(referenceDir, basename(defaultD3ReferenceManual)), kind: "d3", version: "10.3.4" },
+    { id: "d3-user-guide", title: "Rocket D3 User Guide", path: join(referenceDir, basename(defaultD3UserGuide)), kind: "d3", version: "10.3.4" },
     { id: "crystallogic-pick0", title: "Crystal Logic D3 pick0 service notes", path: join(referenceDir, "operations/crystallogic-d3-pick0-service.md"), kind: "operator" },
     { id: "operator-memory", title: "Hermes-style D3Code operator memory", path: memoryPath.replace(/\.md$/i, ".jsonl"), kind: "memory" },
-    { id: "ecc-hermes-d3-harness", title: "D3Code adapted ECC/Hermes harness skill", path: "skills/ecc-hermes-d3-harness/SKILL.md", kind: "hermes" },
-    { id: "d3-practical", title: "Practical D3 operator lessons (match the active profile)", path: "skills/d3-practical/SKILL.md", kind: "operator" },
+    { id: "ecc-hermes-d3-harness", title: "D3Code adapted ECC/Hermes harness skill", path: join(bundledRoot, "skills/ecc-hermes-d3-harness/SKILL.md"), kind: "hermes" },
+    { id: "d3-practical", title: "Practical D3 operator lessons (match the active profile)", path: join(bundledRoot, "skills/d3-practical/SKILL.md"), kind: "operator" },
   ]
-  for (const path of await markdownFiles(join(defaultRocketMvBasicDir, "docs"))) {
-    const relativeTitle = path.replace(`${defaultRocketMvBasicDir}/docs/`, "")
-    candidates.push({ id: `rocket-mvbasic-${relativeTitle.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`, title: `Rocket MV BASIC ${relativeTitle}`, path, kind: "mvbasic" })
+  for (const path of (await markdownFiles(mvBasicDir)).sort()) {
+    const name = path.slice(mvBasicDir.length + 1)
+    candidates.push({ id: `rocket-mvbasic:${name}`, title: `Rocket MV BASIC ${name}`, path, kind: "mvbasic" })
+  }
+  for (const path of (await markdownFiles(examplesDir)).sort()) {
+    const name = path.slice(examplesDir.length + 1)
+    candidates.push({ id: `bundled-example:${name}`, title: `D3 worked example ${name}`, path, kind: "project" })
+  }
+  for (const path of (await markdownFiles(notesDir)).sort()) {
+    const name = path.slice(notesDir.length + 1)
+    candidates.push({ id: `local-reference:${name}`, title: `Workspace reference ${name}`, path, kind: "project" })
   }
   try {
     const manifest = await loadSystemBuilderManifest(join(referenceDir, "system-builder/manifest.json"))
@@ -208,35 +219,57 @@ export async function defaultRagSources(referenceDir = defaultReferenceDir, eccR
   for (const candidate of candidates) {
     if ((await exists(candidate.path)) && (await stat(candidate.path)).isFile()) sources.push(candidate)
   }
-  return sources
+  return sources.map((source) => ({ ...source, path: resolve(source.path) }))
 }
 
 export async function buildRagIndex(options: { sources?: RagSource[]; chunkLines?: number; referenceDir?: string; eccRoot?: string } = {}): Promise<RagIndex> {
   const chunkLines = options.chunkLines ?? 18
-  const sources = options.sources ?? await defaultRagSources(options.referenceDir, options.eccRoot)
+  if (!Number.isSafeInteger(chunkLines) || chunkLines < 1) throw new Error("RAG chunk size must be a positive integer")
+  const eccRoot = options.eccRoot ?? process.env.D3CODE_ECC_REPO
+  const referenceDir = options.referenceDir ?? (await exists(defaultReferenceDir) ? defaultReferenceDir : join(bundledRoot, defaultReferenceDir))
+  const discovery = options.sources ? undefined : { referenceDir: resolve(referenceDir), eccRoot: eccRoot ? resolve(eccRoot) : undefined }
+  const sources = options.sources ?? await defaultRagSources(discovery!.referenceDir, discovery!.eccRoot)
+  const startedAt = new Date().toISOString()
   const chunks: RagChunk[] = []
   for (const source of sources) {
     const text = await readSourceText(source)
     chunks.push(...splitChunks(source, text, chunkLines))
   }
-  return { builtAt: new Date().toISOString(), sources, chunks }
+  return { version: indexVersion, discovery, builtAt: startedAt, sources, chunks }
+}
+
+function ragIndexPath(name: string): string {
+  if (!/^[a-z0-9][a-z0-9_.-]*$/i.test(name)) throw new Error("Invalid RAG index name")
+  return join(cacheDir, `${name}.json`)
 }
 
 export async function saveRagIndex(index: RagIndex, name = "reference-rag"): Promise<string> {
   await mkdir(cacheDir, { recursive: true })
-  const path = join(cacheDir, `${name}.json`)
-  await writeFile(path, `${JSON.stringify(index, null, 2)}\n`)
+  const path = ragIndexPath(name)
+  const temporary = `${path}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, `${JSON.stringify(index)}\n`, { mode: 0o600 })
+    await rename(temporary, path)
+  } finally {
+    await rm(temporary, { force: true })
+  }
   return path
 }
 
 export async function loadRagIndex(name = "reference-rag"): Promise<RagIndex> {
-  const raw = await readFile(join(cacheDir, `${name}.json`), "utf8")
-  return JSON.parse(raw) as RagIndex
+  const raw = await readFile(ragIndexPath(name), "utf8")
+  const index = JSON.parse(raw) as RagIndex
+  if (!index || !Array.isArray(index.sources) || !Array.isArray(index.chunks)) throw new Error("Invalid RAG index")
+  return index
 }
 
 export async function isRagIndexStale(index: RagIndex): Promise<boolean> {
   const builtAt = Date.parse(index.builtAt)
   if (!Number.isFinite(builtAt)) return true
+  if (index.discovery) {
+    const current = await defaultRagSources(index.discovery.referenceDir, index.discovery.eccRoot)
+    if (JSON.stringify(current) !== JSON.stringify(index.sources)) return true
+  }
   for (const source of index.sources) {
     try {
       if ((await stat(source.path)).mtimeMs > builtAt) return true
@@ -247,16 +280,29 @@ export async function isRagIndexStale(index: RagIndex): Promise<boolean> {
   return false
 }
 
-export async function loadFreshRagIndex(name = "reference-rag"): Promise<RagIndex> {
+const pendingBuilds = new Map<string, Promise<RagIndex>>()
+
+export async function loadFreshRagIndex(name = "reference-rag", eccRoot?: string): Promise<RagIndex> {
+  ragIndexPath(name)
+  let index: RagIndex | undefined
   try {
-    const index = await loadRagIndex(name)
-    if (!await isRagIndexStale(index)) return index
+    index = await loadRagIndex(name)
+    if (index.version === indexVersion && !await isRagIndexStale(index)) return index
   } catch {
-    // Missing or invalid indexes are rebuilt below.
+    if (name !== "reference-rag") throw new Error(`RAG index "${name}" could not be read. Rebuild it with rag-build --index ${name}.`)
   }
-  const index = await buildRagIndex()
-  await saveRagIndex(index, name)
-  return index
+  if (name !== "reference-rag" && index?.version !== indexVersion) {
+    throw new Error(`RAG index "${name}" needs to be rebuilt with its original rag-build options.`)
+  }
+  const pending = pendingBuilds.get(name)
+  if (pending) return pending
+  const build = (async () => {
+    const rebuilt = await buildRagIndex(index?.discovery ?? (index?.version === indexVersion ? { sources: index.sources } : { eccRoot }))
+    await saveRagIndex(rebuilt, name)
+    return rebuilt
+  })().finally(() => pendingBuilds.delete(name))
+  pendingBuilds.set(name, build)
+  return build
 }
 
 export async function ragIndexStatus(name = "reference-rag", referenceDir = defaultReferenceDir, eccRoot = process.env.D3CODE_ECC_REPO): Promise<RagIndexStatus> {
@@ -266,7 +312,7 @@ export async function ragIndexStatus(name = "reference-rag", referenceDir = defa
   } catch {
     // Missing index is reported through ready=false.
   }
-  const sources = index?.sources ?? await defaultRagSources(referenceDir, eccRoot)
+  const sources = index?.sources ?? await defaultRagSources(await exists(referenceDir) ? referenceDir : join(bundledRoot, defaultReferenceDir), eccRoot)
   return {
     builtAt: index?.builtAt,
     sources: await Promise.all(sources.map(async (source) => ({
@@ -278,38 +324,39 @@ export async function ragIndexStatus(name = "reference-rag", referenceDir = defa
       chunks: index?.chunks.filter((chunk) => chunk.sourceId === source.id).length,
     }))),
     chunks: index?.chunks.length ?? 0,
-    ready: Boolean(index && index.chunks.length > 0),
+    ready: Boolean(index?.version === indexVersion && index.chunks.length > 0 && !await isRagIndexStale(index)),
   }
 }
 
 export function routeReferenceQuery(query: string): ReferenceRoute {
   const lower = query.toLowerCase()
-  if (/\b(system builder|sb\/xa|template|templates|application builder|generated screen|menu generator)\b|sb\+/i.test(lower)) {
-    return { primary: "system-builder", sources: ["system-builder", "d3", "mvbasic"], rationale: "System Builder/SB+ terms require the SB/XA manuals first, then D3/MV BASIC for runtime behavior." }
+  if (/\b(system builder|sb builder|sb\/xa|template|templates|application builder|generated screen|menu generator)\b|sb\+/i.test(lower)) {
+    return { primary: "system-builder", sources: ["system-builder", "project", "memory", "d3", "mvbasic"], rationale: "System Builder/SB+ terms favor the legacy SB+ guide, local examples, and D3/MV BASIC runtime evidence." }
   }
   if (/\b(pick basic|mv basic|flashbasic|openseq|writeseq|readnext|execute|catalog|subroutine|curl)\b/i.test(lower)) {
     const primary: RagSourceKind = /\bexecute|curl|flashbasic|pick basic|mv basic\b/i.test(lower) ? "mvbasic" : "d3"
-    return { primary, sources: [primary, "d3", "mvbasic", "operator", "memory"], rationale: "BASIC/PICK language questions need language references and local operator lessons." }
+    return { primary, sources: ["d3", "mvbasic", "project", "operator", "memory"], rationale: "BASIC/PICK language questions need language references and local operator lessons." }
   }
   if (/\b(pick0|systemd|service|office\.crystallogic|operator|profile|ssh)\b/i.test(lower)) {
     return { primary: "operator", sources: ["operator", "memory", "d3"], rationale: "Host and service questions need local Crystal Logic operator notes before generic manuals." }
   }
-  return { primary: "d3", sources: ["d3", "mvbasic", "system-builder", "operator", "memory", "hermes", "ecc"], rationale: "Default D3 route searches core D3 references and adjacent manuals." }
+  return { primary: "d3", sources: ["d3", "mvbasic", "system-builder", "project", "operator", "memory", "hermes", "ecc"], rationale: "Default D3 route searches core D3 references and adjacent manuals." }
 }
 
 function scoreChunk(chunk: RagChunk, queryTerms: string[], route: ReferenceRoute): { score: number; matchedTerms: string[] } {
-  const matchedTerms = queryTerms.filter((term) => chunk.terms.includes(term) || chunk.text.toLowerCase().includes(term))
+  const matchedTerms = queryTerms.filter((term) => chunk.terms.includes(term))
+  if (matchedTerms.length === 0) return { score: 0, matchedTerms }
   let score = matchedTerms.length * 4
-  if (chunk.sourceKind === route.primary) score += 8
-  else if (route.sources.includes(chunk.sourceKind)) score += 3
-  if (matchedTerms.length > 1) score += matchedTerms.length
+  if (chunk.sourceKind === route.primary) score += 2
+  else if (route.sources.includes(chunk.sourceKind)) score += 1
   return { score, matchedTerms }
 }
 
-export function searchRagIndex(index: RagIndex, query: string, options: { limit?: number } = {}): RagSearchResult {
+export function searchRagIndex(index: RagIndex, query: string, options: { limit?: number; memoryEnabled?: boolean } = {}): RagSearchResult {
   const route = routeReferenceQuery(query)
   const queryTerms = tokenize(query)
   const hits = index.chunks
+    .filter((chunk) => options.memoryEnabled !== false || chunk.sourceKind !== "memory")
     .map((chunk) => ({ chunk, scored: scoreChunk(chunk, queryTerms, route) }))
     .filter((entry) => entry.scored.score > 0)
     .map(({ chunk, scored }) => ({ ...chunk, score: scored.score, matchedTerms: scored.matchedTerms }))
@@ -329,7 +376,9 @@ export function formatRagSearchResult(result: RagSearchResult): string {
     return lines.join("\n").trimEnd()
   }
   result.hits.forEach((hit, index) => {
-    lines.push(`${index + 1}. ${hit.text.replace(/\s+/g, " ").trim().slice(0, 400)}`)
+    const text = hit.text.replace(/\s+/g, " ").trim()
+    const excerpt = text.length > 400 ? `${text.slice(0, 397).replace(/\s+\S*$/, "")}...` : text
+    lines.push(`${index + 1}. ${excerpt}`)
     lines.push(`   source: ${hit.sourceTitle} (${hit.sourceKind})  ·  ${basename(hit.sourcePath)}:${hit.startLine}-${hit.endLine}  ·  score ${hit.score}`)
     if (index < result.hits.length - 1) lines.push("")
   })

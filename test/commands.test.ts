@@ -29,7 +29,7 @@ test("operator TCL approval is explicit and capture preserves account restrictio
   await assert.rejects(handleSlashCommand("/account", localConfig, state), /Confirmation required/)
   await assert.rejects(handleSlashCommand("/terminal-capture /tmp/not-created ! echo NOT_RUN", localConfig, state), /Confirmation required/)
   const restricted = { ...localConfig, profiles: [{ name: "local", type: "local" as const, allowedAccounts: ["dm"] }] }
-  await assert.rejects(handleSlashCommand("/terminal-capture /tmp/not-created --confirm TO DM", restricted, state), /outside the allowed accounts/)
+  await assert.rejects(handleSlashCommand("/terminal-capture /tmp/not-created --confirm TO OTHER", restricted, state), /outside the allowed accounts/)
   await assert.rejects(handleSlashCommand("/tcl printf NOT_RUN", localConfig, { ...state, safety: "ask" }), /Confirmation required/)
   const approved = await handleSlashCommand("/tcl --confirm printf APPROVED_FIXTURE", localConfig, { ...state, safety: "ask" })
   assert.match(approved.output, /APPROVED_FIXTURE/)

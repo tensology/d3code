@@ -12,4 +12,4 @@ Match the guide to the actual installation before using record layouts. Native D
 
 Do not use `RUN DM SB.INITIATE` as an installation probe. This guide describes it as an account installer that catalogs programs, creates pointers and overwrites the account logon procedure. Read-only pointers and filenames are evidence of references, not proof of a working runtime.
 
-After changing this manifest, run `d3code rag-build` from the intended workspace to refresh its reference cache. Existing cache freshness checks track source files, not manifest metadata.
+The next reference search refreshes the index when this manifest changes which sources it describes. To refresh it immediately, run `d3code rag-build` from the intended workspace.

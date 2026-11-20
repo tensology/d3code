@@ -113,7 +113,7 @@ import { displayUrlForIdeBind, displayUrlLabelForIdeBind, ideAccessNotes, should
 import { resolveIdeAuth, setIdeAuth } from "./ide/auth.js"
 import { appendOperatorMemory, createOperatorMemoryEntry, readOperatorMemory, supersedeOperatorMemory, type OperatorMemoryKind } from "./operator/memory.js"
 import { createHermesStatus, renderEccHermesImportMap, renderHermesStatus } from "./operator/ecc-hermes.js"
-import { buildRagIndex, formatRagIndexStatus, formatRagSearchResult, loadRagIndex, loadSystemBuilderManifest, ragIndexStatus, routeReferenceQuery, saveRagIndex, searchRagIndex } from "./rag/reference-rag.js"
+import { buildRagIndex, formatRagIndexStatus, formatRagSearchResult, loadFreshRagIndex, loadSystemBuilderManifest, ragIndexStatus, routeReferenceQuery, saveRagIndex, searchRagIndex } from "./rag/reference-rag.js"
 
 const safetyValues = ["ask", "plan", "trust"] as const
 
@@ -1165,8 +1165,9 @@ program.command("rag-build").description("Build the local D3Code reference RAG i
 
 program.command("rag-search").argument("<query...>").description("Search the local D3Code reference RAG index with source routing.").option("--index <name>", "cache index name", "reference-rag").option("--limit <n>", "maximum hits", (value) => Number(value), 8).option("--json").action(async (queryParts: string[], options: { index: string; limit: number; json?: boolean }) => {
   const query = queryParts.join(" ")
-  const index = await loadRagIndex(options.index)
-  const result = searchRagIndex(index, query, { limit: options.limit })
+  const config = await loadConfig()
+  const index = await loadFreshRagIndex(options.index, config.hermes?.eccRoot)
+  const result = searchRagIndex(index, query, { limit: options.limit, memoryEnabled: config.hermes?.memoryEnabled })
   console.log(options.json ? JSON.stringify(result, null, 2) : formatRagSearchResult(result))
 })
 

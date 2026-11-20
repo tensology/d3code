@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { configHome } from "../config/paths.js"
 import { randomUUID } from "node:crypto"
@@ -14,7 +14,7 @@ import { d3Tools } from "../d3/tools.js"
 import { assertD3Allowed } from "../core/permissions.js"
 import { defaultSecretStore, secretRefForProvider } from "../security/secrets.js"
 import { runToolByName } from "../tools/runner.js"
-import { runD3AgentTurn, createD3AgentSystemPrompt, type AgentChatFunction, type D3AgentTurnEvent, type D3ToolApproval } from "../tui/agent.js"
+import { runD3AgentTurn, type AgentChatFunction, type D3AgentTurnEvent, type D3ToolApproval } from "../tui/agent.js"
 import type { ChatMessage } from "../llm/client.js"
 import type { D3CommandResult, D3Session } from "../domain/types.js"
 import { normalizeD3PromptPattern, D3_TCL_PROMPT_PATTERN } from "../d3/prompts.js"
@@ -294,18 +294,6 @@ function awaitAgentApproval(job: AgentJob, proposal: D3ToolApproval, signal: Abo
   })
 }
 
-function normalizeAgentHistory(
-  config: D3CodeConfig,
-  state: IdeRuntimeState,
-  clientHistory: ChatMessage[] | undefined,
-  serverHistory: ChatMessage[] | undefined,
-): ChatMessage[] | undefined {
-  const base = clientHistory?.length ? clientHistory : serverHistory
-  if (!base?.length) return undefined
-  if (base[0]?.role === "system") return base
-  return [{ role: "system", content: createD3AgentSystemPrompt(config, state) }, ...base]
-}
-
 async function executeAgentJob(
   config: D3CodeConfig,
   state: IdeRuntimeState,
@@ -318,7 +306,7 @@ async function executeAgentJob(
     const turn = await runD3AgentTurn(config, defaultSecretStore(), {
       ...state,
       input: job.input,
-      history: normalizeAgentHistory(config, state, job.clientHistory, agentHistoryFor(state, job.chatId)),
+      history: job.clientHistory?.length ? job.clientHistory : agentHistoryFor(state, job.chatId),
       chatFn: options.agentChatFn,
       signal: job.controller.signal,
       onEvent: (event: D3AgentTurnEvent) => pushAgentJobEvent(job, event.type, event),
@@ -970,29 +958,33 @@ function normalizeManagedSshProfile(
 
 // Server-side thread store: chats persist under D3CODE_HOME so they survive a
 // browser/device change instead of living only in localStorage.
-const chatsStorePath = join(configHome, "chats.json")
-
-async function readChatStore(): Promise<unknown[]> {
+async function readChatStore(path: string): Promise<unknown[]> {
   try {
-    const parsed = JSON.parse(await readFile(chatsStorePath, "utf8"))
+    const parsed = JSON.parse(await readFile(path, "utf8"))
     return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return []
+    throw error
   }
 }
 
-async function writeChatStore(chats: unknown[]): Promise<void> {
-  await mkdir(configHome, { recursive: true })
-  await writeFile(chatsStorePath, `${JSON.stringify(chats, null, 2)}\n`)
+async function writeChatStore(path: string, chats: unknown[]): Promise<void> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+  const temporary = `${path}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, `${JSON.stringify(chats)}\n`, { mode: 0o600 })
+    await rename(temporary, path)
+  } finally {
+    await rm(temporary, { force: true })
+  }
 }
 
-async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeConfig, state: IdeRuntimeState, options: IdeServerOptions, userStates?: Map<string, IdeRuntimeState>): Promise<void> {
+async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeConfig, state: IdeRuntimeState, options: IdeServerOptions, userStates?: Map<string, IdeRuntimeState>, actor?: string): Promise<void> {
   const userScoped = Boolean(userStates)
   const url = new URL(req.url ?? "/", "http://127.0.0.1")
   if (req.method === "GET" && url.pathname === "/") {
     const workspace = process.env.D3CODE_STORAGE_NAMESPACE
-    const user = String(req.headers["x-d3code-user"] ?? "")
-    const scope = workspace ? `d3code.${workspace}.${user}.` : ""
+    const scope = workspace ? `d3code.${workspace}.${actor}.` : ""
     return send(res, 200, html(scope), "text/html; charset=utf-8")
   }
   if (req.method === "GET" && url.pathname === "/assets/program-editor.js") {
@@ -1232,14 +1224,17 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
     resetAgentHistory(state, chatId)
     return sendJson(res, 200, { reset: true, chat_id: chatId })
   }
-  if (req.method === "GET" && url.pathname === "/api/chats") {
-    return sendJson(res, 200, { chats: await readChatStore() })
-  }
-  if (req.method === "POST" && url.pathname === "/api/chats") {
-    const body = await readJson(req) as { chats?: unknown }
-    const chats = Array.isArray(body.chats) ? body.chats.slice(0, 200) : []
-    await writeChatStore(chats)
-    return sendJson(res, 200, { saved: true, count: chats.length })
+  if (url.pathname === "/api/chats") {
+    const path = actor ? join(configHome, "user-chats", `${actor}.json`) : join(configHome, "chats.json")
+    res.setHeader("Cache-Control", "no-store")
+    if (req.method === "GET") return sendJson(res, 200, { chats: await readChatStore(path) })
+    if (req.method === "POST") {
+      const body = await readJson(req) as { chats?: unknown } | null
+      if (!Array.isArray(body?.chats)) return sendJson(res, 400, { error: "chats must be an array" })
+      const chats = body.chats.slice(0, 200)
+      await writeChatStore(path, chats)
+      return sendJson(res, 200, { saved: true, count: chats.length })
+    }
   }
   if (req.method === "GET" && url.pathname === "/api/agent/jobs") {
     const jobs = [...agentJobsFor(state).values()]
@@ -1501,7 +1496,7 @@ async function route(req: IncomingMessage, res: ServerResponse, config: D3CodeCo
   }
   if (req.method === "GET" && url.pathname === "/api/rag-search") {
     const result = await runToolByName(config, { name: "d3_rag_search", input: { query: url.searchParams.get("query") ?? "", limit: Number(url.searchParams.get("limit") ?? "8") }, safety: state.safety, profile: state.profile })
-    return sendJson(res, 200, toolResultPayload(result))
+    return sendJson(res, 200, { label: "D3 reference search", ...toolResultPayload(result) })
   }
   return sendJson(res, 404, { error: "not found" })
 }
@@ -1533,16 +1528,18 @@ export async function startIdeServer(config: D3CodeConfig, state: IdeRuntimeStat
       }
     }
     let requestState = state
+    let actor: string | undefined
     if (embedded) {
-      const actor = req.headers["x-d3code-user"]
-      if (typeof actor !== "string" || !/^[1-9]\d{0,18}$/.test(actor)) return sendJson(res, 403, { error: "Trusted workspace user identity is required." })
+      const identity = req.headers["x-d3code-user"]
+      if (typeof identity !== "string" || !/^[1-9]\d{0,18}$/.test(identity)) return sendJson(res, 403, { error: "Trusted workspace user identity is required." })
+      actor = identity
       requestState = userStates.get(actor) ?? {
         ...initialState,
         profile: config.profiles.some(profile => profile.name === initialState.profile) ? initialState.profile : config.defaultProfile,
       }
       userStates.set(actor, requestState)
     }
-    route(req, res, config, requestState, options, embedded ? userStates : undefined).catch((error) => sendJson(res, Number((error as { statusCode?: number }).statusCode) || 500, { error: (error as Error).message }))
+    route(req, res, config, requestState, options, embedded ? userStates : undefined, actor).catch((error) => sendJson(res, Number((error as { statusCode?: number }).statusCode) || 500, { error: (error as Error).message }))
   })
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)

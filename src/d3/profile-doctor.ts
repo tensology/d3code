@@ -1,6 +1,7 @@
 import { createD3Session } from "./adapter.js"
+import { humanD3SessionError } from "./connection-message.js"
 import type { ConnectionProfile } from "../domain/types.js"
-import { compactText } from "../tools/compact.js"
+import { compactText, sanitizeD3TerminalOutput } from "../tools/compact.js"
 
 export interface ProfileDoctorCheck {
   name: string
@@ -35,13 +36,18 @@ export async function diagnoseProfile(profile: ConnectionProfile, timeoutMs = 10
       try {
         const result = await session.run(check.command, timeoutMs)
         const output = compactText(result.stdout || result.stderr || "", { maxLines: 20, maxChars: 2_000 })
+        const lines = sanitizeD3TerminalOutput(result.stdout).split("\n").map((line) => line.trim())
+        const nativeError = lines.find((line) => /^\[\d+\].*(?:not defined|not found|invalid|denied|unable|error)\b/i.test(line))
+        const response = lines.some((line) => line && line.toLowerCase() !== check.command.toLowerCase())
+        const error = humanD3SessionError(result.stdout, result.stderr) ?? nativeError ?? (result.stderr.trim() || undefined)
         results.push({
           name: check.name,
           command: check.command,
-          ok: result.exitCode === 0 || result.exitCode === null ? output.trim().length > 0 : false,
+          ok: (result.exitCode === 0 || result.exitCode === null) && response && !error,
           exitCode: result.exitCode,
           durationMs: result.durationMs,
           output,
+          ...(error ? { error } : {}),
         })
       } catch (error) {
         results.push({

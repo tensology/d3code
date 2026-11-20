@@ -42,6 +42,7 @@ export interface D3Session {
 
 export interface ToolContext {
   safety: SafetyMode
+  referenceOptions?: { eccRoot?: string; memoryEnabled?: boolean }
   session?: D3Session
   profile?: ConnectionProfile
   signal?: AbortSignal

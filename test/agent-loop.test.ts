@@ -75,11 +75,12 @@ test("agent loop blocks non-D3 tool requests", async () => {
   assert.equal(result.toolEvents.length, 0)
 })
 
-test("agent loop blocks out-of-scope requests before calling the model", async () => {
+test("agent loop asks for a D3 anchor on an out-of-scope request", async () => {
   let calls = 0
-  const chatFn: AgentChatFunction = async () => {
+  const chatFn: AgentChatFunction = async (_config, _secrets, request) => {
     calls += 1
-    return { provider: "test", model: "test", content: "should not be called" }
+    assert.match(request.messages.at(-1)?.content ?? "", /Ask ONE short clarifying question naming the likely D3 anchor/)
+    return { provider: "test", model: "test", content: "Which D3 file should back the app?" }
   }
 
   const result = await runD3AgentTurn(config, secrets, {
@@ -90,9 +91,9 @@ test("agent loop blocks out-of-scope requests before calling the model", async (
     chatFn,
   })
 
-  assert.equal(calls, 0)
-  assert.match(result.output, /Blocked non-D3 tool request/)
-  assert.match(result.output, /Which D3 account, file, program, bundle, manual section, or migration artifact/)
+  assert.equal(calls, 1)
+  assert.equal(result.toolEvents.length, 0)
+  assert.match(result.output, /Which D3 file/)
 })
 
 test("agent loop blocks registered D3 tools that are outside the active mode contract", async () => {

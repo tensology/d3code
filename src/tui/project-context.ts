@@ -21,22 +21,28 @@ export async function loadProjectContext(cwd = process.cwd()): Promise<ProjectCo
   const instructions: ProjectInstruction[] = []
   const directories: string[] = []
   let current = start
+  let instructionRoot: string | undefined
+  let fallbackRoot: string | undefined
 
   while (true) {
     directories.push(current)
+    if (!fallbackRoot && (existsSync(join(current, ".d3code")) || existsSync(join(current, "CLAUDE.md")))) fallbackRoot = current
     const anchored = existsSync(join(current, ".git"))
       || existsSync(join(current, "package.json"))
       || existsSync(join(current, "D3CODE.md"))
       || existsSync(join(current, "AGENTS.md"))
       || existsSync(join(current, ".decisions", "agents.md"))
-    if (anchored) break
+    if (anchored) {
+      instructionRoot = current
+      break
+    }
     const parent = dirname(current)
     if (parent === current) break
     current = parent
   }
 
-  const instructionRoot = directories.at(-1) ?? start
-  for (const directory of [...directories].reverse()) {
+  instructionRoot ??= fallbackRoot ?? start
+  for (const directory of directories.slice(0, directories.indexOf(instructionRoot) + 1).reverse()) {
     for (const name of instructionNames) {
       const path = join(directory, name)
       if (!existsSync(path)) continue

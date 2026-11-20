@@ -52,7 +52,7 @@ test("Stop remains available while the workspace refreshes", async () => {
 
 function bootContext(api: (path: string) => Promise<unknown>) {
   const states: string[] = [], options: unknown[] = []
-  return { api, states, options, workspaceLoad: 0, profileCache: [], document: { body: { dataset: { view: "chat" } } }, setWorkspaceState: (state: string) => states.push(state), applyStatus: async () => {}, renderTerminalProfiles() {}, refreshTerminalState: async () => {}, migrateChatProfiles() {}, syncActiveChatForProfile() {}, renderChatList() {}, renderD3Browser() {}, renderActiveChat() {}, renderTerminal() {}, resumeAgentJobs: async () => {}, refreshWorkspaceOptions: (status: unknown) => { options.push(status);return new Promise(() => {}) } }
+  return { api, states, options, workspaceLoad: 0, profileCache: [], document: { body: { dataset: { view: "chat" } } }, setWorkspaceState: (state: string) => states.push(state), applyStatus: async () => {}, renderTerminalProfiles() {}, refreshTerminalState: async () => {}, migrateChatProfiles() {}, hydrateChatsFromServer: async () => {}, syncActiveChatForProfile() {}, renderChatList() {}, renderD3Browser() {}, renderActiveChat() {}, renderTerminal() {}, resumeAgentJobs: async () => {}, refreshWorkspaceOptions: (status: unknown) => { options.push(status);return new Promise(() => {}) } }
 }
 
 test("core startup becomes ready without waiting for optional model metadata", async () => {

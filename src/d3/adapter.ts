@@ -139,11 +139,13 @@ export class PersistentLocalD3Session implements D3Session {
       this.stderr += chunk.toString()
     })
     this.child.on("error", (error) => {
-      this.closedError = error
+      this.closedError = this.profile.type === "ssh" && (error as NodeJS.ErrnoException).code === "ENOENT"
+        ? new Error("The SSH D3 connector requires expect. Install expect on the machine running D3Code.", { cause: error })
+        : error
     })
     this.child.on("close", (code, signal) => {
       const output = normalizePromptOutput(`${this.stdout}\n${this.stderr}`)
-      this.closedError = /too many users/i.test(output)
+      this.closedError ??= /too many users/i.test(output)
         ? new Error("D3 refused the SSH session because all licensed user slots are occupied. Close an unused D3 session, then reconnect.")
         : new Error(`Persistent D3 session exited before the prompt was seen: code=${code ?? "null"} signal=${signal ?? "null"}`)
       // Drop the dead session and its buffers so the next command reconnects

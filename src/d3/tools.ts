@@ -91,7 +91,7 @@ function requireModulo(value: unknown, label: string): number {
 
 function assertAllowedAccount(context: ToolContext, account: string): void {
   const allowed = (context.profile ?? context.session?.profile)?.allowedAccounts
-  if (allowed && allowed.length > 0 && !allowed.includes(account)) {
+  if (allowed && allowed.length > 0 && !allowed.some((name) => name.trim().toLowerCase() === account.toLowerCase())) {
     throw new Error(`Account ${account} is not allowed for profile ${context.profile?.name}. Allowed: ${allowed.join(", ")}`)
   }
 }
@@ -343,11 +343,11 @@ export const d3Tools: ToolDefinition[] = [
     name: "d3_rag_search",
     description: "Search the local routed D3Code RAG index across D3, MV BASIC, System Builder, operator notes, and learned memory.",
     mutates: false,
-    execute: async (input: unknown) => {
+    execute: async (input: unknown, context) => {
       const args = input as { query: string; limit?: number; index?: string }
       const indexName = args.index ?? "reference-rag"
-      const index = await loadFreshRagIndex(indexName)
-      const result = searchRagIndex(index, args.query, { limit: args.limit })
+      const index = await loadFreshRagIndex(indexName, context.referenceOptions?.eccRoot)
+      const result = searchRagIndex(index, args.query, { limit: args.limit, memoryEnabled: context.referenceOptions?.memoryEnabled })
       return { ...result, compact: formatRagSearchResult(result) }
     },
   },
@@ -355,7 +355,7 @@ export const d3Tools: ToolDefinition[] = [
     name: "d3_sbplus_plan",
     description: "Create a reference-grounded SB+ screen/process builder plan without writing SB+ definition records.",
     mutates: false,
-    execute: async (input: unknown) => {
+    execute: async (input: unknown, context) => {
       const args = input as { system?: string; process?: string; kind?: string; file?: string; fields?: string[]; notes?: string }
       const query = [
         "SB+",
@@ -365,8 +365,8 @@ export const d3Tools: ToolDefinition[] = [
         (args.fields ?? []).join(" "),
         "validation F1 F3 help process definition drivers",
       ].join(" ")
-      const index = await loadFreshRagIndex("reference-rag")
-      const result = searchRagIndex(index, query, { limit: 5 })
+      const index = await loadFreshRagIndex("reference-rag", context.referenceOptions?.eccRoot)
+      const result = searchRagIndex(index, query, { limit: 5, memoryEnabled: context.referenceOptions?.memoryEnabled })
       const lines = [
         "# SB+ Builder Plan",
         `System: ${args.system ?? "(discover in account)"}`,

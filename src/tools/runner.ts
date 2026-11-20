@@ -60,7 +60,7 @@ export async function runToolByName(config: D3CodeConfig, request: ToolRunReques
     ? { ...rawInput as Record<string, unknown>, confirmed: false }
     : rawInput
   try {
-    const raw = await tool.execute(input, { safety: request.safety, profile, session, signal: request.signal, commandTimeoutMs: request.commandTimeoutMs, onStdout: request.onStdout, onStderr: request.onStderr })
+    const raw = await tool.execute(input, { safety: request.safety, referenceOptions: config.hermes, profile, session, signal: request.signal, commandTimeoutMs: request.commandTimeoutMs, onStdout: request.onStdout, onStderr: request.onStderr })
     const compact = request.compact === false ? JSON.stringify(raw, null, 2) : compactToolOutput(raw, request.name)
     const status = observationStatus(raw)
     return {

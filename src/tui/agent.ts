@@ -3,7 +3,7 @@ import { D3ConfirmationRequiredError } from "../core/permissions.js"
 import { EditorRecordError, recordConnection } from "../d3/records.js"
 import type { SafetyMode } from "../domain/types.js"
 import { chat, type ChatMessage, type ChatRequest, type ChatResponse, type ChatUsage, type ToolCall } from "../llm/client.js"
-import type { ProjectContext } from "./project-context.js"
+import { loadProjectContext, type ProjectContext } from "./project-context.js"
 import type { SecretStore } from "../security/secrets.js"
 import { formatD3ToolResultForDisplay, formatD3ToolResultForModel, humanD3SessionError, humanizeD3ConnectError, isD3CommandResult } from "../d3/connection-message.js"
 import { d3Tools, getTool } from "../d3/tools.js"
@@ -113,6 +113,7 @@ export function createD3AgentSystemPrompt(config: D3CodeConfig, state: D3AgentSt
     "- For connection evidence use d3_login with {} to run WHO in the selected profile. Supplying account requests LOGTO and requires approval. d3_detect checks only the local executable and cannot establish whether a remote D3 server is reachable.",
     "- Prefer the most specific registered D3 tool over raw d3_tcl. Use d3_read_item/d3_read_dict/d3_query_aql/d3_list_files/d3_locks/d3_operations_status/d3_create_item/d3_create_file/d3_write_dict/d3_build_basic_program/d3_compile_basic/d3_run_basic/d3_catalog/d3_call_subroutine when they fit, and reserve raw d3_tcl for commands without a typed wrapper or explicitly terminal-like operator work.",
     "- For D3/SB+ coding, call d3_rag_search or d3_manual_search before relying on memory for syntax, System Builder behavior, dictionary semantics, or screen/process rules.",
+    "- Cite the reference title and passage or the live account, file, and item that informed the code. Treat workspace reference notes as evidence to compare with the active account. If the search yields no relevant passage, say what still needs verification.",
     "- For missing BASIC source, use d3_create_item with operator approval, then d3_compile_basic. Never replace an existing item through creation. For existing source, obtain a lossless baseline and use d3_build_basic_program so replacement/compile/catalog evidence stays together.",
     "- For SB+ screen and process work, use d3_sbplus_discover and d3_sbplus_plan first. Do not invent SB+ definition record layouts; discover the local SB+ files/conventions or route through SB+ maintenance screens before writing.",
     "- Distinguish native D3, SB, legacy SB+ and SB/XA. A document filename or candidate file does not establish the installed framework or version. The bundled SB+ Solutions guide is legacy material with an unverified edition. Never use SB.INITIATE as a discovery probe: it installs into an account and can overwrite its logon procedure.",
@@ -266,7 +267,7 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
       if (issue) throw new Error(issue.split("\n\n")[0])
       const who = sanitizeD3TerminalOutput(raw.stdout).match(/^\s*(\d+)\s+(\S+)\s+(\S+)\s*$/m)
       if ((raw.exitCode !== null && raw.exitCode !== 0) || raw.stderr.trim() || !who) throw new Error("D3 did not return a successful WHO response. Check the selected profile and login settings.")
-      if ((profile?.account && who[3] !== profile.account) || (profile?.allowedAccounts?.length && !profile.allowedAccounts.includes(who[3]!))) throw new Error("WHO returned a different account from the selected profile. Review the connection settings before continuing.")
+      if ((profile?.account && who[3]?.toLowerCase() !== profile.account.toLowerCase()) || (profile?.allowedAccounts?.length && !profile.allowedAccounts.some((account) => account.toLowerCase() === who[3]?.toLowerCase()))) throw new Error("WHO returned a different account from the selected profile. Review the connection settings before continuing.")
       output = `D3 is reachable through ${profile?.name}. Fresh WHO: ${who[1]} ${who[2]} ${who[3]}. This checks a new connection; the Terminal connection is managed separately.`
     } catch (error) {
       result = failedToolResult(toolRequest, error)
@@ -275,14 +276,16 @@ export async function runD3AgentTurn(config: D3CodeConfig, secrets: SecretStore,
     request.onEvent?.({ type: "tool_result", name: toolRequest.name, compact: formatD3ToolResultForDisplay(result), status: result.status })
     return { output, messages: [{ role: "user", content: request.input }, { role: "assistant", content: output }], toolEvents: [{ ...toolRequest, result }] }
   }
+  const project = request.project ? await loadProjectContext(request.project.cwd) : undefined
   const harnessContext = await buildHarnessTurnContext({
     ...request,
+    project,
     eccRoot: config.hermes?.eccRoot ?? process.env.D3CODE_ECC_REPO,
     memoryEnabled: config.hermes?.memoryEnabled !== false,
     skillsEnabled: config.hermes?.enabled !== false,
   })
   const messages: ChatMessage[] = [
-    { role: "system", content: createD3AgentSystemPrompt(config, { ...request, harnessContext: harnessContext.text }) },
+    { role: "system", content: createD3AgentSystemPrompt(config, { ...request, project, harnessContext: harnessContext.text }) },
     ...compactAgentHistory(request.history ?? []),
   ]
   messages.push({ role: "user", content: request.input + scopeHint })

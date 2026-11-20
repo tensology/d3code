@@ -321,6 +321,20 @@ d3code rag-search "System Builder menu template"
 d3code rag-search "PICK BASIC curl upload"
 ```
 
+Add approved, sanitized Markdown examples under `$D3CODE_HOME/reference-notes/`
+(`~/.d3code/reference-notes/` by default). Include the profile, account, file,
+item, and evidence date so the assistant can tell which examples apply.
+Reference notes are available to the D3Code workspace, including its configured
+model, so exclude secrets, customer records, and source you cannot share there.
+Search refreshes the default index when source files are added, edited, or removed.
+The bundled Office demo example documents the `dm` sandbox and points to the
+maintained BASIC examples.
+
+Use `D3CODE.md` or `.d3code/instructions.md` for workspace-wide instructions.
+The IDE and terminal reread these files on each new agent turn. Use chat for
+instructions specific to the current task, and record reusable verified findings
+with `operator-memory-add`.
+
 Hermes-style memory is the learning layer around D3Code. It records only verified, sanitized lessons, such as local coding style, repeated D3 runtime failures, and operator workflows that should become D3-specific skills later.
 
 ```bash

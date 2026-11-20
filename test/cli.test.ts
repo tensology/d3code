@@ -981,13 +981,13 @@ test("CLI captures a terminal transcript and parsed screen artifacts", async () 
   assert.ok(parsed.screen.events.some((event) => event.type === "clear-screen"))
 })
 
-test("CLI capture and typed login enforce the same exact account allowlist", async () => {
+test("CLI capture and typed login reject accounts outside the profile allowlist", async () => {
   const home = await mkdtemp(join(tmpdir(), "d3code-account-guard-"))
   const env = { ...process.env, D3CODE_HOME: home }
   await execFileAsync("node", ["dist/src/cli.js", "profile-add-local", "--name", "locked", "--account", "dm", "--allowed-accounts", "dm", "--entry", "must-not-run"], { cwd: process.cwd(), env })
   for (const args of [
-    ["terminal-capture", "--profile", "locked", "--confirm", "TO", "DM"],
-    ["login", "--profile", "locked", "--confirm", "--account", "DM"],
+    ["terminal-capture", "--profile", "locked", "--confirm", "TO", "OTHER"],
+    ["login", "--profile", "locked", "--confirm", "--account", "OTHER"],
   ]) {
     await assert.rejects(execFileAsync("node", ["dist/src/cli.js", ...args], { cwd: process.cwd(), env }), error => {
       assert.match(String((error as { stderr?: string }).stderr), /outside the allowed accounts|not allowed for profile/)

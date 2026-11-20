@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -16,6 +16,7 @@ import {
   assertSanitizedMemory,
   createOperatorMemoryEntry,
   readOperatorMemory,
+  supersedeOperatorMemory,
 } from "../src/operator/memory.js"
 
 test("loads System Builder manifest and resolves manual paths", async () => {
@@ -44,6 +45,7 @@ test("routes queries to D3, MV BASIC, System Builder, and operator references", 
   assert.equal(routeReferenceQuery("PICK BASIC EXECUTE curl command").primary, "mvbasic")
   assert.equal(routeReferenceQuery("System Builder menu template screen").primary, "system-builder")
   assert.equal(routeReferenceQuery("SB+ input process screen definition").primary, "system-builder")
+  assert.equal(routeReferenceQuery("SB Builder input process screen definition").primary, "system-builder")
   assert.equal(routeReferenceQuery("pick0 systemd service failed").primary, "operator")
 })
 
@@ -72,6 +74,28 @@ test("builds local RAG chunks and ranks System Builder hits for System Builder q
   assert.equal(result.hits[0]?.sourceKind, "system-builder")
   assert.match(result.hits[0]?.text ?? "", /System Builder menu templates/)
   assert.match(formatRagSearchResult(result), /SB Guide/)
+  assert.deepEqual(searchRagIndex(index, "ZEBRA.NONEXISTENT").hits, [])
+  assert.deepEqual(searchRagIndex(index, " ").hits, [])
+  assert.deepEqual(searchRagIndex(index, "SB Guide").hits, [])
+})
+
+test("RAG excludes superseded, malformed, and secret-bearing operator memory", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "d3code-rag-memory-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const path = join(root, "memory.jsonl")
+  const evidence = "Verified against the active D3 account."
+  const old = createOperatorMemoryEntry({ project: "test", kind: "lesson", summary: "ObsoleteHook", evidence })
+  await appendOperatorMemory(path, old)
+  await supersedeOperatorMemory(path, old.id, createOperatorMemoryEntry({ project: "test", kind: "lesson", summary: "ConfirmedHook", evidence }))
+  const saved = await readFile(path, "utf8")
+  await writeFile(path, saved + "MalformedLine\n" + JSON.stringify({
+    ...old, status: "active", summary: "SecretMarker", evidence: "API_KEY: example-secret",
+  }) + "\n")
+  const index = await buildRagIndex({ sources: [{ id: "mem", title: "Operator memory", path, kind: "memory" }] })
+  assert.equal(searchRagIndex(index, "ConfirmedHook").hits.length, 1)
+  assert.equal(searchRagIndex(index, "ConfirmedHook", { memoryEnabled: false }).hits.length, 0)
+  for (const term of ["ObsoleteHook", "MalformedLine", "SecretMarker"]) assert.deepEqual(searchRagIndex(index, term).hits, [])
+  await assert.rejects(buildRagIndex({ sources: [], chunkLines: 0 }), /positive integer/)
 })
 
 test("operator memory stores verified sanitized lessons by project", async () => {

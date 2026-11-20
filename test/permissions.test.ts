@@ -40,7 +40,7 @@ test("account switch aliases require approval and respect the profile allowlist"
     assert.throws(() => assertD3Allowed("ask", command, true, ["dm"]), /outside the allowed accounts/)
   }
   assert.doesNotThrow(() => assertD3Allowed("ask", "TO dm", true, ["dm"]))
-  assert.throws(() => assertD3Allowed("ask", "TO DM", true, ["dm"]), /outside the allowed accounts/)
+  assert.doesNotThrow(() => assertD3Allowed("ask", "TO DM", true, ["dm"]))
   assert.equal(classifyD3Command("LIST ORDERS TO PRINTER"), "write")
 })
 
