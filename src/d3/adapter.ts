@@ -110,6 +110,7 @@ export class PersistentLocalD3Session implements D3Session {
   private stderr = ""
   private sequence = 0
   private closedError?: Error
+  private atCommandPrompt = false
 
   constructor(readonly profile: ConnectionProfile) {}
 
@@ -131,6 +132,7 @@ export class PersistentLocalD3Session implements D3Session {
   private start(): void {
     if (this.child) return
     this.closedError = undefined
+    this.atCommandPrompt = false
     this.child = this.spawnChild()
     this.child.stdout.on("data", (chunk) => {
       this.stdout += chunk.toString()
@@ -151,6 +153,7 @@ export class PersistentLocalD3Session implements D3Session {
       // Drop the dead session and its buffers so the next command reconnects
       // cleanly instead of reusing a closed child.
       this.child = undefined
+      this.atCommandPrompt = false
       this.stdout = ""
       this.stderr = ""
     })
@@ -186,6 +189,7 @@ export class PersistentLocalD3Session implements D3Session {
     const marker = `__D3CODE_DONE_${Date.now().toString(36)}_${this.sequence++}__`
     const d3Command = command.replace(/\r?\n/g, "\r")
     const payload = promptPattern ? `${d3Command}\r` : `${command}\nprintf '\\n${marker}:%s\\n' "$?"\n`
+    this.atCommandPrompt = false
     this.child.stdin.write(payload)
 
     const wait = promptPattern
@@ -206,6 +210,7 @@ export class PersistentLocalD3Session implements D3Session {
         return output.includes(marker)
       }
     await waitFor(wait, timeoutMs, `Command timed out after ${timeoutMs}ms: ${command}`, options.signal)
+    this.atCommandPrompt = Boolean(promptPattern)
 
     const stdout = this.stdout.slice(stdoutStart)
     const stderr = this.stderr.slice(stderrStart)
@@ -222,7 +227,8 @@ export class PersistentLocalD3Session implements D3Session {
   async close(): Promise<void> {
     if (!this.child) return
     const child = this.child
-    if (this.profile.promptPattern && child.stdin.writable) {
+    if (this.atCommandPrompt && child.stdin.writable) {
+      this.atCommandPrompt = false
       child.stdin.write("OFF\r")
       await delay(150)
     }

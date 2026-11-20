@@ -142,6 +142,46 @@ test("persistent local D3 session ignores startup prompt before first command", 
   }
 })
 
+test("persistent sessions send OFF only after a command has returned to TCL", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "d3code-session-close-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const fixture = join(root, "terminal.cjs")
+  await writeFile(fixture, `
+const fs = require("node:fs")
+const readline = require("node:readline")
+const [state, log] = process.argv.slice(2)
+process.stdout.write(state === "login" ? "Enter your user id:" : ":")
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  fs.appendFileSync(log, line + "\\n")
+  if (line === "WHO") process.stdout.write("\\n1 dm dm\\n:")
+  if (line === "LOGTO SALES") process.stdout.write("\\nMaster dictionary password:")
+  if (line === "OFF") process.exit(0)
+})
+`)
+  for (const state of ["login", "account-switch", "idle"] as const) {
+    const log = join(root, state)
+    await writeFile(log, "")
+    const session = new PersistentLocalD3Session({
+      name: state, type: "local", promptPattern: ":",
+      entryCommand: [process.execPath, fixture, state, log].map((part) => JSON.stringify(part)).join(" "),
+    })
+    try {
+      if (state === "login") {
+        await assert.rejects(session.run("WHO", 1_000), /did not reach its prompt/)
+      } else {
+        assert.match((await session.run("WHO", 2_000)).stdout, /1 dm dm/)
+        if (state === "account-switch") {
+          await assert.rejects(session.run("LOGTO SALES", 350), /Command timed out/)
+        }
+      }
+    } finally {
+      await session.close()
+    }
+    const expected = { login: "", "account-switch": "WHO\nLOGTO SALES\n", idle: "WHO\nOFF\n" }
+    assert.equal(await readFile(log, "utf8"), expected[state])
+  }
+})
+
 test("persistent local D3 session streams prompted output without startup prompt", async () => {
   const session = new PersistentLocalD3Session({
     name: "prompted",
