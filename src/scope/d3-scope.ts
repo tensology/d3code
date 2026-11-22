@@ -76,6 +76,8 @@ const d3ReferenceTerms = [
   "rocket d3",
   "mvbasic",
   "system builder",
+  "sb builder",
+  "sb/xa",
   "sb+",
   "create-file",
   "create file",

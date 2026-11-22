@@ -16,6 +16,29 @@ const secrets = {
   set: async () => undefined,
 }
 
+test("the first coding model call receives cited BASIC and SB+ references without saving them in history", async () => {
+  for (const [input, source] of [
+    ["Review D3CODE.STATEMENT and explain which dictionary, field positions, and program statements need checking.", /Office demo order programs|office-dm-order-programs\.md/i],
+    ["Implement SB Builder validation.", /SB\+ Solutions.*\(system-builder\)/i],
+  ] as const) {
+    const result = await runD3AgentTurn(config, secrets, {
+      input, model: "openai/gpt-5", safety: "plan", mode: "chat",
+      history: [{ role: "user", content: "Earlier D3 request" }],
+      chatFn: async (_config, _secrets, request) => {
+        const evidence = request.messages.find((message) => message.content.startsWith("Automatically retrieved D3 references."))
+        assert.equal(evidence?.role, "user")
+        assert.match(evidence?.content ?? "", /<untrusted_d3_evidence>/)
+        assert.match(evidence?.content ?? "", source)
+        assert.equal(request.messages.at(-1)?.content, input)
+        return { provider: "test", model: "test", content: "Cited coding response." }
+      },
+    })
+    assert.equal(result.output, "Cited coding response.")
+    assert.equal(result.toolEvents.length, 0)
+    assert.ok(result.messages.every((message) => !message.content.startsWith("Automatically retrieved D3 references.")))
+  }
+})
+
 test("agent loop runs a model-requested D3 tool and resumes with the result", async () => {
   const calls: string[] = []
   const events: string[] = []
