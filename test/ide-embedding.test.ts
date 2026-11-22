@@ -28,3 +28,31 @@ test("embedding rejects unsafe paths and escapes script delimiters", () => {
   }
   assert.doesNotMatch(embeddedClientScript("", "</script>"), /<\/script>/)
 })
+
+test("embedded toolbar adopts the same-origin portal accent and clears an invalid value", () => {
+  let accent = "#249927"
+  let refresh: (() => void) | undefined
+  const styles = new Map<string, string>()
+  const window = {
+    parent: { document: { body: {} }, getComputedStyle: () => ({ getPropertyValue: () => accent }) },
+    addEventListener() {},
+  }
+  const document = {
+    body: {
+      classList: { toggle() {} },
+      style: { setProperty: (key: string, value: string) => styles.set(key, value), removeProperty: (key: string) => styles.delete(key) },
+    },
+  }
+  runInNewContext(embeddedClientScript("/api/d3code", ""), {
+    window, document,
+    MutationObserver: class {
+      constructor(callback: () => void) { refresh = callback }
+      observe() {}
+      disconnect() {}
+    },
+  })
+  assert.equal(styles.get("--portal-workspace-accent"), "#249927")
+  accent = "url(https://example.com)"
+  refresh?.()
+  assert.equal(styles.has("--portal-workspace-accent"), false)
+})
