@@ -377,12 +377,33 @@ export function formatRagSearchResult(result: RagSearchResult): string {
   }
   result.hits.forEach((hit, index) => {
     const text = hit.text.replace(/\s+/g, " ").trim()
-    const excerpt = text.length > 400 ? `${text.slice(0, 397).replace(/\s+\S*$/, "")}...` : text
-    lines.push(`${index + 1}. ${excerpt}`)
+    lines.push(`${index + 1}. ${referenceExcerpt(text, hit.matchedTerms)}`)
     lines.push(`   source: ${hit.sourceTitle} (${hit.sourceKind})  ·  ${basename(hit.sourcePath)}:${hit.startLine}-${hit.endLine}  ·  score ${hit.score}`)
     if (index < result.hits.length - 1) lines.push("")
   })
   return lines.join("\n")
+}
+
+function referenceExcerpt(text: string, matchedTerms: string[]): string {
+  const limit = 400
+  if (text.length <= limit) return text
+  const terms = new Set(matchedTerms)
+  let anchor = 0
+  let longest = 0
+  for (const token of text.matchAll(/\b(?:system builder|sb builder|sb\/xa|sb\+)|[a-z0-9][a-z0-9_.-]*/gi)) {
+    const [term] = tokenize(token[0])
+    if (!term || term.length <= longest || !terms.has(term)) continue
+    longest = term.length
+    anchor = token.index
+  }
+  const start = Math.max(0, anchor - 80)
+  let end = Math.min(start + limit - (start > 0 ? 3 : 0), text.length)
+  const clipped = end < text.length
+  if (clipped) end -= 3
+  const selected = text.slice(start, end)
+  const beginning = start > 0 ? selected.replace(/^\S*\s/, "") : selected
+  const excerpt = clipped ? beginning.replace(/\s+\S*$/, "") : beginning
+  return `${start > 0 ? "..." : ""}${excerpt}${clipped ? "..." : ""}`
 }
 
 export function formatRagIndexStatus(status: RagIndexStatus): string {

@@ -98,6 +98,21 @@ test("RAG excludes superseded, malformed, and secret-bearing operator memory", a
   await assert.rejects(buildRagIndex({ sources: [], chunkLines: 0 }), /positive integer/)
 })
 
+test("a compact reference includes matches near the end of a long chunk and its source", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "d3code-rag-excerpt-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const path = join(root, "screen-guide.txt")
+  await writeFile(path, `Obsolete VALIDATE.CREDIT.OLD. ${"Background on installation. ".repeat(45)}\nUse VALIDATE.CREDIT in the screen validation hook.\n`)
+  const index = await buildRagIndex({ sources: [{ id: "guide", title: "SB+ Guide", path, kind: "system-builder" }] })
+  const result = searchRagIndex(index, "VALIDATE.CREDIT")
+  const compact = formatRagSearchResult(result)
+  assert.match(compact, /Use VALIDATE\.CREDIT in the screen validation hook/)
+  assert.match(compact, /SB\+ Guide.*screen-guide\.txt:1-/)
+  assert.doesNotMatch(compact, /VALIDATE\.CREDIT\.OLD/)
+  assert.ok(compact.split("\n").find((line) => line.startsWith("1. "))!.indexOf("VALIDATE.CREDIT") < 100)
+  assert.ok(compact.split("\n").find((line) => line.startsWith("1. "))!.length <= 403)
+})
+
 test("operator memory stores verified sanitized lessons by project", async () => {
   const file = join(await mkdtemp(join(tmpdir(), "d3code-memory-")), "memory.jsonl")
   const entry = createOperatorMemoryEntry({
