@@ -39,6 +39,22 @@ test("the first coding model call receives cited BASIC and SB+ references withou
   }
 })
 
+test("an SB Builder BASIC draft receives both the Office observation and DCOUNT semantics", async () => {
+  const input = "Draft a read-only Rocket D3 BASIC program to OPEN DMPROCESS, READ TEST.P in the Office SB Builder account, and print the numbered attribute count with DCOUNT and @AM."
+  const result = await runD3AgentTurn(config, secrets, {
+    input, model: "openai/gpt-5", safety: "plan", mode: "chat",
+    chatFn: async (_config, _secrets, request) => {
+      const evidence = request.messages.find((message) => message.content.startsWith("Automatically retrieved D3 references."))?.content ?? ""
+      assert.match(evidence, /office-sbplus-definition-items\.md/)
+      assert.match(evidence, /rocket-d3-basic-attribute-count\.md/)
+      assert.match(evidence, /DCOUNT` already adds one/)
+      assert.equal(request.messages.at(-1)?.content, input)
+      return { provider: "test", model: "test", content: "Read-only draft." }
+    },
+  })
+  assert.equal(result.output, "Read-only draft.")
+})
+
 test("agent loop runs a model-requested D3 tool and resumes with the result", async () => {
   const calls: string[] = []
   const events: string[] = []

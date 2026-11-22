@@ -113,6 +113,16 @@ test("a compact reference includes matches near the end of a long chunk and its 
   assert.ok(compact.split("\n").find((line) => line.startsWith("1. "))!.length <= 403)
 })
 
+test("Office SB Builder coding references preserve the observed account, file, item, and attribute count", async () => {
+  const index = await buildRagIndex()
+  const result = searchRagIndex(index, "SB Builder DMPROCESS TEST.P Office account", { limit: 3, memoryEnabled: false })
+  const firstHit = formatRagSearchResult({ ...result, hits: result.hits.slice(0, 1) })
+
+  assert.equal(result.route.primary, "system-builder")
+  assert.match(firstHit, /office-sbplus-definition-items\.md/)
+  assert.match(firstHit, /D3 account.*D3 file.*Item ID.*`SB\+\.DEFN`.*`DMPROCESS`.*`TEST\.P`.*seven numbered attributes/)
+})
+
 test("operator memory stores verified sanitized lessons by project", async () => {
   const file = join(await mkdtemp(join(tmpdir(), "d3code-memory-")), "memory.jsonl")
   const entry = createOperatorMemoryEntry({

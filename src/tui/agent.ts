@@ -242,7 +242,7 @@ function blockedToolMessage(request: D3AgentToolRequest): string {
 }
 
 async function codingReferenceContext(input: string, config: D3CodeConfig, signal: AbortSignal): Promise<ChatMessage | undefined> {
-  const codingIntent = /\b(?:write|build|create|implement|fix|modify|edit|debug|review|generate|update|plan|refactor|port|migrate)\b/i
+  const codingIntent = /\b(?:write|draft|build|create|implement|fix|modify|edit|debug|review|generate|update|plan|refactor|port|migrate)\b/i
   const d3Anchor = /\b(?:(?:pick|mv|d3)\s*basic|flashbasic|basic\s+(?:code|program|routine|source)|subroutine|system builder|sb builder|sb\/xa|bp|d3code\.[a-z0-9]+)\b|\bsb\+/i
   if (signal.aborted || !codingIntent.test(input) || !d3Anchor.test(input)) return undefined
   try {
