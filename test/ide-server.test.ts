@@ -42,6 +42,15 @@ test.afterEach(async () => {
   await stopIdeServers()
 })
 
+test("the same IDE configuration can start again after its handle closes", async () => {
+  const state = { model: config.defaultModel, safety: "ask" as const, profile: "fake", mode: "chat" }
+  const first = await startTestIdeServer(config, state, { port: 0 })
+  await first.close()
+  const second = await startTestIdeServer(config, state, { port: 0 })
+  assert.notEqual(second, first)
+  assert.equal((await fetch(second.url + "/api/status")).status, 200)
+})
+
 test("terminal displays the complete report instead of summarising account names away", async () => {
   const stdout = Array.from({ length: 100 }, (_, n) => n === 50 ? "MPSTORE MULTISNACK" : `ACCOUNT-${n}`).join("\n")
   const session: D3Session = { profile: config.profiles[0]!, run: async command => ({ command, stdout, stderr: "", exitCode: 0, durationMs: 0 }), close: async () => {} }

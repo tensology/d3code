@@ -46,6 +46,18 @@ test("file listing refuses missing, truncated or duplicate rows and reports its 
   assert.throws(() => dataFileListCommand(1001), /limit/)
 })
 
+test("a native listing error takes precedence over an empty summary", async () => {
+  let stdout = "[202] 'CONV' not on file.\n[202] 'FMT' not on file.\n[401] no items present."
+  const session: D3Session = {
+    profile: { name: "legacy", type: "ssh" },
+    async run(command) { return { command, stdout, stderr: "", exitCode: null, durationMs: 1 } },
+    async close() {},
+  }
+  await assert.rejects(listD3Files(session), /D3 rejected the file listing:.*CONV/)
+  stdout = "[401] no items present."
+  assert.deepEqual((await listD3Files(session)).files, [])
+})
+
 test("estate parser ignores SSH/login noise and extracts WHO proof", () => {
   const output = [
     "spawn ssh -tt -p 2266 root@example d3",

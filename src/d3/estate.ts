@@ -71,6 +71,9 @@ export async function listD3Files(session: D3Session, options: { limit?: number;
   const files: D3EstateFile[] = []
   let count: number | undefined
   for (const line of outputOf(result).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").split(/\r\n?|\n/).map(line => line.trim())) {
+    if (/^\[\d+\].*\b(?:not on file|not defined|syntax error|not a valid|invalid|permission denied|not authorized|access denied)\b/i.test(line)) {
+      throw new Error(`D3 rejected the file listing: ${line}`)
+    }
     const summary = line.match(/^(?:\[4052?\]\s*)?(\d+)\s+items?\s+listed\b/i)
     if (summary || /^\[401\]\s*no items present\.?$/i.test(line)) { count = summary ? Number(summary[1]) : 0;break }
     const row = line.match(/^((?:[0-9a-f]{2}){1,100})\s+D$/i)
