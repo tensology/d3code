@@ -25,8 +25,10 @@ The legacy SB+ Solutions guide names these as its software accounts.
 A separate read-only session confirmed `SB+.DEFN` with `WHO`.
 Its plain master-dictionary listing exposed `DMPROCESS` and `TUDEFN`.
 `COUNT DMPROCESS` returned 666 items, and `COUNT TUDEFN` returned six.
-`CT TUDEFN BOOKMARK.DOC` returned a definition item. A read of
-`DMPROCESS TEST.P` displayed seven numbered attributes. The formatted
-listing and documented installer source lookup returned native errors.
+`CT TUDEFN BOOKMARK.DOC` returned a definition item. In Office
+`SB+.DEFN`, `CT DMPROCESS TEST.P` displayed seven numbered attributes.
+The plain AQL file listing returned nine direct file pointers. The
+formatted listing and documented installer source lookup returned
+native errors.
 Verify the target application's own process, definition, and program
 files before applying a layout or generating code for it.

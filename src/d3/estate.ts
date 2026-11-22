@@ -66,25 +66,57 @@ export function dataFileListCommand(limit = 200): string {
 
 export async function listD3Files(session: D3Session, options: { limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}) {
   const limit = options.limit ?? 200
-  const result = await session.run(dataFileListCommand(limit), options.timeoutMs ?? 15_000, { signal: options.signal })
+  const timeoutMs = options.timeoutMs ?? 15_000
+  const started = Date.now()
+  let result = await session.run(dataFileListCommand(limit), timeoutMs, { signal: options.signal })
   assertUsableProbe(result)
+  const reportLines = (output: D3CommandResult) => outputOf(output).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").split(/\r\n?|\n/)
+  let lines = reportLines(result)
+  const legacy = lines.some((line) => /^\s*\[202\]\s*['"](?:CONV|FMT)['"]\s+not on file\b/i.test(line))
+  if (legacy) {
+    options.signal?.throwIfAborted()
+    const remaining = timeoutMs > 0 ? timeoutMs - (Date.now() - started) : timeoutMs
+    if (timeoutMs > 0 && remaining <= 0) throw new Error("D3 file listing timed out before the legacy query could run.")
+    result = await session.run(`LIST MD WITH A1 = "D" A0 A1 SAMPLING ${limit} (N`, remaining, { signal: options.signal })
+    assertUsableProbe(result)
+    lines = reportLines(result)
+  }
   const files: D3EstateFile[] = []
   let count: number | undefined
-  for (const line of outputOf(result).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").split(/\r\n?|\n/).map(line => line.trim())) {
+  let columns: { a0: number; a1: number } | undefined
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
     if (/^\[\d+\].*\b(?:not on file|not defined|syntax error|not a valid|invalid|permission denied|not authorized|access denied)\b/i.test(line)) {
       throw new Error(`D3 rejected the file listing: ${line}`)
     }
     const summary = line.match(/^(?:\[4052?\]\s*)?(\d+)\s+items?\s+listed\b/i)
     if (summary || /^\[401\]\s*no items present\.?$/i.test(line)) { count = summary ? Number(summary[1]) : 0;break }
-    const row = line.match(/^((?:[0-9a-f]{2}){1,100})\s+D$/i)
-    if (row) {
-      const name = Buffer.from(row[1]!, "hex").toString("latin1")
-      files.push({ name, kind: classifyFile(name, "", "D"), typeCode: "D" })
+    if (legacy && /^MD\.{2,}\s+A0\.{2,}\s+A1\.{2,}$/i.test(line)) {
+      const header = rawLine.toUpperCase()
+      columns = { a0: header.indexOf("A0"), a1: header.indexOf("A1") }
+      continue
     }
+    const name = legacy ? columns && legacyFileName(rawLine, columns) : hexFileName(line)
+    if (name) files.push({ name, kind: classifyFile(name, "", "D"), typeCode: "D" })
   }
   if (count === undefined || count !== files.length || count > limit || new Set(files.map(file => file.name)).size !== count) throw new Error("D3 file listing was incomplete. Retry the file listing.")
   const mayHaveMore = count === limit
   return { files, limit, mayHaveMore, result: { ...result, stdout: files.map(file => `${file.name} D`).join("\n") + `\n[405] ${count} items listed.` + (mayHaveMore ? `\nListing limited to ${limit} files; more may exist.` : "") } }
+}
+
+function hexFileName(line: string): string | undefined {
+  const row = line.match(/^((?:[0-9a-f]{2}){1,100})\s+D$/i)
+  return row ? Buffer.from(row[1]!, "hex").toString("latin1") : undefined
+}
+
+function legacyFileName(line: string, { a0, a1 }: { a0: number; a1: number }): string | undefined {
+  if (line.slice(a1).trim().toUpperCase() !== "D") return
+  const id = line.slice(a0, a1).trimEnd()
+  const displayed = line.slice(0, a0).trimEnd()
+  // A value that consumes the full A0 column could be truncated by AQL.
+  if (!/^[\w.$:+-]+$/.test(id) || id.length >= a1 - a0 - 1) return
+  if (displayed !== id && (displayed.length !== a0 - 1 || !id.startsWith(displayed))) return
+  return id
 }
 
 export function parseFileListing(output: string, limit = 40): D3EstateFile[] {

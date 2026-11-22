@@ -58,6 +58,40 @@ test("a native listing error takes precedence over an empty summary", async () =
   assert.deepEqual((await listD3Files(session)).files, [])
 })
 
+test("accounts without formatted AQL use a bounded, validated legacy listing", async () => {
+  const header = "MD............... A0........................... A1..........................."
+  const row = (id: string, displayed = id.slice(0, 17)) => `${displayed.padEnd(18)}${id.padEnd(30)}D`
+  const validNames = ["TUDEFN", "ORDER.PROGRAMS.WIDE"]
+  let legacy = [header, ...validNames.map((id) => row(id)), "[4052] 2 items listed out of 1207 sampling items."].join("\n")
+  const commands: string[] = []
+  const sig = new AbortController().signal
+  const session: D3Session = {
+    profile: { name: "legacy", type: "ssh" },
+    async run(command, timeout, options) {
+      commands.push(command)
+      assert.equal(options?.signal, sig)
+      assert.ok(timeout !== undefined && timeout <= 5_000 && timeout > 0)
+      const stdout = command.includes("CONV") ? "[202] 'CONV' not on file.\n[401] no items present." : legacy
+      return { command, stdout, stderr: "", exitCode: null, durationMs: 1 }
+    },
+    async close() {},
+  }
+  const result = await listD3Files(session, { limit: 2, timeoutMs: 5_000, signal: sig })
+  assert.deepEqual(result.files.map((file) => file.name), validNames)
+  assert.equal(result.mayHaveMore, true)
+  assert.equal(commands[1], 'LIST MD WITH A1 = "D" A0 A1 SAMPLING 2 (N')
+
+  for (const invalidReport of [
+    [header, row("X".repeat(29)), "[405] 1 items listed."],
+    [header, row("TUDEFN", "OTHER"), "[405] 1 items listed."],
+    [header, row("TUDEFN"), row("TUDEFN"), "[405] 2 items listed."],
+    [row("TUDEFN"), "[405] 1 items listed."],
+  ]) {
+    legacy = invalidReport.join("\n")
+    await assert.rejects(listD3Files(session, { limit: 2, timeoutMs: 5_000, signal: sig }), /listing was incomplete/)
+  }
+})
+
 test("estate parser ignores SSH/login noise and extracts WHO proof", () => {
   const output = [
     "spawn ssh -tt -p 2266 root@example d3",
